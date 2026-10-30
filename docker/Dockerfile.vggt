@@ -24,7 +24,7 @@ RUN uv venv -q --python /usr/bin/python3.12 /opt/vggt \
 # ---- the app image, plus that environment and a copy of the app in it ----
 FROM ${BASE}
 COPY --from=torch /opt/vggt /opt/vggt
-COPY pyproject.toml README.md /src/app/
+COPY pyproject.toml README.md LICENSE NOTICE /src/app/
 COPY src /src/app/src
 RUN VIRTUAL_ENV=/opt/vggt uv pip install -q --no-cache --no-deps /src/app && rm -rf /src/app \
  && /opt/vggt/bin/python -c "import torch, vggt, motiongrametry.feedforward, motiongrametry.pipeline; print('vggt layer ok, torch', torch.__version__)"

@@ -9,7 +9,10 @@ downloaded at first use) is described in EXTERNAL, with the license texts kept i
 from __future__ import annotations
 
 import importlib.metadata as md
+import importlib.util
+import os
 import re
+import shutil
 from pathlib import Path
 
 LICENSES = Path(__file__).parent / "licenses"
@@ -21,15 +24,14 @@ EXTERNAL = [
      "url": "https://colmap.github.io", "source": "https://github.com/colmap/colmap", "text": "colmap.txt",
      "copyright": "Copyright (c), ETH Zurich and UNC Chapel Hill"},
     {"id": "openmvs", "name": "OpenMVS", "version": "2.3.0", "license": "AGPL-3.0",
-     "role": "depth maps, dense cloud, raw mesh and texturing; built from unmodified source in its own container "
-             "(docker/openmvs.Dockerfile) and run as separate programs",
+     "role": "depth maps, dense cloud, raw mesh and texturing; run as separate programs, built from its unmodified source",
      "url": "https://cdcseacave.github.io/openMVS", "source": "https://github.com/cdcseacave/openMVS/tree/v2.3.0",
      "text": "openmvs-AGPL-3.0.txt", "copyright": "Copyright (c) Dan Cernea and the OpenMVS contributors",
-     "note": "The complete corresponding source is the v2.3.0 tag linked here, built unchanged (with CUDA in the "
-             "motiongrametry Docker image, docker/Dockerfile; CPU-only in docker/openmvs.Dockerfile). The Docker "
-             "image also carries that source and VCGLib's in /usr/share/doc/openmvs. Both images contain Ubuntu "
-             "24.04 libraries (Boost, CGAL, OpenCV, ...) under their own licenses, in /usr/share/doc/*/copyright."},
-    {"id": "vcglib", "name": "VCGLib", "version": "master at build time", "license": "GPL-3.0",
+     "distributors": "The complete corresponding source is the v2.3.0 tag linked here, built unchanged (with CUDA in "
+                     "docker/Dockerfile, CPU-only in docker/openmvs.Dockerfile); the Docker image also carries that "
+                     "source and VCGLib's in /usr/share/doc/openmvs. Both images contain Ubuntu 24.04 libraries (Boost, "
+                     "CGAL, OpenCV, ...) under their own licenses, in /usr/share/doc/*/copyright."},
+    {"id": "vcglib", "name": "VCGLib", "version": "commit 658ba36", "license": "GPL-3.0",
      "role": "geometry library compiled into OpenMVS",
      "url": "https://vcg.isti.cnr.it/vcglib", "source": "https://github.com/cdcseacave/VCG", "text": "vcglib-GPL-3.0.txt",
      "copyright": "Copyright (C) Visual Computing Lab, ISTI - CNR"},
@@ -38,11 +40,11 @@ EXTERNAL = [
      "url": "https://hub.docker.com/r/nvidia/cuda", "source": None, "text": "nvidia-cuda-base.txt",
      "copyright": "Copyright (c) NVIDIA Corporation"},
     {"id": "three", "name": "three.js", "version": "0.170.0", "license": "MIT",
-     "role": "the 3D views in the browser (loaded from the jsDelivr CDN)",
+     "role": "the 3D views in the browser (bundled with the app)",
      "url": "https://threejs.org", "source": "https://github.com/mrdoob/three.js", "text": "three.js.txt",
      "copyright": "Copyright © 2010-2024 three.js authors"},
     {"id": "three-mesh-bvh", "name": "three-mesh-bvh", "version": "0.8.3", "license": "MIT",
-     "role": "fast picking for the sculpt and paint brushes (loaded from the jsDelivr CDN)",
+     "role": "fast picking for the sculpt and paint brushes (bundled with the app)",
      "url": "https://github.com/gkjohnson/three-mesh-bvh", "source": "https://github.com/gkjohnson/three-mesh-bvh",
      "text": "three-mesh-bvh.txt", "copyright": "Copyright (c) 2018 Garrett Johnson"},
 ]
@@ -63,6 +65,43 @@ MODELS = [
      "note": "Non-commercial use only. For commercial use Meta publishes facebook/VGGT-1B-Commercial (gated, under the "
              "VGGT License and its acceptable use policy). Publications using VGGT should cite it."},
 ]
+# Pictures and examples shipped with the app (help page, benchmarks).
+CONTENT = [
+    {"id": "uco3d", "name": "uCO3D: UnCommon Objects in 3D (Meta AI; Liu et al., 2025)", "license": "CC-BY-4.0",
+     "role": "the objects in the help page's screenshots and in benchmarks/",
+     "url": "https://uco3d.github.io", "copyright": "Meta Platforms, Inc."},
+]
+PROJECT = {"name": "motiongrametry", "license": "Apache-2.0", "copyright": "Copyright 2026 Joan Pagès"}
+
+
+def _present(kind: str, ident: str) -> bool:
+    """Whether a component is part of this installation (optional ones may not be)."""
+    if ident in ("openmvs", "vcglib"):
+        return bool(shutil.which("DensifyPointCloud") or shutil.which("docker"))
+    if ident == "nvidia-cuda":
+        return bool(os.environ.get("MG_IN_CONTAINER") and os.environ.get("MG_OPENMVS_CUDA"))
+    if ident in ("birefnet", "isnet", "u2net"):
+        return importlib.util.find_spec("rembg") is not None
+    if ident == "vggt-1b":
+        from .checks import vggt_env
+
+        env = vggt_env()
+        return importlib.util.find_spec("vggt") is not None or bool(env and "error" not in env)
+    return True
+
+
+def _project_license() -> str:
+    """LICENSE and NOTICE, from the installed package or the source tree."""
+    texts = []
+    try:
+        d = md.distribution("motiongrametry")
+        texts = [Path(d.locate_file(f)).read_text() for f in (d.files or []) if f.name in ("LICENSE", "NOTICE")]
+    except md.PackageNotFoundError:
+        pass
+    if not texts:
+        root = Path(__file__).resolve().parents[2]
+        texts = [(root / n).read_text() for n in ("NOTICE", "LICENSE") if (root / n).exists()]
+    return "\n\n".join(texts) or "Apache License 2.0: https://www.apache.org/licenses/LICENSE-2.0"
 # What the project itself declares, and the extras that add optional features.
 EXTRAS = {"mask": "subject masks", "vggt": "VGGT stage", "dev": "tests"}
 # Packages whose metadata says too little, or that are installed by hand (see pyproject.toml).
@@ -139,7 +178,9 @@ def python_packages() -> list[dict]:
 
 
 def license_text(kind: str, ident: str) -> str:
-    """The full license text(s) of one component: kind "python", "external" or "model"."""
+    """The full license text(s) of one component: kind "project", "python", "external" or "model"."""
+    if kind == "project":
+        return _project_license()
     if kind == "python":
         d = next((d for d in md.distributions() if _key(d.metadata["Name"]) == _key(ident)), None)
         if d is None:
@@ -159,19 +200,24 @@ def about() -> dict:
         version = md.version("motiongrametry")
     except md.PackageNotFoundError:
         version = "dev"
-    return {"name": "motiongrametry", "version": version, "external": EXTERNAL, "models": MODELS, "python": python_packages()}
+    mark = lambda kind, items: [{**it, "present": _present(kind, it["id"])} for it in items]  # noqa: E731
+    return {**PROJECT, "version": version, "external": mark("external", EXTERNAL), "models": mark("model", MODELS),
+            "content": CONTENT, "python": python_packages()}
 
 
 def notices() -> str:
     """THIRD_PARTY_NOTICES: every component with its license text, for redistribution."""
     a = about()
-    out = [f"motiongrametry {a['version']}: third-party software notices", "",
-           "This software uses the components below. Each is the work of its authors and is used under its own "
-           "license, reproduced in full in this file.", ""]
+    out = [f"motiongrametry {a['version']}: third-party software notices", "", f"{PROJECT['copyright']}. Licensed under "
+           "the Apache License, Version 2.0 (LICENSE). It uses the components below; each is the work of its authors and "
+           "is used under its own license, reproduced in full in this file.", ""]
+    for it in a["content"]:
+        out += ["=" * 78, it["name"], f"License: {it['license']}", f"Used for: {it['role']}", f"Source: {it['url']}", ""]
     for kind, items in (("external", a["external"]), ("model", a["models"]), ("python", a["python"])):
         for it in items:
             out += ["=" * 78, f"{it['name']} {it.get('version', '')}".strip(), f"License: {it['license']}",
                     *([f"Used for: {it['role']}"] if it.get("role") else []),
                     *([f"Source: {it.get('source') or it.get('url')}"] if it.get("source") or it.get("url") else []),
-                    *([f"Note: {it['note']}"] if it.get("note") else []), "", license_text(kind, it["id"]), ""]
+                    *([f"Note: {it['note']}"] if it.get("note") else []),
+                    *([f"For distributors: {it['distributors']}"] if it.get("distributors") else []), "", license_text(kind, it["id"]), ""]
     return "\n".join(out)

@@ -78,7 +78,7 @@ COPY docker/requirements-nvidia.txt /tmp/requirements.txt
 RUN uv venv -q --python /usr/bin/python3.12 /opt/venv && uv pip install -q --no-cache -r /tmp/requirements.txt \
  && ls -d /opt/venv/lib/python3.12/site-packages/nvidia/*/lib > /etc/ld.so.conf.d/pip-nvidia.conf && ldconfig
 # (pycolmap-cuda12 brings its CUDA 12 runtime as pip packages: their lib/ folders are now on the loader path)
-COPY pyproject.toml README.md /src/app/
+COPY pyproject.toml README.md LICENSE NOTICE /src/app/
 COPY src /src/app/src
 # the app itself; its dependencies are the locked ones above (with the GPU builds)
 RUN uv pip install -q --no-cache --no-deps /src/app && rm -rf /src/app \

@@ -36,6 +36,7 @@ Preview data is served in the raw SfM frame together with one 4x4 "scene" transf
   GET  /api/workspaces/<ws>/advice?subject= what to change next (advice.py), for assisted mode
   GET  /api/assist                          assisted mode's subject / coverage choices
   GET  /<name>.js                           shared page modules (static/viewcube.js)
+  GET  /vendor/<path>                       bundled three.js and three-mesh-bvh (static/vendor)
   GET  /about                               third-party software and licenses (credits.py)
   GET  /api/about[/license?kind=&id=|/notices.txt]   their list, one license text, all notices
   GET  /help                                the how-to page (static/help.html, images in static/help/)
@@ -1175,6 +1176,11 @@ def make_handler(app: App):
                 return self._file(STATIC / "index.html", "text/html; charset=utf-8")
             if parts in (["edit"], ["edit.html"]):
                 return self._file(STATIC / "edit.html", "text/html; charset=utf-8")
+            if parts and parts[0] == "vendor":  # three.js and three-mesh-bvh, bundled (no CDN at run time)
+                p = (STATIC / Path(*parts)).resolve()
+                if not p.is_relative_to((STATIC / "vendor").resolve()) or not p.is_file():
+                    raise FileNotFoundError("/".join(parts))
+                return self._file(p, "text/javascript; charset=utf-8" if p.suffix == ".js" else "text/plain; charset=utf-8", cache=True)
             if len(parts) == 1 and re.fullmatch(r"[\w-]+\.js", parts[0]) and (STATIC / parts[0]).is_file():
                 return self._file(STATIC / parts[0], "text/javascript; charset=utf-8")  # shared page modules
             if parts in (["about"], ["about.html"]):

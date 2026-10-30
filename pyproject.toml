@@ -3,6 +3,9 @@ name = "motiongrametry"
 version = "0.1.0"
 description = "Turn a walk-around video of a person or object into a cleaned, textured 3D mesh."
 readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+authors = [{ name = "Joan Pagès" }]
 requires-python = ">=3.10,<3.14"
 dependencies = [
     "numpy>=1.26",

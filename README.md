@@ -455,3 +455,12 @@ pytest                                                 # unit tests (synthetic c
 blender -b -P tools/synth_orbit.py -- /tmp/orbit       # synthetic orbit for end-to-end runs
 ffmpeg -framerate 30 -i /tmp/orbit/%04d.png -pix_fmt yuv420p orbit.mp4 && mg run orbit.mp4 work
 ```
+
+## License
+
+motiongrametry is licensed under the [Apache License 2.0](LICENSE) (Copyright 2026 Joan Pagès; see
+[NOTICE](NOTICE)). It builds on third-party software and models under their own licenses, among them
+OpenMVS (AGPL-3.0, run as separate programs, its source shipped in the Docker image) and the optional
+VGGT, whose weights are non-commercial. The About page of the app lists every component with its
+license text and what applies to this installation; `mg notices` writes them all to one file. The
+objects in the help page's screenshots and in `benchmarks/` come from Meta's uCO3D dataset (CC BY 4.0).

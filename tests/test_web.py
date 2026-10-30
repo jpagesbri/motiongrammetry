@@ -601,6 +601,9 @@ def test_shared_page_modules_are_served(server):
     with urllib.request.urlopen(base + "/viewcube.js") as r:
         assert r.headers["Content-Type"].startswith("text/javascript") and b"export function addViewCube" in r.read()
     assert call(base + "/nope.js")[0] == 404
+    with urllib.request.urlopen(base + "/vendor/three/build/three.module.js") as r:  # bundled, no CDN
+        assert r.headers["Content-Type"].startswith("text/javascript") and b"REVISION" in r.read()
+    assert call(base + "/vendor/..%2F..%2Fserver.py")[0] == 404
     assert call(base + "/..%2Fserver.py")[0] == 404
 
 
@@ -620,6 +623,9 @@ def test_about_lists_third_party_software_with_licenses(server):
         with urllib.request.urlopen(f"{base}/api/about/license?kind={kind}&id={ident}") as r:
             assert needle.lower() in r.read().decode().lower()
     assert call(base + "/api/about/license?kind=external&id=nope")[0] == 404
+    assert a["license"] == "Apache-2.0" and a["content"] and all("present" in x for x in a["external"])
+    with urllib.request.urlopen(f"{base}/api/about/license?kind=project&id=motiongrametry") as r:
+        assert "Apache License" in r.read().decode()
     with urllib.request.urlopen(base + "/api/about/notices.txt") as r:
         assert 'THIRD_PARTY_NOTICES.txt' in r.headers["Content-Disposition"]
         text = r.read().decode()
