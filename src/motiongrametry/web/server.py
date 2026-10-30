@@ -24,6 +24,8 @@ Preview data is served in the raw SfM frame together with one 4x4 "scene" transf
   POST /api/workspaces/<ws>/orientation     {"transform": 4x4 | null} -> set / reset the orientation
   GET  /api/workspaces/<ws>/download?path=<rel>   an output file (see App.outputs), or mesh.zip
   POST /api/workspaces/<ws>/duplicate       {"name", "reconstruction": bool} -> copy to try other settings
+  GET  /api/workspaces/<ws>/size            bytes on disk, and the video if it lives outside the scan
+  POST /api/workspaces/<ws>/delete          {"confirm": <name>} -> the scan's folder and everything in it
   GET  /edit                                sculpt / paint editor (static/edit.html)
   POST /api/workspaces/<ws>/edit/mesh       sculpted mesh -> mesh/custom/ (see App.save_mesh)
   POST /api/workspaces/<ws>/edit/texture?i=N&from=pipeline|custom  painted texture -> mesh/custom/
@@ -405,6 +407,36 @@ class App:
             shutil.rmtree(dst.root, ignore_errors=True)  # no half-copied workspace in the list
             raise
         return dst
+
+    def size(self, ws: Workspace) -> dict:
+        total = files = 0
+        for d, _, names in os.walk(ws.root):
+            for n in names:
+                try:
+                    total += os.lstat(os.path.join(d, n)).st_size
+                    files += 1
+                except OSError:
+                    pass
+        video = self.meta(ws).get("video")
+        outside = video if video and not (ws.root / video).resolve().is_relative_to(ws.root.resolve()) else None
+        return {"bytes": total, "files": files, "video_outside": outside}
+
+    def delete(self, ws: Workspace, confirm: str) -> dict:
+        """Remove a scan's folder and everything in it (keyframes, masks, reconstruction, meshes,
+        edits, exports, an uploaded video). A video it was made from elsewhere on disk is left alone."""
+        name = ws.root.name
+        if confirm != name:
+            raise ValueError("to delete a scan, confirm with its exact name")
+        job = self.jobs.get(name)
+        if job and job.status == "running":
+            raise RuntimeError("a run is using this scan: stop it first")
+        if name in self.reorienting:
+            raise RuntimeError("the scan's files are being updated: try again in a moment")
+        info = self.size(ws)
+        shutil.rmtree(ws.root)
+        self.jobs.pop(name, None)
+        log.info("deleted scan %s (%d files, %.1f MB)", name, info["files"], info["bytes"] / 1e6)
+        return {"deleted": name, **info}
 
     def outputs(self, ws: Workspace) -> list[dict]:
         stale = set(self.stale(ws))
@@ -1190,6 +1222,8 @@ def make_handler(app: App):
                 from ..advice import advise
 
                 return self._json(advise(ws, q.get("subject", [None])[0]))
+            if what == "size":
+                return self._json(app.size(ws))
             if what == "preview.jpg":
                 return self._file(app.preview(ws), "image/jpeg")
             if what == "tool-logs":
@@ -1258,6 +1292,8 @@ def make_handler(app: App):
                     body = self._body()
                     dst = app.duplicate(ws, body.get("name", ""), bool(body.get("reconstruction")))
                     return self._json(app.state(dst), HTTPStatus.CREATED)
+                if parts[3] == "delete":
+                    return self._json(app.delete(ws, self._body().get("confirm", "")))
                 if parts[3] == "cancel":
                     job = app.jobs.get(ws.root.name)
                     if job:

@@ -164,6 +164,12 @@
   .modal[hidden] { display: none; }
   .win { width: min(980px, 94vw); height: min(640px, 90vh); background: var(--panel); border: 1px solid var(--line);
     border-radius: 12px; box-shadow: 0 20px 60px rgba(0,0,0,.6); display: flex; flex-direction: column; overflow: hidden; }
+  .win.small { width: min(560px, 94vw); height: auto; }
+  .del-body { padding: 14px 18px 18px; }
+  .del-body p { margin: 6px 0 10px; line-height: 1.5; }
+  .btn.danger { color: var(--bad); }
+  .btn.danger:hover { border-color: var(--bad); }
+  .btn.danger-solid { background: var(--bad); border-color: var(--bad); color: #fff; font-weight: 600; }
   .win-head { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--line); }
   .win-head .x { margin-left: auto; background: none; border: 0; color: var(--muted); cursor: pointer; font-size: 16px; }
   .win-body { flex: 1; display: grid; grid-template-columns: 330px 1fr; min-height: 0; }
@@ -345,6 +351,19 @@
 </head>
 <body>
 <div class="scancard" id="scanCard" hidden></div>
+<div class="modal" id="delModal" hidden>
+  <div class="win small">
+    <div class="win-head"><b>Delete scan</b><span class="muted" id="delScan"></span><button class="x" id="delClose" title="close (Esc)">✕</button></div>
+    <div class="del-body">
+      <p>This removes the scan's folder and everything in it: keyframes, masks, cameras, raw and clean meshes, the textured
+      model, your edits and orientation, exports, and the video if it was uploaded. <b>It cannot be undone.</b></p>
+      <p class="muted" id="delInfo">measuring…</p>
+      <label class="row" style="justify-content:flex-start;gap:10px">Type <code id="delName"></code> to confirm <input type="text" id="delConfirm" autocomplete="off" style="width:200px"></label>
+      <div class="btns"><button class="btn danger-solid" id="delGo" disabled>Delete for good</button><button class="btn" id="delCancel">Cancel</button></div>
+      <div class="err" id="delErr"></div>
+    </div>
+  </div>
+</div>
 <div class="modal" id="exportModal" hidden>
   <div class="win">
     <div class="win-head"><b>Export</b><span class="muted" id="exScan"></span><button class="x" id="exClose" title="close (Esc)">✕</button></div>
@@ -407,6 +426,9 @@
       </div>
       <progress id="upProg" value="0" max="1" hidden></progress>
       <div class="err" id="newErr"></div>
+    </section>
+    <section id="scanManage" hidden>
+      <div class="btns" style="margin-top:0"><button class="btn danger" id="delBtn" title="remove this scan's folder and everything made from it">Delete scan…</button></div>
     </section>
   </aside>
 
@@ -1504,6 +1526,7 @@ async function refreshState(beforeScene) {  // beforeScene: runs once the state 
   renderFilm();
   renderOutputs();
   $('dupBox').hidden = !wsState.done.frames;
+  $('scanManage').hidden = false;
   beforeScene?.();
   if (layerDefaultsFor !== current) {
     layerDefaultsFor = current;
@@ -2003,7 +2026,7 @@ $('exportBtn').addEventListener('click', openExport);
 $('exOrient').addEventListener('click', () => { $('exportModal').hidden = true; showG('preview'); showPv('3d'); orientOpen = true; orientHome(); });
 $('exClose').addEventListener('click', () => { $('exportModal').hidden = true; });
 $('exportModal').addEventListener('click', (e) => { if (e.target === $('exportModal')) $('exportModal').hidden = true; });
-addEventListener('keydown', (e) => { if (e.key === 'Escape') $('exportModal').hidden = true; });
+addEventListener('keydown', (e) => { if (e.key === 'Escape') { $('exportModal').hidden = true; $('delModal').hidden = true; } });
 $('exFormat').addEventListener('change', () => { exLoad(); $('exDownload').hidden = true; $('exIssues').innerHTML = ''; $('exStatus').textContent = ''; });
 $('exMode').addEventListener('change', exShellFields);
 $('exBuild').addEventListener('click', async () => {
@@ -2549,6 +2572,37 @@ $('upload').addEventListener('change', async () => {
     await select(name);
   } catch (e) { $('newErr').textContent = e.message; $('upProg').hidden = true; }
   $('upload').value = '';
+});
+// Delete a scan: its folder and everything in it, after typing its name.
+$('delBtn').addEventListener('click', async () => {
+  if (!current) return;
+  const name = current;
+  $('delScan').textContent = '· ' + name; $('delName').textContent = name;
+  $('delConfirm').value = ''; $('delGo').disabled = true; $('delErr').textContent = ''; $('delInfo').textContent = 'measuring…';
+  $('delModal').hidden = false; $('delConfirm').focus();
+  try {
+    const z = await api(`/api/workspaces/${encodeURIComponent(name)}/size`);
+    $('delInfo').textContent = `${z.files.toLocaleString()} file${z.files === 1 ? "" : "s"}, ${z.bytes >= 1e9 ? gb(z.bytes) : (z.bytes / 1e6).toFixed(0) + ' MB'}`
+      + (z.video_outside ? `. The video it was made from stays where it is: ${z.video_outside}` : '')
+      + (jobSnap?.status === 'running' ? '. A run is using it: stop the run first.' : '');
+  } catch (e) { $('delInfo').textContent = ''; }
+});
+$('delConfirm').addEventListener('input', () => { $('delGo').disabled = $('delConfirm').value !== current; });
+$('delConfirm').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !$('delGo').disabled) $('delGo').click(); });
+for (const id of ['delClose', 'delCancel']) $(id).addEventListener('click', () => { $('delModal').hidden = true; });
+$('delGo').addEventListener('click', async () => {
+  const name = current;
+  $('delGo').disabled = true; $('delGo').textContent = 'Deleting…';
+  try {
+    await api(`/api/workspaces/${encodeURIComponent(name)}/delete`, { method: 'POST', body: JSON.stringify({ confirm: name }) });
+    for (const k of ['mg.run.', 'mg.assist.', 'mg.mode.']) try { localStorage.removeItem(k + name); } catch {}
+    $('delModal').hidden = true;
+    await refreshList();
+    const next = scans[0]?.name;
+    if (next) await select(next);
+    else { current = null; wsState = null; history.replaceState(null, '', location.pathname); location.reload(); }
+  } catch (e) { $('delErr').textContent = e.message; }
+  $('delGo').textContent = 'Delete for good';
 });
 $('dupBtn').addEventListener('click', async () => {
   $('newErr').textContent = '';

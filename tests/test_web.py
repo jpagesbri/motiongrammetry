@@ -624,3 +624,30 @@ def test_about_lists_third_party_software_with_licenses(server):
         assert 'THIRD_PARTY_NOTICES.txt' in r.headers["Content-Disposition"]
         text = r.read().decode()
     assert "OpenMVS" in text and "three.js" in text and "pycolmap" in text
+
+
+def test_delete_a_scan_needs_its_name_and_no_run(server, tmp_path):
+    base, app = server
+    call(base + "/api/workspaces", "POST", {"name": "gone"})
+    video = tmp_path / "outside.mp4"
+    video.write_bytes(b"v")
+    call(base + "/api/workspaces", "POST", {"name": "keepvid", "video_path": str(video)})
+    ws = Workspace(app.root / "gone")
+    ws.frames.mkdir()
+    (ws.frames / "f.jpg").write_bytes(b"x" * 1000)
+    status, z = call(base + "/api/workspaces/gone/size")
+    assert status == 200 and z["bytes"] >= 1000 and z["video_outside"] is None
+    assert call(base + "/api/workspaces/keepvid/size")[1]["video_outside"] == str(video.resolve())
+    assert call(base + "/api/workspaces/gone/delete", "POST", {"confirm": "gon"})[0] == 400  # not its name
+    assert ws.root.exists()
+
+    class Running:
+        status = "running"
+    app.jobs["gone"] = Running()
+    assert call(base + "/api/workspaces/gone/delete", "POST", {"confirm": "gone"})[0] == 400  # in use
+    app.jobs["gone"].status = "done"
+    status, r = call(base + "/api/workspaces/gone/delete", "POST", {"confirm": "gone"})
+    assert status == 200 and r["deleted"] == "gone" and not ws.root.exists()
+    assert "gone" not in {w["name"] for w in call(base + "/api/workspaces")[1]}
+    status, r = call(base + "/api/workspaces/keepvid/delete", "POST", {"confirm": "keepvid"})
+    assert status == 200 and video.exists()  # the video outside the scan stays
