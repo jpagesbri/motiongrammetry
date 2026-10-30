@@ -43,10 +43,13 @@ ask() {  # ask "question" default(y|n)
 }
 data="$(realpath -m "$data")"
 envfile="$data/.env"
+# one Docker project per data folder: a second setup (a test, another folder) never replaces yours
+if [ "$data" = "$(realpath -m "$HOME/motiongrametry")" ]; then project=motiongrametry
+else project="motiongrametry-$(basename "$data" | tr -c 'a-z0-9_-' '-' | sed 's/-*$//')"; fi
 compose() {
   local files=(-f "$here/compose.yml")
   [ "$(sed -n 's/^MG_GPU=//p' "$envfile" 2>/dev/null)" = nvidia ] && files+=(-f "$here/compose.nvidia.yml")
-  docker compose "${files[@]}" --env-file "$envfile" "$@"
+  docker compose -p "$project" "${files[@]}" --env-file "$envfile" "$@"
 }
 
 case "$cmd" in
@@ -122,7 +125,7 @@ EOF
 
 bold "Start"
 if ss -ltn 2>/dev/null | grep -q "127.0.0.1:$port \|\*:$port \|0.0.0.0:$port "; then
-  compose ps --status running 2>/dev/null | grep -q motiongrametry \
+  compose ps --status running 2>/dev/null | grep -q "$project" \
     || die "port $port is in use (another mg ui?): stop it, or use --port 8766"
 fi
 compose up -d --force-recreate --quiet-pull >/dev/null 2>&1 || { compose up -d; die "it did not start (see above)"; }
