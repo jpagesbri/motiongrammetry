@@ -55,7 +55,7 @@ FROM nvidia/cuda:${CUDA}-cudnn-runtime-ubuntu${UBUNTU}
 COPY --from=ghcr.io/astral-sh/uv:0.9.5 /uv /usr/local/bin/uv
 RUN apt-get update -yq && DEBIAN_FRONTEND=noninteractive apt-get install -yq --no-install-recommends \
         python3.12 python3.12-venv ca-certificates curl \
-        libgl1 libglib2.0-0t64 libgomp1 libx11-6 libxext6 \
+        libgl1 libegl1 libusb-1.0-0 libglib2.0-0t64 libgomp1 libx11-6 libxext6 libsm6 libice6 \
         libboost-iostreams1.83.0 libboost-program-options1.83.0 libboost-serialization1.83.0 \
         libboost-system1.83.0 libboost-thread1.83.0 libgmp10 libmpfr6 \
         libopencv-core406t64 libopencv-imgproc406t64 libopencv-imgcodecs406t64 libopencv-calib3d406t64 \
@@ -75,17 +75,21 @@ RUN mkdir /opt/openmvs/bin && for b in InterfaceCOLMAP DensifyPointCloud Reconst
 
 ENV VIRTUAL_ENV=/opt/venv UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy
 COPY docker/requirements-nvidia.txt /tmp/requirements.txt
-RUN uv venv -q --python /usr/bin/python3.12 /opt/venv && uv pip install -q --no-cache -r /tmp/requirements.txt
+RUN uv venv -q --python /usr/bin/python3.12 /opt/venv && uv pip install -q --no-cache -r /tmp/requirements.txt \
+ && ls -d /opt/venv/lib/python3.12/site-packages/nvidia/*/lib > /etc/ld.so.conf.d/pip-nvidia.conf && ldconfig
+# (pycolmap-cuda12 brings its CUDA 12 runtime as pip packages: their lib/ folders are now on the loader path)
 COPY pyproject.toml README.md /src/app/
 COPY src /src/app/src
 # the app itself; its dependencies are the locked ones above (with the GPU builds)
-RUN uv pip install -q --no-cache --no-deps /src/app && rm -rf /src/app
+RUN uv pip install -q --no-cache --no-deps /src/app && rm -rf /src/app \
+ && /opt/venv/bin/python -c "import motiongrametry.clean, motiongrametry.meshops, motiongrametry.pipeline, motiongrametry.mask, \
+motiongrametry.sfm, motiongrametry.mvs, motiongrametry.frames, motiongrametry.credits, motiongrametry.web.server, rembg; print('app imports ok')"
 # The GPU builds must find every library they link (CUDA, cuDNN, cuBLAS from the base image or their
 # own CUDA wheels); only the driver (libcuda) comes from the host at run time.
 RUN set -e; for so in /opt/venv/lib/python3.12/site-packages/onnxruntime/capi/libonnxruntime_providers_cuda.so \
         /opt/venv/lib/python3.12/site-packages/pycolmap/*.so; do \
       ldd "$so" | grep "not found" | grep -v libcuda.so && { echo "missing libraries for $so"; exit 1; }; done; \
-    python -c "import pycolmap, onnxruntime; print('pycolmap', pycolmap.__version__, 'cuda', getattr(pycolmap, 'has_cuda', None)); print('onnxruntime', onnxruntime.get_available_providers())"
+    /opt/venv/bin/python -c "import pycolmap, onnxruntime; print('pycolmap', pycolmap.__version__, 'cuda', getattr(pycolmap, 'has_cuda', None)); print('onnxruntime', onnxruntime.get_available_providers())"
 
 ENV PATH=/opt/venv/bin:/opt/openmvs/bin:$PATH \
     HOME=/data/home U2NET_HOME=/data/models/u2net HF_HOME=/data/models/huggingface \

@@ -26,13 +26,20 @@ PRESETS = {
 }
 
 
+def use_gpu() -> bool:
+    """ONNX Runtime's GPU build lists CUDA even with no GPU present (a Docker image started without
+    one): only use it when an NVIDIA GPU is really there."""
+    import onnxruntime
+
+    from .checks import nvidia_gpu
+
+    return "CUDAExecutionProvider" in onnxruntime.get_available_providers() and nvidia_gpu() is not None
+
+
 def resolve_model(model: str) -> str:
     if model not in PRESETS:
         return model
-    import onnxruntime
-
-    gpu = "CUDAExecutionProvider" in onnxruntime.get_available_providers()
-    return PRESETS[model][0 if gpu else 1]
+    return PRESETS[model][0 if use_gpu() else 1]
 
 
 def compute_masks(
@@ -48,9 +55,9 @@ def compute_masks(
         raise RuntimeError("masking needs the 'mask' extra: uv pip install 'motiongrametry[mask]'") from e
     from PIL import Image
 
-    model_name = resolve_model(model)
-    log.info("segmenting %d frames with %s", len(frames), model_name)
-    session = new_session(model_name)
+    model_name, gpu = resolve_model(model), use_gpu()
+    log.info("segmenting %d frames with %s (%s)", len(frames), model_name, "GPU" if gpu else "CPU")
+    session = new_session(model_name, providers=["CUDAExecutionProvider", "CPUExecutionProvider"] if gpu else ["CPUExecutionProvider"])
     out_dir.mkdir(parents=True, exist_ok=True)
     coverage = []
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * dilate_px + 1,) * 2) if dilate_px > 0 else None

@@ -66,23 +66,27 @@ def run_sfm(
     extraction.num_threads = num_threads
     extraction.sift.peak_threshold = peak_threshold
     extraction.sift.max_num_features = max_features
+    # The CUDA build of pycolmap stops with "num_cuda_devices > 0" on Device.auto when no GPU is
+    # passed in (e.g. the Docker image started without one): choose explicitly.
+    gpu = bool(getattr(pycolmap, "has_cuda", False)) and getattr(pycolmap, "get_num_cuda_devices", lambda: 0)() > 0
+    device = pycolmap.Device.cuda if gpu else pycolmap.Device.cpu
     # Hand-held video: one physical camera, so share intrinsics across all frames.
-    log.info("extracting SIFT features from %d frames", len(frames))
+    log.info("extracting SIFT features from %d frames (%s)", len(frames), "GPU" if gpu else "CPU")
     pycolmap.extract_features(
         db, ws.frames, image_names=names, camera_mode=pycolmap.CameraMode.SINGLE,
-        reader_options=reader, extraction_options=extraction,
+        reader_options=reader, extraction_options=extraction, device=device,
     )
 
     if matcher == "exhaustive":
         log.info("exhaustive matching (%d pairs)", len(names) * (len(names) - 1) // 2)
-        pycolmap.match_exhaustive(db)
+        pycolmap.match_exhaustive(db, device=device)
         pairs = []
     else:
         log.info("sequential matching (overlap=%d)", overlap)
         seq = pycolmap.SequentialPairingOptions()
         seq.overlap = overlap
         seq.quadratic_overlap = True
-        pycolmap.match_sequential(db, pairing_options=seq)
+        pycolmap.match_sequential(db, pairing_options=seq, device=device)
         pairs = _loop_pairs(names, loop_stride, overlap)
     if pairs:
         pair_file = ws.colmap / "loop_pairs.txt"
@@ -90,7 +94,7 @@ def run_sfm(
         imported = pycolmap.ImportedPairingOptions()
         imported.match_list_path = str(pair_file)
         log.info("loop-closure matching on %d sparse pairs", len(pairs))
-        pycolmap.match_image_pairs(db, pairing_options=imported)
+        pycolmap.match_image_pairs(db, pairing_options=imported, device=device)
 
     sparse_root = ws.colmap / "sparse"
     sparse_root.mkdir(exist_ok=True)

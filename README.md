@@ -41,9 +41,13 @@ Runtime, so the depth maps (mvs), the masks and SfM's features and matching run 
 is passed in; everything else, and everything on a machine without a GPU, runs on the CPU. The
 Python packages are locked in `docker/requirements-nvidia.txt` (from `requirements-nvidia.in`).
 
-- **GPU**: `--gpu auto` (default) uses an NVIDIA GPU when Docker can reach it; that needs the NVIDIA
-  Container Toolkit on the host, and the script prints the commands for your distribution when it is
-  missing (or starts on the CPU). `--gpu none` forces the CPU. AMD GPUs run on the CPU for now.
+- **GPU**: `--gpu auto` (default) uses an NVIDIA GPU when Docker can reach it; that needs an NVIDIA
+  driver >= 580 and the NVIDIA Container Toolkit on the host, and the script prints the commands for
+  your distribution when the toolkit is missing (or starts on the CPU). `--gpu none` forces the CPU.
+  The same image runs either way: OpenMVS is in it twice (CUDA and CPU builds, a launcher picks), and
+  COLMAP and the masks choose the GPU only when one is really there. AMD GPUs run on the CPU for now.
+- **Size**: the image is about 9 GB (most of it NVIDIA's CUDA and cuDNN); the first build takes
+  30-60 minutes, later ones only rebuild the app layer.
 - **Data**: `~/motiongrametry` (or `--data DIR`) holds the scans (`workspaces/`, or `--workspaces DIR`
   for an existing folder), the downloaded AI models and `.env` with these settings. Files are written
   as your user. Videos in `videos/` (or `--videos DIR`) can be opened by path as `/videos/...`.

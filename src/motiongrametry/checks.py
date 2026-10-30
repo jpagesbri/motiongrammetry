@@ -80,12 +80,13 @@ def accel() -> dict:
         except (OSError, subprocess.TimeoutExpired):
             helptext = ""
         cuda = "cuda" in helptext.lower() or bool(os.environ.get("MG_OPENMVS_CUDA"))  # the image has both builds
-        out["mvs"] = ("GPU", "OpenMVS depth maps on CUDA") if cuda and gpu else \
+        out["mvs"] = ("GPU", "OpenMVS depth maps and meshing on CUDA") if cuda and gpu else \
             ("CPU", "no GPU passed in" if cuda else "OpenMVS built without CUDA")
     else:
         out["mvs"] = ("CPU", "OpenMVS runs in its own container (docker/openmvs.Dockerfile, CPU build)") if shutil.which("docker") \
             else ("missing", "OpenMVS not installed")
-    out["texture"] = ("CPU", "OpenMVS texturing has no GPU version")
+    out["texture"] = ("GPU", "parts of OpenMVS texturing on CUDA") if out["mvs"][0] == "GPU" else \
+        ("CPU", out["mvs"][1])
     if importlib.util.find_spec("torch"):
         import torch
 

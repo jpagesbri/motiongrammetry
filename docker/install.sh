@@ -125,7 +125,7 @@ if ss -ltn 2>/dev/null | grep -q "127.0.0.1:$port \|\*:$port \|0.0.0.0:$port "; 
   compose ps --status running 2>/dev/null | grep -q motiongrametry \
     || die "port $port is in use (another mg ui?): stop it, or use --port 8766"
 fi
-compose up -d --force-recreate >/dev/null
+compose up -d --force-recreate --quiet-pull >/dev/null 2>&1 || { compose up -d; die "it did not start (see above)"; }
 url="http://127.0.0.1:$port"
 for _ in $(seq 60); do curl -fs "$url/api/options" >/dev/null 2>&1 && break; sleep 1; done
 curl -fs "$url/api/options" >/dev/null 2>&1 || die "it did not come up: docker/install.sh logs"
