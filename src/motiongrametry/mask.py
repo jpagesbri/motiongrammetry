@@ -36,10 +36,18 @@ def use_gpu() -> bool:
     return "CUDAExecutionProvider" in onnxruntime.get_available_providers() and nvidia_gpu() is not None
 
 
+# BiRefNet through ONNX Runtime needs more than an 8 GB card has (it asks for an extra 822 MB block
+# on top of ~6 GB); IS-Net / U2-Net run on such cards at ~0.4 s per frame.
+BIREFNET_MIN_GPU_GB = 11.0
+
+
 def resolve_model(model: str) -> str:
     if model not in PRESETS:
         return model
-    return PRESETS[model][0 if use_gpu() else 1]
+    from .checks import nvidia_gpu_memory
+
+    big_gpu = use_gpu() and (nvidia_gpu_memory() or 0) >= BIREFNET_MIN_GPU_GB
+    return PRESETS[model][0 if big_gpu else 1]
 
 
 def compute_masks(
@@ -63,7 +71,17 @@ def compute_masks(
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * dilate_px + 1,) * 2) if dilate_px > 0 else None
     for i, frame in enumerate(frames):
         with Image.open(frame) as img:
-            alpha = np.asarray(remove(img.convert("RGB"), session=session, only_mask=True))
+            rgb = img.convert("RGB")
+        try:
+            alpha = np.asarray(remove(rgb, session=session, only_mask=True))
+        except Exception as e:  # a model too big for the GPU's memory: finish on the CPU instead
+            if not gpu or "allocate" not in str(e).lower():
+                raise
+            log.warning("%s does not fit in the GPU's memory: continuing on the CPU (slower); "
+                        "isnet-general-use or u2net_human_seg fit smaller GPUs", model_name)
+            gpu = False
+            session = new_session(model_name, providers=["CPUExecutionProvider"])
+            alpha = np.asarray(remove(rgb, session=session, only_mask=True))
         mask = (alpha >= threshold * 255).astype(np.uint8)
         mask = _keep_largest_blobs(mask)
         if kernel is not None:

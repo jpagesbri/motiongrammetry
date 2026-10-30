@@ -29,6 +29,14 @@ PRESETS: dict[str, dict] = {
                        "masks leak into them; cut a little more above the plane and carve more gently.",
         "options": {"ground_margin": 0.05, "bg_tolerance": 0.25},
     },
+    "drone": {
+        "description": "Drone orbit of something big outdoors (a castle, a bridge, a building): the subject "
+                       "masks pick out only parts of a big structure in each view, so carving is very gentle "
+                       "(the water or ground plane and the masks' consensus still remove the surroundings); "
+                       "more keyframes and resolution from the 4K video, a lighter output mesh.",
+        "options": {"num": 180, "max_side": 2400, "mask_model": "object", "bg_tolerance": 0.75,
+                    "target_faces": 1500000},
+    },
     "low-disk": {
         "description": "Little free disk or RAM: quarter-resolution depth maps (16x less space than full), "
                        "fewer keyframes, lighter output mesh.",

@@ -21,6 +21,9 @@ SUBJECTS = {
     "person": {"label": "A person (head, bust or whole body)",
                "preset": "person",
                "why": "portrait segmentation, more frames, gentle carving so hair and fingers stay"},
+    "drone": {"label": "Something big, filmed with a drone (a castle, a bridge, a building)",
+              "preset": "drone",
+              "why": "AI masks find only parts of a big structure in each view: carve very gently, use more of the 4K video"},
     "other": {"label": "Something else",
               "options": {},
               "why": "defaults; the advice after each step adjusts them"},
@@ -62,7 +65,7 @@ def advise(ws: Workspace, subject: str | None = None) -> list[dict]:
             add(_item("frames", "fix", "much of the video is blurred",
                       "film more slowly or with more light; meanwhile analyse every frame and reject blur harder",
                       {"sample_fps": 30.0, "blur_reject": 0.55}, ["frames", "mask", "sfm", "mvs", "clean", "texture"]))
-        if f.get("total_motion_widths", 99) < 1.0:
+        if f.get("total_motion_widths", 99) < 1.0 and subject != "drone":  # a distant subject moves little in the frame
             add(_item("frames", "fix", "the camera barely moved",
                       "3D needs different viewpoints: walk around the subject instead of turning on the spot"))
         if not any(x["stage"] == "frames" for x in out):

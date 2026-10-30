@@ -73,6 +73,18 @@ def nvidia_gpu() -> str | None:
     return r.stdout.strip().splitlines()[0] if r.returncode == 0 and r.stdout.strip() else None
 
 
+def nvidia_gpu_memory() -> float | None:
+    """Total memory of the first NVIDIA GPU in GiB."""
+    if not shutil.which("nvidia-smi"):
+        return None
+    try:
+        r = subprocess.run(["nvidia-smi", "--query-gpu=memory.total", "--format=csv,noheader,nounits"],
+                           capture_output=True, text=True, timeout=10)
+        return float(r.stdout.split()[0]) / 1024 if r.returncode == 0 and r.stdout.strip() else None
+    except (OSError, subprocess.TimeoutExpired, ValueError):
+        return None
+
+
 def accel() -> dict:
     """Where each step that can use a GPU will run, and why: {step: (device, note)}."""
     gpu = nvidia_gpu()
@@ -368,7 +380,8 @@ def _gate_frames(ws, r, o):
         d.append(warn("blurry-video", f"{r['blur_rejected']}/{segs} viewpoints had only blurry frames",
                       "more light / faster shutter, move slower, or the blurry preset"))
     if r.get("total_motion_widths", 99) < 1.0:
-        d.append(warn("little-motion", "the camera barely moved relative to the scene",
+        d.append(warn("little-motion", "the view changes little across the video",
+                      "fine for a distant subject (a drone orbit of a building: the cameras step will tell); close up, "
                       "walk all the way round the subject; for a fixed camera use the turntable preset"))
     return d
 
