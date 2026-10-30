@@ -104,7 +104,9 @@ other options without starting over. A stage whose input changed after it ran is
 
 <h2 id="quickstart">Quick start</h2>
 <ol>
-  <li>Start the app: <code>uv run mg ui</code>, then open <a href="/">http://127.0.0.1:8765</a>.</li>
+  <li>Install and start it: <code>./install.sh</code> in the project folder (Docker; it checks everything, asks about the
+  optional VGGT step and opens <a href="/">http://127.0.0.1:8765</a>). Later: <code>./install.sh stop</code>,
+  <code>./install.sh update</code>. For development without Docker: <code>uv run mg ui</code>.</li>
   <li><b>New scan</b> (left): give it a name, then <b>Upload video…</b> (or paste a path to a video on this computer and press <b>Create</b>).</li>
   <li>In the <b>Run</b> tab, either follow <b>Assisted</b>, or switch to <b>Manual</b>, tick the stages and press <b>Run selected</b>.</li>
   <li>Follow the progress there; when <code>texture</code> is done, open the <b>Preview</b> tab: the model, its keyframes and masks, and the files.</li>

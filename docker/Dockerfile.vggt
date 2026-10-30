@@ -1,0 +1,32 @@
+# Optional VGGT layer on top of the motiongrametry image: a second Python environment (/opt/vggt)
+# with PyTorch and VGGT, which the vggt step runs in (MG_VGGT_PYTHON); everything else stays in
+# /opt/venv. Built by docker/install.sh --with-vggt after the license terms are accepted:
+#   VGGT code: Meta's VGGT License; facebook/VGGT-1B weights (downloaded on first use, not in the
+#   image): CC BY-NC 4.0, non-commercial; PyTorch's CUDA libraries: NVIDIA's license.
+#
+#   docker build -f docker/Dockerfile.vggt --build-arg BASE=motiongrametry:nvidia -t motiongrametry:nvidia-vggt .
+ARG BASE=motiongrametry:nvidia
+ARG CUDA=13.2.0
+ARG UBUNTU=24.04
+
+# ---- PyTorch + VGGT, independent of the app: Docker keeps this stage cached across app updates ----
+FROM nvidia/cuda:${CUDA}-cudnn-runtime-ubuntu${UBUNTU} AS torch
+ARG VGGT_COMMIT=a288dd0f14786c93483e45524328726ab7b1b4ce
+COPY --from=ghcr.io/astral-sh/uv:0.9.5 /uv /usr/local/bin/uv
+RUN apt-get update -yq && DEBIAN_FRONTEND=noninteractive apt-get install -yq --no-install-recommends \
+        python3.12 python3.12-venv ca-certificates && rm -rf /var/lib/apt/lists/*
+COPY docker/requirements-vggt.txt /tmp/requirements-vggt.txt
+# the lock lists every dependency; VGGT's own metadata pins an old numpy, so nothing resolves here
+RUN uv venv -q --python /usr/bin/python3.12 /opt/vggt \
+ && VIRTUAL_ENV=/opt/vggt UV_COMPILE_BYTECODE=1 uv pip install -q --no-cache --no-deps -r /tmp/requirements-vggt.txt \
+        "vggt @ https://github.com/facebookresearch/vggt/archive/${VGGT_COMMIT}.tar.gz"
+
+# ---- the app image, plus that environment and a copy of the app in it ----
+FROM ${BASE}
+COPY --from=torch /opt/vggt /opt/vggt
+COPY pyproject.toml README.md /src/app/
+COPY src /src/app/src
+RUN VIRTUAL_ENV=/opt/vggt uv pip install -q --no-cache --no-deps /src/app && rm -rf /src/app \
+ && /opt/vggt/bin/python -c "import torch, vggt, motiongrametry.feedforward, motiongrametry.pipeline; print('vggt layer ok, torch', torch.__version__)"
+ENV MG_VGGT_PYTHON=/opt/vggt/bin/python
+LABEL org.opencontainers.image.description="Video to clean, textured 3D models (nvidia variant, with the optional VGGT stage)"

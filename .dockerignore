@@ -6,3 +6,5 @@ workspaces
 **/__pycache__
 examples
 tests
+datasets
+benchmarks

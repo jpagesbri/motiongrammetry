@@ -5,15 +5,19 @@
 #   docker/install.sh                      detect the GPU, data in ~/motiongrametry, port 8765
 #   docker/install.sh --gpu none           CPU only (every step still works, slower)
 #   docker/install.sh --workspaces DIR     use an existing folder of scans
+#   docker/install.sh --with-vggt          add the optional VGGT step (asks you to accept its licenses)
 #   docker/install.sh stop | logs | status | update
 #
+# Settings are remembered (in DATA/.env): later runs and `update` reuse them; flags change them.
 # Options: --gpu auto|nvidia|none  --data DIR  --workspaces DIR  --videos DIR  --port N
+#          --with-vggt / --without-vggt  --accept-vggt-license
 #          --image NAME  --build (rebuild the image)  --no-open  --yes (no questions)
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cmd=up gpu=auto data="$HOME/motiongrametry" workspaces="" videos="" port=8765 image="motiongrametry:nvidia"
-build=0 open_ui=1 yes=0
+# empty = not given: the remembered value, else the default
+cmd=up gpu="" data="$HOME/motiongrametry" workspaces="" videos="" port="" image="" vggt=""
+build=0 open_ui=1 yes=0 accept_vggt=0
 while [ $# -gt 0 ]; do
   case "$1" in
     up|stop|logs|status|update) cmd="$1" ;;
@@ -23,10 +27,13 @@ while [ $# -gt 0 ]; do
     --videos) videos="$2"; shift ;;
     --port) port="$2"; shift ;;
     --image) image="$2"; shift ;;
+    --with-vggt) vggt=1 ;;
+    --without-vggt) vggt=0 ;;
+    --accept-vggt-license) accept_vggt=1 ;;
     --build) build=1 ;;
     --no-open) open_ui=0 ;;
     --yes|-y) yes=1 ;;
-    -h|--help) sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "unknown option: $1 (see --help)" >&2; exit 2 ;;
   esac
   shift
@@ -41,11 +48,22 @@ ask() {  # ask "question" default(y|n)
   local a; read -r -p "  $1 [$( [ "$2" = y ] && echo Y/n || echo y/N )] " a
   a="${a:-$2}"; [[ "$a" =~ ^[Yy] ]]
 }
-data="$(realpath -m "$data")"
+abspath() { case "$1" in /*) printf '%s\n' "${1%/}" ;; *) printf '%s\n' "$PWD/${1%/}" ;; esac; }
+data="$(abspath "$data")"
 envfile="$data/.env"
 # one Docker project per data folder: a second setup (a test, another folder) never replaces yours
-if [ "$data" = "$(realpath -m "$HOME/motiongrametry")" ]; then project=motiongrametry
+if [ "$data" = "$HOME/motiongrametry" ]; then project=motiongrametry
 else project="motiongrametry-$(basename "$data" | tr -c 'a-z0-9_-' '-' | sed 's/-*$//')"; fi
+saved() { [ -f "$envfile" ] || return 0; sed -n "s/^$1=//p" "$envfile" | tail -1; }  # nothing on a first install
+gpu="${gpu:-$(saved MG_GPU_WANTED)}"; gpu="${gpu:-auto}"
+workspaces="${workspaces:-$(saved MG_WORKSPACES)}"
+videos="${videos:-$(saved MG_VIDEOS)}"
+port="${port:-$(saved MG_PORT)}"; port="${port:-8765}"
+image="${image:-$(saved MG_BASE_IMAGE)}"; image="${image:-motiongrametry:nvidia}"
+vggt_given=$([ -n "$vggt" ] && echo 1 || echo 0)
+vggt="${vggt:-$(saved MG_VGGT)}"; vggt="${vggt:-0}"
+vggt_accepted="$(saved MG_VGGT_ACCEPTED)"
+gpu_wanted="$gpu"
 compose() {
   local files=(-f "$here/compose.yml")
   [ "$(sed -n 's/^MG_GPU=//p' "$envfile" 2>/dev/null)" = nvidia ] && files+=(-f "$here/compose.nvidia.yml")
@@ -92,9 +110,33 @@ case "$gpu" in
   *) die "--gpu must be auto, nvidia or none" ;;
 esac
 
+if [ -z "$(saved MG_VGGT)" ] && [ "$vggt_given" = 0 ] && [ "$gpu" = nvidia ] && [ -t 0 ] && [ "$yes" = 0 ]; then
+  bold "Optional: VGGT"
+  echo "    An extra way to get the raw mesh: an AI model predicts it from the keyframes on the GPU in about a"
+  echo "    minute (less detailed than the default path, handy for a quick look). Non-commercial use only."
+  if ask "Add it? (you can add or remove it later: --with-vggt / --without-vggt)" n; then vggt=1; fi
+fi
+if [ "$vggt" = 1 ] && [ -z "$vggt_accepted" ]; then
+  bold "VGGT licenses"
+  cat <<'TERMS'
+  VGGT predicts a raw mesh straight from the keyframes on the GPU. It comes with its own terms:
+    - the model weights (facebook/VGGT-1B, downloaded on first use): CC BY-NC 4.0, NON-COMMERCIAL use only
+      (Meta publishes facebook/VGGT-1B-Commercial, gated, for commercial use)
+    - the VGGT code: Meta's VGGT License; pass a copy on if you redistribute it, cite VGGT in publications
+    - PyTorch's CUDA libraries: NVIDIA's license
+  Full texts: the About page of the app, or `mg notices`. It adds about 11 GB to the image (PyTorch with its CUDA libraries).
+TERMS
+  if [ "$accept_vggt" = 1 ]; then ok "license terms accepted (--accept-vggt-license)"
+  elif [ -t 0 ] && [ "$yes" = 0 ]; then
+    read -r -p "    Type 'accept' to install it: " a
+    [ "$a" = accept ] || die "VGGT not installed (rerun with --with-vggt to try again)"
+  else die "VGGT needs its license terms accepted: rerun interactively, or add --accept-vggt-license"; fi
+  vggt_accepted="$(date -I)"
+fi
+
 bold "Data folder"
-workspaces="$(realpath -m "${workspaces:-$data/workspaces}")"
-videos="$(realpath -m "${videos:-$data/videos}")"
+workspaces="$(abspath "${workspaces:-$data/workspaces}")"
+videos="$(abspath "${videos:-$data/videos}")"
 mkdir -p "$data/home" "$data/models" "$workspaces" "$videos"
 ok "$data (scans: $workspaces, videos you can open by path: $videos → /videos)"
 
@@ -104,6 +146,25 @@ if [ "$build" = 1 ] || [ "$cmd" = update ] || ! docker image inspect "$image" >/
   docker build -f "$here/Dockerfile" -t "$image" "$here/.." || die "the build failed (see above)"
 fi
 ok "$image ($(docker image inspect "$image" --format '{{.Size}}' | awk '{printf "%.1f GB", $1/1e9}'))"
+run_image="$image"
+
+if [ "$vggt" = 1 ]; then
+  bold "VGGT (optional step)"
+  run_image="${image}-vggt"
+  # rebuilt when asked, missing, or older than the image it builds on
+  base_t="$(docker image inspect "$image" --format '{{.Created}}')"
+  vggt_t="$(docker image inspect "$run_image" --format '{{.Created}}' 2>/dev/null || true)"
+  if [ "$build" = 1 ] || [ "$cmd" = update ] || [ -z "$vggt_t" ] || [[ "$vggt_t" < "$base_t" ]]; then
+    echo "  building $run_image (PyTorch and VGGT: about 10 minutes, mostly downloading)"
+    docker build -f "$here/Dockerfile.vggt" --build-arg BASE="$image" -t "$run_image" "$here/.." || die "the VGGT build failed (see above)"
+  fi
+  ok "$run_image ($(docker image inspect "$run_image" --format '{{.Size}}' | awk '{printf "%.1f GB", $1/1e9}'))"
+  # weights this machine already downloaded (e.g. a direct install) need no second 5 GB download
+  hf="$data/models/huggingface/hub/models--facebook--VGGT-1B" own="$HOME/.cache/huggingface/hub/models--facebook--VGGT-1B"
+  if [ ! -e "$hf" ] && [ -d "$own" ]; then
+    mkdir -p "$(dirname "$hf")" && cp -a --reflink=auto "$own" "$hf" && ok "reused the VGGT weights already on this machine"
+  fi
+fi
 
 if [ "$gpu" = nvidia ] && ! nvidia_ok; then
   toolkit_help
@@ -112,9 +173,13 @@ fi
 [ "$gpu" = nvidia ] && ok "Docker can use the GPU"
 
 cat > "$envfile" <<EOF
-# written by docker/install.sh; read by docker compose (see docker/compose.yml)
-MG_IMAGE=$image
+# written by docker/install.sh; read by docker compose (see docker/compose.yml) and by the next run
+MG_IMAGE=$run_image
+MG_BASE_IMAGE=$image
 MG_GPU=$gpu
+MG_GPU_WANTED=$gpu_wanted
+MG_VGGT=$vggt
+MG_VGGT_ACCEPTED=$vggt_accepted
 MG_UID=$(id -u)
 MG_GID=$(id -g)
 MG_PORT=$port
@@ -124,7 +189,8 @@ MG_VIDEOS=$videos
 EOF
 
 bold "Start"
-if ss -ltn 2>/dev/null | grep -q "127.0.0.1:$port \|\*:$port \|0.0.0.0:$port "; then
+port_busy() { { ss -ltn 2>/dev/null || netstat -an 2>/dev/null | grep -i listen; } | grep -qE "[.:]$port[[:space:]]"; }
+if port_busy; then
   compose ps --status running 2>/dev/null | grep -q "$project" \
     || die "port $port is in use (another mg ui?): stop it, or use --port 8766"
 fi

@@ -59,7 +59,14 @@ def run_vggt(
     if device == "auto":
         device = "cuda" if torch.cuda.is_available() else "cpu"
     if max_frames is None:
-        max_frames = 120 if device == "cuda" else 24  # VGGT memory grows ~quadratically with frames
+        # VGGT's memory grows with the frames: on an 8 GB card (7.7 usable, ~7 free with a desktop) 48
+        # frames fit and 64 do not. About 10 frames per free GiB above 2.6 GiB for the model itself.
+        if device == "cuda":
+            free = torch.cuda.mem_get_info()[0] / 2**30
+            max_frames = int(min(120, max(8, (free - 2.6) * 10)))
+            log.info("%.1f GiB of GPU memory free: up to %d frames (max_frames sets it)", free, max_frames)
+        else:
+            max_frames = 24
     frames = _subsample(ws.frame_paths(), max_frames)
     if len(frames) < 2:
         raise RuntimeError("need at least 2 frames")

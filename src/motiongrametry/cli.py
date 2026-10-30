@@ -40,7 +40,14 @@ def cmd_doctor(_: argparse.Namespace) -> int:
     else:
         rows.append(("torch (VGGT)", False, "uv pip install torch torchvision"))
     vggt_deps = [m for m in ("huggingface_hub", "einops", "safetensors") if not has(m)]
-    rows.append(("vggt", has("vggt") and not vggt_deps,
+    from .checks import vggt_env
+
+    env = vggt_env()
+    if env and "error" not in env:  # the Docker image's separate VGGT environment
+        rows.append((f"vggt (in {env['python'].rsplit('/bin', 1)[0]})", True, "CUDA" if env["cuda"] else "CPU"))
+        cuda = cuda or env["cuda"]
+        vggt_deps = []
+    rows.append(("vggt", (has("vggt") or bool(env and "error" not in env)) and not vggt_deps,
                  "uv pip install --no-deps git+https://github.com/facebookresearch/vggt" if not has("vggt") else
                  f"uv pip install {' '.join(vggt_deps)}" if vggt_deps else ""))
     for name, ok, note in rows:
@@ -53,7 +60,8 @@ def cmd_doctor(_: argparse.Namespace) -> int:
         print(f"  {step:<8} {dev:<8} {note}")
     print("\nAvailable paths:")
     print(f"  mvs   (SfM + OpenMVS, textured): {'yes' if backend else 'no'}")
-    print(f"  vggt  (feed-forward + TSDF):     {'yes' if has('vggt') else 'no'}{'' if cuda else ' (CPU: <=24 frames, slow)'}")
+    vggt_ok = has("vggt") or bool(env and "error" not in env)
+    print(f"  vggt  (feed-forward + TSDF):     {'yes' if vggt_ok else 'no'}{'' if cuda else ' (CPU: <=24 frames, slow)'}")
     print(f"  2dgs  (Gaussian surfels):        {'run here' if cuda else 'export with `mg export-2dgs`, run on a CUDA host'}")
     return 0
 

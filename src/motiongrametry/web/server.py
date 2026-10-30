@@ -136,7 +136,9 @@ class Job:
                     st["step"] = _step_label(line)
 
     def _cmd(self, stage: str) -> list[str]:
-        cmd = [sys.executable, "-m", "motiongrametry.cli", stage]
+        # the vggt step may have its own Python environment (Docker image with the VGGT layer)
+        python = os.environ.get("MG_VGGT_PYTHON") if stage == "vggt" else None
+        cmd = [python if python and Path(python).exists() else sys.executable, "-m", "motiongrametry.cli", stage]
         if stage == "frames":
             cmd.append(self.video or "")
         cmd.append(str(self.ws.root))

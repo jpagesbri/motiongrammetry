@@ -7,12 +7,14 @@ into explicit warnings or failures with a hint on what to change.
 
 from __future__ import annotations
 
+import functools
 import importlib.util
 import math
 import os
 import re
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 from .diagnostics import Diag, error, info, warn
@@ -40,6 +42,24 @@ def disk_free(path: Path) -> int:
 
 def has_module(name: str) -> bool:
     return importlib.util.find_spec(name) is not None
+
+
+@functools.lru_cache(maxsize=1)
+def vggt_env() -> dict | None:
+    """The separate Python environment the vggt step runs in (MG_VGGT_PYTHON, the Docker image's VGGT
+    layer), when this process is not it: {"python", "cuda"} or {"python", "error"}."""
+    py = os.environ.get("MG_VGGT_PYTHON")
+    # compare environments, not interpreters: both venvs' python links to the same system python
+    if not py or not Path(py).exists() or Path(py).parent.parent.resolve() == Path(sys.prefix).resolve():
+        return None
+    try:
+        r = subprocess.run([py, "-c", "import torch, vggt, huggingface_hub, einops, safetensors; "
+                            "print(int(torch.cuda.is_available()))"], capture_output=True, text=True, timeout=180)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return {"python": py, "error": str(e)}
+    if r.returncode:
+        return {"python": py, "error": (r.stderr.strip().splitlines() or ["import failed"])[-1]}
+    return {"python": py, "cuda": r.stdout.strip().endswith("1")}
 
 
 def nvidia_gpu() -> str | None:
@@ -87,12 +107,17 @@ def accel() -> dict:
             else ("missing", "OpenMVS not installed")
     out["texture"] = ("GPU", "parts of OpenMVS texturing on CUDA") if out["mvs"][0] == "GPU" else \
         ("CPU", out["mvs"][1])
+    env = vggt_env()
     if importlib.util.find_spec("torch"):
         import torch
 
         out["vggt"] = ("GPU", "PyTorch CUDA") if torch.cuda.is_available() else ("CPU", "slow: at most ~24 frames")
+    elif env and "error" not in env:
+        out["vggt"] = ("GPU", "PyTorch CUDA, in its own environment") if env["cuda"] else ("CPU", "slow: at most ~24 frames")
+    elif env:
+        out["vggt"] = ("missing", f"its environment does not work: {env['error']}")
     else:
-        out["vggt"] = ("missing", "not installed (optional)")
+        out["vggt"] = ("missing", "not installed (optional; Docker: install.sh --with-vggt)")
     return {"gpu": gpu, "steps": out}
 
 
@@ -251,13 +276,18 @@ def _pre_vggt(ws, o, video):
                        "duplicate the workspace and run VGGT in the copy (UI: Duplicate), or force to replace them"))
     # vggt is installed with --no-deps (its own deps pin numpy<2), so check its runtime deps too.
     missing = [m for m in ("torch", "vggt", "huggingface_hub", "einops", "safetensors") if not has_module(m)]
-    if missing:
+    env = vggt_env() if missing else None  # the step may run in its own environment (Docker VGGT layer)
+    if missing and env and "error" not in env:
+        cuda = env["cuda"] and o["device"] != "cpu"
+    elif missing:
         return d + [error("missing-dependency", f"VGGT needs {', '.join(missing)}",
+                          env["error"] if env else "Docker: docker/install.sh --with-vggt; directly: "
                           "uv pip install torch torchvision huggingface_hub einops safetensors && "
                           "uv pip install --no-deps git+https://github.com/facebookresearch/vggt")]
-    import torch
+    else:
+        import torch
 
-    cuda = torch.cuda.is_available() and o["device"] != "cpu"
+        cuda = torch.cuda.is_available() and o["device"] != "cpu"
     if not cuda:
         mem = mem_available()
         if mem is not None and mem < 10 * GB:

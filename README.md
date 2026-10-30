@@ -2,6 +2,31 @@
 
 Walk around a person or object with your phone, get a cleaned, textured 3D mesh.
 
+## Quick start
+
+You need [Docker](https://docs.docker.com/engine/install/) (on Windows: Docker Desktop with WSL2, and
+run this inside WSL). For the GPU: an NVIDIA card with driver 580 or newer and the
+[NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html);
+without them everything runs on the CPU, about twice as slowly.
+
+```bash
+git clone <this repository> motiongrametry && cd motiongrametry
+./install.sh
+```
+
+It checks Docker and the GPU (and says what to install when something is missing), asks whether you
+want the optional VGGT step (non-commercial license, NVIDIA GPU), builds the image (30-60 minutes the
+first time), starts the app and opens http://127.0.0.1:8765. Your scans and the downloaded AI models go
+to `~/motiongrametry`. Then: Help in the app, or
+
+```bash
+./install.sh stop | logs | status     # control it (it also starts again after a reboot)
+./install.sh update                   # after `git pull`: rebuild, same settings
+./install.sh --with-vggt              # add VGGT later (or --without-vggt)
+```
+
+Details, options and a direct install without Docker (for development) are below.
+
 `mg` is the glue the off-the-shelf tools are missing: it turns a raw orbit video into
 the inputs SfM/MVS/splatting expect, picks the best reconstruction backend for the
 machine it runs on, and turns their raw output (subject + floor + walls + floaters)
@@ -31,7 +56,9 @@ video ──► frames ──► mask ──► poses ────────�
 ## Install with Docker (everything in one image)
 
 ```bash
-docker/install.sh                 # checks Docker and the GPU, builds the image once, starts http://127.0.0.1:8765
+./install.sh                        # checks Docker and the GPU, builds the image once, starts http://127.0.0.1:8765
+docker/install.sh --workspaces ~/scans   # use an existing scans folder (remembered from then on)
+docker/install.sh --with-vggt     # add the optional VGGT step (shows its licenses, asks you to accept)
 docker/install.sh stop | logs | status | update
 ```
 
@@ -52,13 +79,23 @@ Python packages are locked in `docker/requirements-nvidia.txt` (from `requiremen
   for an existing folder), the downloaded AI models and `.env` with these settings. Files are written
   as your user. Videos in `videos/` (or `--videos DIR`) can be opened by path as `/videos/...`.
 - **Port**: `--port N` (default 8765, bound to 127.0.0.1 only).
+- **Remembered**: the settings are saved in `DATA/.env`; later runs and `update` reuse them (scans
+  folder, port, GPU choice, VGGT), and a flag changes one. Each data folder is its own Docker project,
+  so a second setup (`--data` elsewhere, e.g. a test) never replaces the first.
+- **VGGT** (`--with-vggt`, `--without-vggt`): a layer on top of the image (`docker/Dockerfile.vggt`,
+  about 11 GB more) with its own Python environment, `/opt/vggt`, which the vggt step runs in: PyTorch needs
+  NVIDIA's CUDA 13 pip packages while the GPU build of COLMAP in `/opt/venv` needs the CUDA 12 ones
+  (`docker/requirements-vggt.txt`). The script shows the terms first and installs only after you type
+  "accept" (or `--accept-vggt-license`): the facebook/VGGT-1B weights are CC BY-NC 4.0, non-commercial
+  only. The weights download on first use into `DATA/models`; ones already in
+  `~/.cache/huggingface` are reused.
 - **Licenses**: the image contains OpenMVS (AGPL-3.0) built unchanged, with its source and VCGLib's in
   `/usr/share/doc/openmvs`, and NVIDIA's CUDA runtime and cuDNN under NVIDIA's terms; `/about` in the
-  app lists everything. The VGGT stage is not in the image.
+  app lists everything. VGGT is only in the `-vggt` layer, added on request.
 - `mg doctor` (inside: `docker compose ... exec motiongrametry mg doctor`) and the About page say
   which steps run on the GPU.
 
-## Setup
+## Install directly (development, without Docker)
 
 Tested on Linux (x86-64, CachyOS/Arch) with an 8-core laptop CPU, 16 GB RAM and no NVIDIA GPU.
 Everything below runs on CPU; a CUDA GPU only matters for the optional VGGT / 2DGS paths.

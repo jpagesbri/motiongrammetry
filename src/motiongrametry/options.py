@@ -59,7 +59,7 @@ OPTIONS: list[Opt] = [
         ("mvs",), (0, 1, 2, 3)),
     Opt("keep_depth", bool, False, "keep OpenMVS depth maps (large) after meshing", ("mvs",), group="advanced"),
     # vggt
-    Opt("max_frames", int, None, "frames fed to VGGT (default 24 on CPU, 120 on GPU)", ("vggt",), group="advanced"),
+    Opt("max_frames", int, None, "frames fed to VGGT (default: 24 on CPU; on a GPU as many as its free memory allows, up to 120: ~44 on 8 GB)", ("vggt",), group="advanced"),
     Opt("device", str, "auto", "torch device", ("vggt",), ("auto", "cpu", "cuda"), group="advanced"),
     # clean
     Opt("mesh", str, None, "raw mesh to clean instead of the mvs/vggt output (e.g. a 2DGS mesh)", ("clean",),
