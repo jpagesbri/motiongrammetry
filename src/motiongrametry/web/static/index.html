@@ -1,0 +1,2604 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>motiongrametry</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #161a21; --panel2: #1c212a; --line: #262c37; --text: #d8dee9;
+    --muted: #8a93a3; --accent: #5aa9ff; --ok: #4cc38a; --warn: #f0b429; --bad: #ef5d5d; --run: #5aa9ff;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  button, input, select { font: inherit; color: inherit; }
+  .app { display: grid; height: 100vh; grid-template-columns: 280px 1fr;
+    grid-template-rows: 44px 1fr; grid-template-areas: "top top" "side work"; }
+  header { grid-area: top; display: flex; align-items: center; gap: 12px; padding: 0 14px;
+    border-bottom: 1px solid var(--line); background: var(--panel); }
+  header b { letter-spacing: .02em; }
+  header .muted { color: var(--muted); }
+  aside, .right { background: var(--panel); overflow: auto; }
+  aside { grid-area: side; border-right: 1px solid var(--line); }
+  .right { display: flex; flex-direction: column; min-width: 0; }
+  /* Generate: a Run tab (assisted or manual) and a Preview tab (3D, frames and masks, files) */
+  .work { grid-area: work; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+  .gtabs { display: flex; align-items: center; gap: 2px; padding: 0 12px; border-bottom: 1px solid var(--line); background: var(--panel); flex: none; }
+  .gtab { background: none; border: 0; border-bottom: 2px solid transparent; padding: 11px 16px 9px; color: var(--muted);
+    font-weight: 600; cursor: pointer; letter-spacing: .02em; }
+  .gtab:hover { color: var(--text); }
+  .gtab.on { color: var(--text); border-bottom-color: var(--accent); }
+  .gnote { margin-left: 14px; font-size: 12px; }
+  .splitchk { margin-left: auto; font-size: 12px; }
+  .splitchk[hidden] { display: none; }
+  .gpanes { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr); min-height: 0; }
+  .gpane { display: none; min-width: 0; min-height: 0; flex-direction: column; }
+  .gpane.on { display: flex; }
+  .work.split .gpanes { grid-template-columns: minmax(0, 46fr) minmax(0, 54fr); }
+  .work.split .gpane { display: flex; }
+  .work.split .gp-run { border-right: 1px solid var(--line); }
+  .runbar, .pvbar { display: flex; align-items: center; gap: 12px; padding: 8px 14px; border-bottom: 1px solid var(--line); flex: none; min-height: 45px; }
+  .runbar .muted, .pvbar .muted { font-size: 12px; }
+  .runbar .grow { flex: 1; }
+  .runpreset { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
+  .runpreset select { max-width: 170px; }
+  .runstatus { font-size: 12px; color: var(--muted); cursor: pointer; text-decoration: none; white-space: nowrap; }
+  .runstatus.run { color: var(--text); }
+  .runstatus.run::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--run); margin-right: 6px; animation: pulse 1.2s infinite; }
+  .runstatus.bad { color: var(--bad); }
+  .runbar .btn[hidden] { display: none; }
+  .glimpse { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 8px; border: 1px solid var(--line);
+    background: var(--bg); cursor: pointer; }
+  .glimpse:hover { border-color: var(--accent); }
+  .glimpse-cap { font-size: 12px; margin-top: 4px; }
+  .glimpse-mini { width: 44px; height: 32px; object-fit: cover; border-radius: 5px; border: 1px solid var(--line); cursor: pointer; background: var(--bg); }
+  .glimpse-mini[hidden] { display: none; }
+  .glimpse-mini:hover { border-color: var(--accent); }
+  .runmsg { flex: none; padding: 0 14px; font-size: 12px; }
+  .runmsg > :not(:empty) { padding: 6px 0; }
+  .runmsg:has(> :not(:empty)) { border-bottom: 1px solid var(--line); }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; flex: none; }
+  .seg button { background: none; border: 0; padding: 5px 12px; color: var(--muted); cursor: pointer; font-size: 12px; }
+  .seg button + button { border-left: 1px solid var(--line); }
+  .seg button:hover { color: var(--text); }
+  .seg button.on { background: var(--panel2); color: var(--text); box-shadow: inset 0 -2px 0 var(--accent); }
+  /* Run: the steps on the left (they are the pipeline), the selected step's page, the log drawer */
+  .runbody { flex: 1; min-height: 0; display: grid; grid-template-columns: 252px minmax(0, 1fr); }
+  .rail { border-right: 1px solid var(--line); background: var(--panel); overflow: auto; padding: 10px 8px; }
+  .rail h2 { margin: 2px 8px 8px; }
+  .rs { display: grid; grid-template-columns: 16px 10px minmax(0, 1fr) auto; column-gap: 7px; align-items: center; padding: 7px 8px;
+    border-radius: 7px; cursor: pointer; color: var(--muted); }
+  .rs.nobox { grid-template-columns: 10px minmax(0, 1fr) auto; }
+  .rs:hover { background: var(--panel2); }
+  .rs.cur { background: var(--panel2); color: var(--text); box-shadow: inset 2px 0 0 var(--accent); }
+  .rs input { margin: 0; }
+  .rs .dot { width: 9px; height: 9px; border-radius: 50%; border: 1.5px solid var(--muted); box-sizing: border-box; }
+  .rs.done .dot { background: var(--ok); border-color: var(--ok); }
+  .rs.done { color: var(--text); }
+  .rs.run .dot { background: var(--run); border-color: var(--run); animation: pulse 1.2s infinite; }
+  .rs.run { color: var(--text); font-weight: 600; }
+  .rs.queued .dot { border-color: var(--warn); }
+  .rs.bad .dot { background: var(--bad); border-color: var(--bad); }
+  .rs.stale .dot { border-color: var(--warn); }
+  .rs .t { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .rs .tm { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .rs .w { color: var(--warn); margin-left: 4px; }
+  .rs .rbar { grid-column: 2 / -1; height: 2px; background: var(--line); border-radius: 1px; margin-top: 5px; overflow: hidden; }
+  .rs.nobox .rbar { grid-column: 1 / -1; }
+  .rs .rbar i { display: block; height: 100%; background: var(--run); }
+  .rs .rbar.indet i { width: 30%; animation: indet 1.4s infinite linear; }
+  .rail .sep { border-top: 1px solid var(--line); margin: 8px 6px; }
+  .steppage { overflow: auto; min-width: 0; }
+  .steppage-in { max-width: 920px; padding: 18px 28px 48px; }
+  .ph { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  .ph h3 { margin: 0 0 2px; font-size: 17px; }
+  .steppage h4 { margin: 18px 0 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+  .as-opt.changed input, .as-opt.changed select { border-color: var(--accent); }
+  .drawer { flex: none; border-top: 1px solid var(--line); background: var(--panel); display: flex; flex-direction: column; }
+  .drawer-head { display: flex; align-items: center; gap: 14px; padding: 5px 14px; font-size: 12px; }
+  .drawer-toggle { background: none; border: 0; color: var(--text); font-weight: 600; cursor: pointer; padding: 3px 0; }
+  .drawer-toggle .caret { display: inline-block; transition: transform .15s; color: var(--muted); }
+  .drawer.open .caret { transform: rotate(90deg); }
+  .drawer-head .tabs, .drawer-head label, .drawer-head #logTitle { display: none; }
+  .drawer.open .drawer-head .tabs, .drawer.open .drawer-head label, .drawer.open .drawer-head #logTitle { display: inline-flex; }
+  .drawer-body { display: none; height: 34vh; min-height: 140px; padding: 0 14px 10px; flex-direction: column; }
+  .drawer.open .drawer-body { display: flex; }
+  .drawer-body .history { max-height: none; flex: 1; }
+  .pv3d { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 300px; grid-template-rows: minmax(0, 1fr) 132px;
+    grid-template-areas: "view side" "film side"; }
+  .pv3d[hidden], .pvframes[hidden] { display: none; }
+  .pvside { grid-area: side; border-left: 1px solid var(--line); background: var(--panel); overflow: auto; }
+  .pvside section:empty { display: none; }
+  .work.split .pv3d { grid-template-columns: minmax(0, 1fr) 260px; }
+  .orient h2 { margin-bottom: 4px; }
+  .orient .note { font-size: 12px; color: var(--muted); margin: 0 0 6px; line-height: 1.45; }
+  .or-grid { display: grid; grid-template-columns: auto repeat(2, 1fr); gap: 4px 6px; align-items: center; margin-top: 8px; font-size: 12px; }
+  .or-grid span { grid-row: span 3; color: var(--muted); padding-right: 4px; }
+  .or-grid .btn { padding: 4px 6px; }
+  .orient .or-save { border-top: 1px solid var(--line); padding-top: 8px; margin-top: 10px; }
+  .orient .btn.armed { border-color: var(--warn); color: var(--warn); }
+  .view.picking canvas { cursor: crosshair; }
+  .as-place { display: grid; grid-template-columns: minmax(0, 1fr) 250px; gap: 12px; height: min(52vh, 440px); margin: 10px 0; }
+  .as-place .slot { position: relative; min-height: 0; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--bg); }
+  .as-place .slot .view { position: absolute; inset: 0; }
+  .as-place .slot .view .overlay, .as-place .slot .view .stats { display: none; }
+  .as-place .tools { overflow: auto; font-size: 12px; }
+  .as-run { border: 1px solid rgba(90,169,255,.45); border-radius: 8px; padding: 10px 12px; margin: 8px 0; background: rgba(90,169,255,.05); }
+  .as-run .steps { border-top: 0; font-size: 13px; }
+  .as-run .run-grid { display: grid; grid-template-columns: minmax(0, 1fr) 150px; gap: 14px; align-items: start; }
+  .as-run .glimpse { aspect-ratio: 4 / 3; }
+  .toast { position: fixed; right: 18px; bottom: 18px; z-index: 50; background: var(--panel2); border: 1px solid var(--accent);
+    border-radius: 9px; padding: 10px 14px; box-shadow: 0 10px 30px rgba(0,0,0,.5); display: flex; gap: 12px; align-items: center; max-width: 420px; }
+  .toast[hidden] { display: none; }
+  .toast a { color: var(--accent); cursor: pointer; white-space: nowrap; }
+  /* frame viewer */
+  .pvframes { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .fv-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 14px; border-bottom: 1px solid var(--line); }
+  .fv-bar .btn { padding: 4px 10px; }
+  .fv-pos { font-family: var(--mono); font-size: 12px; min-width: 90px; text-align: center; }
+  .fv-info { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 14px; font-size: 12px; min-height: 32px; align-items: center; }
+  .fv-info .chip { cursor: default; }
+  .fv-info .chip.bad { border-color: var(--bad); color: var(--bad); }
+  .fv-info .chip.warn { border-color: var(--warn); color: var(--warn); }
+  .fv-info .chip.ok { border-color: rgba(76,195,138,.5); }
+  .fv-stage { flex: 1; min-height: 0; position: relative; background: #090b0e; }
+  .fv-stage .hint[hidden] { display: none; }
+  .fv-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; }
+  .fv-stage.compare canvas { cursor: ew-resize; }
+  .fv-track { padding: 6px 14px 10px; border-top: 1px solid var(--line); background: var(--panel); }
+  .fv-track canvas { width: 100%; height: 36px; display: block; cursor: pointer; }
+  section { padding: 12px 14px; border-bottom: 1px solid var(--line); }
+  h2 { margin: 0 0 8px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; }
+  .ws-list { display: flex; flex-direction: column; gap: 4px; }
+  .ws-item { padding: 7px 9px; border-radius: 6px; cursor: pointer; border: 1px solid transparent; }
+  .ws-item:hover { background: var(--panel2); }
+  .ws-item.active { background: var(--panel2); border-color: var(--accent); }
+  .ws-item small { color: var(--muted); display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ws-item { display: flex; gap: 9px; align-items: center; }
+  .ws-text { min-width: 0; flex: 1; }
+  .ws-thumb { width: 48px; height: 36px; border-radius: 4px; object-fit: cover; background: var(--bg); flex: none; }
+  .ws-thumb.empty { border: 1px dashed var(--line); }
+  .modal { position: fixed; inset: 0; z-index: 40; background: rgba(5,7,10,.55); display: grid; place-items: center; }
+  .modal[hidden] { display: none; }
+  .win { width: min(980px, 94vw); height: min(640px, 90vh); background: var(--panel); border: 1px solid var(--line);
+    border-radius: 12px; box-shadow: 0 20px 60px rgba(0,0,0,.6); display: flex; flex-direction: column; overflow: hidden; }
+  .win-head { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+  .win-head .x { margin-left: auto; background: none; border: 0; color: var(--muted); cursor: pointer; font-size: 16px; }
+  .win-body { flex: 1; display: grid; grid-template-columns: 330px 1fr; min-height: 0; }
+  .ex-form { padding: 12px 14px; overflow: auto; border-right: 1px solid var(--line); }
+  .ex-form select, .ex-form input[type=number] { width: 150px; }
+  .ex-preview { position: relative; min-width: 0; background: var(--bg); }
+  .ex-preview canvas { display: block; width: 100%; height: 100%; }
+  .ex-empty { position: absolute; inset: 0; display: grid; place-items: center; }
+  .ex-empty[hidden] { display: none; }
+  .as-body { grid-template-columns: 190px 1fr; }
+  .as-steps { margin: 0; padding: 12px 10px 12px 30px; border-right: 1px solid var(--line); overflow: auto; color: var(--muted); }
+  .as-steps li { padding: 4px 0; cursor: default; }
+  .as-steps li.on { color: var(--text); font-weight: 600; }
+  .as-steps li.done { color: var(--ok); }
+  .as-steps li.bad { color: var(--bad); }
+  .as-main { padding: 14px 18px; overflow: auto; }
+  .as-main h3 { margin: 0 0 4px; font-size: 16px; }
+  .as-main p { margin: 6px 0; line-height: 1.5; }
+  .as-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; margin: 8px 0 12px; }
+  .as-card { border: 1px solid var(--line); border-radius: 8px; padding: 9px 10px; cursor: pointer; background: var(--panel2); }
+  .as-card:hover { border-color: var(--muted); }
+  .as-card.on { border-color: var(--accent); background: rgba(90,169,255,.1); }
+  .as-card small { display: block; color: var(--muted); margin-top: 3px; }
+  .as-opt { display: grid; grid-template-columns: 150px 140px 1fr; gap: 10px; align-items: start; padding: 7px 0; border-bottom: 1px solid var(--line); }
+  .as-opt code { font-size: 12px; }
+  .as-opt .why { color: var(--accent); font-size: 12px; }
+  .as-opt .help { color: var(--muted); font-size: 12px; }
+  .as-opt input, .as-opt select { width: 130px; }
+  .as-advice { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; margin: 8px 0; }
+  .as-advice.fix { border-color: var(--warn); background: rgba(240,180,41,.07); }
+  .as-advice.ok { border-color: rgba(76,195,138,.5); }
+  .as-advice b { display: block; }
+  .scancard { position: fixed; z-index: 20; width: 260px; background: rgba(22,26,33,.97); border: 1px solid var(--line);
+    border-radius: 9px; padding: 8px; box-shadow: 0 8px 28px rgba(0,0,0,.45); pointer-events: none; font-size: 12px; }
+  .scancard img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 6px; display: block; margin-bottom: 6px; background: var(--bg); }
+  .scancard b { font-size: 13px; }
+  .scancard .small { font-size: 11px; word-break: break-all; }
+  .dots { display: inline-flex; gap: 3px; margin-left: 6px; vertical-align: middle; }
+  .dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--line); }
+  .dots i.on { background: var(--ok); }
+  label.row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 6px 0; }
+  input[type=text], input[type=number], select { background: var(--bg); border: 1px solid var(--line);
+    border-radius: 5px; padding: 5px 7px; min-width: 0; }
+  input[type=text] { width: 100%; }
+  input[type=number] { width: 80px; }
+  .btn { background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 6px 12px; cursor: pointer; }
+  .btn:hover { border-color: var(--accent); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #061222; font-weight: 600; }
+  .btn:disabled { opacity: .45; cursor: default; }
+  .btns { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 4px; }
+  .chip { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border: 1px solid var(--line);
+    border-radius: 999px; cursor: pointer; user-select: none; }
+  .chip input { margin: 0; }
+  .err { color: var(--bad); white-space: pre-wrap; min-height: 1em; }
+  .view { grid-area: view; position: relative; min-width: 0; min-height: 0; }
+  .view canvas { display: block; width: 100%; height: 100%; }
+  .overlay { position: absolute; left: 10px; top: 10px; display: flex; flex-direction: column; gap: 6px; pointer-events: none; }
+  .overlay > * { pointer-events: auto; }
+  .layers { background: rgba(22,26,33,.88); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; backdrop-filter: blur(6px); }
+  .layers label { display: flex; align-items: center; gap: 6px; margin: 3px 0; cursor: pointer; }
+  .layers label.na { opacity: .35; cursor: default; }
+  .layers .count { color: var(--muted); font-family: var(--mono); font-size: 11px; margin-left: auto; padding-left: 10px; }
+  .stats { position: absolute; right: 10px; bottom: 10px; font-family: var(--mono); font-size: 11px; color: var(--muted);
+    background: rgba(22,26,33,.8); padding: 4px 8px; border-radius: 6px; }
+  .hint { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); pointer-events: none; }
+  .loading { position: absolute; right: 10px; top: 10px; color: var(--muted); font-size: 12px; background: rgba(22,26,33,.85);
+    padding: 4px 8px; border-radius: 6px; display: none; }
+  .film { grid-area: film; border-top: 1px solid var(--line); background: var(--panel); display: flex; flex-direction: column; min-width: 0; }
+  .film-head { display: flex; align-items: center; gap: 12px; padding: 6px 12px 0; }
+  .strip { display: flex; gap: 6px; overflow-x: auto; padding: 6px 12px 10px; flex: 1; align-items: center; }
+  .thumb { position: relative; flex: 0 0 auto; height: 84px; border-radius: 5px; overflow: hidden; cursor: pointer;
+    border: 2px solid transparent; background: var(--bg); }
+  .thumb.sel { border-color: var(--warn); }
+  .thumb img { height: 100%; display: block; }
+  .thumb img.mask { position: absolute; inset: 0; opacity: .6; mix-blend-mode: screen; display: none; }
+  .film.masks .thumb img.mask { display: block; }
+  .thumb span { position: absolute; left: 3px; bottom: 2px; font: 10px var(--mono); color: #fff; text-shadow: 0 0 3px #000; }
+  .stages { display: flex; flex-direction: column; gap: 6px; }
+  .stage { border: 1px solid var(--line); border-radius: 7px; padding: 7px 9px; background: var(--panel2); }
+  .stage .top { display: flex; align-items: center; gap: 8px; }
+  .stage .name { font-weight: 600; text-transform: capitalize; }
+  .stage .time { margin-left: auto; color: var(--muted); font-family: var(--mono); font-size: 11px; }
+  .stage .detail { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .badge { width: 9px; height: 9px; border-radius: 50%; background: var(--line); flex: none; }
+  .stage.done .badge { background: var(--ok); }
+  .stage.running .badge { background: var(--run); box-shadow: 0 0 0 3px rgba(90,169,255,.25); animation: pulse 1.2s infinite; }
+  .stage.failed .badge { background: var(--bad); }
+  .stage.queued .badge { background: var(--warn); }
+  .stage.cancelled .badge { background: var(--muted); }
+  .stage.stale { opacity: .7; }
+  .stage.stale .badge { background: transparent; border: 2px solid var(--warn); }
+  @keyframes pulse { 50% { box-shadow: 0 0 0 6px rgba(90,169,255,0); } }
+  .bar { height: 3px; background: var(--line); border-radius: 2px; margin-top: 6px; overflow: hidden; display: none; }
+  .stage.running .bar { display: block; }
+  .bar i { display: block; height: 100%; width: 0; background: var(--run); transition: width .4s; }
+  .bar.indet i { width: 30%; animation: indet 1.4s infinite linear; }
+  @keyframes indet { from { transform: translateX(-100%); } to { transform: translateX(350%); } }
+  .rtab { flex: 1; background: none; border: 0; border-bottom: 2px solid transparent; padding: 10px 6px 8px; cursor: pointer;
+    color: var(--muted); font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
+  .rtab:hover { color: var(--text); }
+  .rtab.on { color: var(--text); border-bottom-color: var(--accent); }
+  .pip { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--run); vertical-align: middle; }
+  .pip.bad { background: var(--bad); }
+  .pip[hidden] { display: none; }
+  .pane:not(.on) { display: none; }
+  .screens { display: inline-flex; gap: 2px; margin-left: 18px; }
+  .screens a { padding: 4px 10px; border-radius: 5px; color: var(--muted); cursor: pointer; text-decoration: none; }
+  .screens a:hover { color: var(--text); }
+  .screens a.on { color: var(--text); background: var(--panel2); }
+  .logwrap { flex: 1; display: flex; flex-direction: column; min-height: 200px; padding: 12px 14px; }
+  .logwrap .head { display: flex; align-items: center; justify-content: space-between; }
+  pre.log { flex: 1; margin: 0; overflow: auto; background: var(--bg); border: 1px solid var(--line); border-radius: 6px;
+    padding: 8px; font: 11px/1.45 var(--mono); color: #b9c2d0; white-space: pre-wrap; word-break: break-all; min-height: 120px; }
+  pre.log .st { color: var(--accent); font-weight: 600; }
+  pre.log .er { color: var(--bad); }
+  pre.log .wa { color: var(--warn); }
+  .muted { color: var(--muted); }
+  details summary { cursor: pointer; color: var(--muted); margin: 8px 0 4px; }
+  details h3 { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 10px 0 2px; }
+  .opt-help { font-size: 11px; color: var(--muted); margin: -4px 0 6px; }
+  .opt-changed input, .opt-changed select { border-color: var(--accent); }
+  .banner { border: 1px solid var(--bad); background: rgba(239,93,93,.1); border-radius: 8px; padding: 9px 11px; margin-bottom: 10px; }
+  .banner b { color: var(--bad); }
+  .banner.cancel { border-color: var(--muted); background: var(--panel2); }
+  .banner.cancel b { color: var(--muted); }
+  .diag { font-size: 12px; margin-top: 4px; padding-left: 14px; position: relative; }
+  .diag::before { content: ""; position: absolute; left: 2px; top: 6px; width: 6px; height: 6px; border-radius: 50%; }
+  .diag.error::before { background: var(--bad); } .diag.warning::before { background: var(--warn); } .diag.info::before { background: var(--accent); }
+  .diag .h { color: var(--muted); display: block; }
+  .stage .links { margin-left: 8px; font-size: 11px; }
+  .stage .links a, .banner a, .history a { color: var(--accent); cursor: pointer; text-decoration: none; }
+  .stage.warning .badge { background: var(--warn); }
+  .stage.gate-failed .badge, .stage.preflight-failed .badge { background: var(--bad); }
+  .stage.skipped { opacity: .55; } .stage.skipped .badge { background: transparent; border: 2px solid var(--muted); }
+  .steps { margin-top: 6px; border-top: 1px solid var(--line); padding-top: 4px; font-size: 12px; }
+  .step { display: grid; grid-template-columns: 14px 1fr auto; column-gap: 4px; align-items: center; padding: 2px 0; }
+  .step .dot { width: 7px; height: 7px; border-radius: 50%; border: 1.5px solid var(--muted); box-sizing: border-box; }
+  .step .t { color: var(--muted); font-family: var(--mono); font-size: 11px; }
+  .step .n { grid-column: 2 / 4; color: var(--muted); font-size: 11px; }
+  .step .bar { grid-column: 2 / 4; display: block; margin-top: 3px; }
+  .step.done .dot { background: var(--ok); border-color: var(--ok); }
+  .step.run .dot { background: var(--run); border-color: var(--run); animation: pulse 1.2s infinite; }
+  .step.run .l { color: var(--text); font-weight: 600; }
+  .step.pending { color: var(--muted); }
+  .step.failed .dot, .step.stopped .dot { background: var(--bad); border-color: var(--bad); }
+  .tabs { display: inline-flex; gap: 2px; }
+  .tab { background: none; border: 1px solid var(--line); border-radius: 5px; padding: 2px 8px; cursor: pointer; color: var(--muted); font-size: 12px; }
+  .tab.on { color: var(--text); border-color: var(--accent); }
+  .history { max-height: 220px; overflow: auto; border: 1px solid var(--line); border-radius: 6px; margin-bottom: 6px; }
+  .history div { display: grid; grid-template-columns: 92px 62px 1fr 50px; gap: 6px; padding: 4px 8px; font-size: 12px;
+    border-bottom: 1px solid var(--line); cursor: pointer; }
+  .history div:hover { background: var(--panel2); }
+  .st-ok, .st-done { color: var(--ok); } .st-warning { color: var(--warn); } .st-skipped, .st-cancelled { color: var(--muted); }
+  .st-failed, .st-gate-failed, .st-preflight-failed { color: var(--bad); }
+  .checkres { margin-top: 8px; font-size: 12px; }
+  .outputs a { display: grid; grid-template-columns: 1fr auto; gap: 8px; padding: 4px 0; color: var(--accent);
+    text-decoration: none; border-bottom: 1px solid var(--line); font-size: 12px; }
+  .outputs a:hover { color: var(--text); }
+  .outputs a span { color: var(--muted); font-family: var(--mono); font-size: 11px; }
+  .outputs a.stale { opacity: .55; }
+  a.btn { text-decoration: none; color: var(--text); }
+  progress { width: 100%; height: 6px; }
+  @media (max-width: 1100px) {
+    .app { grid-template-columns: 1fr; grid-template-rows: 44px auto 1fr; grid-template-areas: "top" "side" "work"; height: auto; min-height: 100vh; }
+    .runbody, .pv3d { grid-template-columns: 1fr; grid-template-rows: auto; grid-template-areas: none; }
+    .pv3d > * { grid-area: auto; }
+    .view { min-height: 60vh; }
+    .as-place { grid-template-columns: 1fr; height: auto; }
+    .as-place .slot { height: 50vh; }
+  }
+</style>
+<script type="importmap">
+{ "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div class="scancard" id="scanCard" hidden></div>
+<div class="modal" id="exportModal" hidden>
+  <div class="win">
+    <div class="win-head"><b>Export</b><span class="muted" id="exScan"></span><button class="x" id="exClose" title="close (Esc)">✕</button></div>
+    <div class="win-body">
+      <div class="ex-form">
+        <label class="row">File <select id="exFormat">
+          <option value="stl">3D print (STL)</option>
+          <option value="glb_textured">Textured model (GLB)</option>
+          <option value="glb_mesh">Mesh, vertex colours (GLB)</option>
+          <option value="obj">Textured model (OBJ + MTL + PNG, zip)</option>
+          <option value="ply">Mesh (PLY)</option></select></label>
+        <label class="row">Version <select id="exSource"><option value="pipeline">pipeline</option><option value="custom">custom (edited)</option></select></label>
+        <label class="row" title="how to stand the model up: the support plane, the camera orbit, or as SfM left it">Up <select id="exUp">
+          <option value="auto">auto</option><option value="plane">support plane</option><option value="camera">camera orbit</option><option value="none">as reconstructed</option></select></label>
+        <div class="opt-help" style="margin:-2px 0 6px">standing wrong? <a id="exOrient" style="color:var(--accent);cursor:pointer">fix the orientation…</a></div>
+        <label class="row">Height (mm) <input type="number" id="exHeight" min="1" step="1" placeholder="as scanned"></label>
+        <div id="exPrint">
+          <label class="row" title="solid: openings closed with lids; shell: only the scanned surface; auto: shell when lids would invent over a third">Print as <select id="exMode">
+            <option value="auto">auto</option><option value="solid">solid</option><option value="shell">shell</option></select></label>
+          <label class="row" title="inward keeps the scanned surface exactly where it was measured">Shell grows <select id="exSide">
+            <option value="inward">inward (keeps the scanned surface)</option><option value="outward">outward</option><option value="both">both ways</option></select></label>
+          <label class="row">Shell thickness (mm) <input type="number" id="exShell" min="0.4" step="0.1" value="3"></label>
+          <label class="row" title="thinner walls are thickened behind the scanned surface">Minimum wall (mm) <input type="number" id="exWall" min="0" step="0.1" value="0.8"></label>
+          <label class="row">Stand <select id="exStand"><option value="auto">when it would topple</option><option value="none">never</option></select></label>
+          <label class="row" title="the bottom share of the height flattened so it stands (solid only)">Flat base (%) <input type="number" id="exBase" min="0" max="20" step="0.5" value="2"></label>
+        </div>
+        <div class="btns"><button class="btn primary" id="exBuild">Build</button><a class="btn" id="exDownload" hidden download>Download</a></div>
+        <div class="muted" id="exStatus" style="margin-top:6px;font-size:12px"></div>
+        <div id="exIssues"></div>
+      </div>
+      <div class="ex-preview" id="exPreview"><div class="muted ex-empty" id="exEmpty">Build to preview the file here</div></div>
+    </div>
+  </div>
+</div>
+<div class="app">
+  <header>
+    <b>motiongrametry</b><span class="muted" id="wsTitle">video → 3D mesh</span>
+    <nav class="screens"><a class="on">Generate</a><a id="toEditor" title="sculpt the clean mesh and paint the texture">Edit &amp; paint</a><a href="/help" target="_blank" title="the full how-to">Help</a><a href="/about" target="_blank" title="the open-source software it builds on, and their licenses">About</a></nav>
+    <span style="margin-left:auto" class="muted" id="jobStatus"></span>
+  </header>
+
+  <aside>
+    <section>
+      <h2>Scans</h2>
+      <div class="ws-list" id="wsList"></div>
+    </section>
+    <section>
+      <h2>New scan</h2>
+      <label class="row">Name <input type="text" id="newName" placeholder="mouse-01" style="width:170px"></label>
+      <input type="text" id="newPath" placeholder="local video path (optional)">
+      <div class="btns">
+        <button class="btn" id="createBtn">Create</button>
+        <label class="btn" style="cursor:pointer">Upload video…<input type="file" id="upload" accept="video/*" hidden></label>
+      </div>
+      <div id="dupBox" hidden style="margin-top:10px">
+        <div class="btns"><button class="btn" id="dupBtn">Duplicate scan</button></div>
+        <label class="muted" style="display:block;margin-top:4px" title="SfM/MVS copies are instant on btrfs/XFS, a full copy elsewhere">
+          <input type="checkbox" id="dupRecon"> include SfM / MVS results</label>
+        <div class="opt-help" style="margin:2px 0 0">a copy with the same keyframes and masks, to try other settings or VGGT without touching this one</div>
+      </div>
+      <progress id="upProg" value="0" max="1" hidden></progress>
+      <div class="err" id="newErr"></div>
+    </section>
+  </aside>
+
+  <div class="work" id="work">
+    <nav class="gtabs">
+      <button class="gtab" data-g="run" title="run the pipeline, assisted or not">Run <span class="pip" id="runPip" hidden></span></button>
+      <button class="gtab" data-g="preview" title="the 3D result, the keyframes and their masks, the files">Preview <span class="pip" id="pvPip" hidden></span></button>
+      <span class="muted gnote" id="orientNote"></span>
+      <label class="muted splitchk" id="splitLbl" title="Run and Preview side by side (wide screens)"><input type="checkbox" id="splitChk"> side by side</label>
+    </nav>
+    <div class="gpanes">
+      <div class="gpane gp-run" data-g="run">
+        <div class="runbar">
+          <span class="seg" id="modeSeg"><button data-mode="assisted" title="one step at a time: every option explained, suggested values for your capture, advice after each step">Assisted</button><button data-mode="manual" title="every step and option, run several steps at once">Manual</button></span>
+          <label class="runpreset" title="named sets of options for the capture problems that come up most often">Preset <select id="preset"><option value="">none</option></select></label>
+          <span class="grow"></span>
+          <a class="runstatus" id="runStatus"></a>
+          <button class="btn" id="checkBtn" title="pre-flight checks only (missing inputs, disk space, …) for the ticked steps">Check</button>
+          <button class="btn primary" id="runBtn" title="run the ticked steps, in order">Run selected</button>
+          <button class="btn" id="cancelBtn" hidden title="stop the run (click twice)">Stop</button>
+          <img class="glimpse-mini" id="glimpseMini" data-glimpse hidden alt="" title="the latest result: open the Preview">
+        </div>
+        <div class="runmsg" id="runMsg"><div id="rerunInfo" class="muted"></div><div class="err" id="runErr"></div><div id="checkOut"></div></div>
+        <div class="runbody">
+          <nav class="rail" id="rail"></nav>
+          <div class="steppage" id="stepPage"><div class="steppage-in" id="asMain"></div></div>
+        </div>
+        <div class="drawer" id="drawer">
+          <div class="drawer-head">
+            <button class="drawer-toggle" id="drawerToggle"><span class="caret">▸</span> Log <span class="pip" id="logPip" hidden></span></button>
+            <span class="tabs"><button class="tab on" data-tab="live">Live</button><button class="tab" data-tab="history">History</button></span>
+            <label class="muted"><input type="checkbox" id="hideGlog" checked> hide COLMAP internals</label>
+            <span id="logTitle" class="muted"></span>
+          </div>
+          <div class="drawer-body"><div id="history" class="history" hidden></div><pre class="log" id="log"></pre></div>
+        </div>
+      </div>
+
+      <div class="gpane gp-preview" data-g="preview">
+        <div class="pvbar">
+          <span class="seg" id="pvSeg"><button data-pv="3d">3D model</button><button data-pv="frames">Frames &amp; masks</button></span>
+          <span class="muted" id="pvHint"></span>
+        </div>
+        <div class="pv3d" id="pv3d">
+          <main class="view" id="view">
+            <div class="hint" id="hint">Select or create a scan</div>
+            <div class="overlay">
+              <div class="layers" id="layers"></div>
+              <div class="layers" id="dispBox">
+                <label class="row" style="margin:0" title="W cycles through them">Display <select id="dispMode">
+                  <option value="textured">Colours</option><option value="solid">Solid grey</option>
+                  <option value="wire">Wireframe</option><option value="solidwire">Solid + wires</option></select></label>
+                <label title="edges that border a single triangle: holes, openings and torn spots"><input type="checkbox" id="holesChk"> Highlight holes</label>
+                <div class="muted" id="holesInfo" style="font-size:11px;max-width:210px"></div>
+                <label class="row" style="margin:0">Point size <input type="range" id="ptSize" min="0.3" max="4" step="0.1" value="1"></label>
+                <div class="btns" style="margin-top:4px"><button class="btn" id="fitBtn">Fit view</button>
+                  <button class="btn" id="orientBtn" title="turn and move the model so it stands the right way: used by every export">Orient…</button></div>
+              </div>
+            </div>
+            <div class="loading" id="loading">loading…</div>
+            <div class="stats" id="stats"></div>
+          </main>
+          <div class="pvside">
+            <section id="orientHome" hidden></section>
+            <section id="outputsPanel">
+              <h2>Files <span class="muted" id="outCount"></span></h2>
+              <div class="outputs" id="outputs"></div>
+              <div class="muted" id="noOutputs">no results yet: run the pipeline</div>
+              <div class="btns"><button class="btn primary" id="exportBtn" title="one file, with its own settings (size, orientation, shell, …)">Export…</button>
+                <a class="btn" id="zipBtn" download>Download all (.zip)</a>
+                <a class="btn" id="editBtn" hidden>Open in editor</a></div>
+              <div class="muted" id="outDir" style="font-size:11px;margin-top:6px;word-break:break-all"></div>
+            </section>
+          </div>
+          <div class="film" id="film">
+            <div class="film-head">
+              <h2 style="margin:0">Keyframes <span class="muted" id="frameCount"></span></h2>
+              <label class="muted"><input type="checkbox" id="showMasks"> mask overlay</label>
+              <span class="muted">click a frame to view from its camera · double-click to open it big</span>
+            </div>
+            <div class="strip" id="strip"></div>
+          </div>
+        </div>
+        <div class="pvframes" id="pvFrames" hidden>
+          <div class="fv-bar">
+            <span class="seg" id="fvSeg"><button data-fv="photo">Photo</button><button data-fv="overlay">Overlay</button><button data-fv="compare">Compare</button><button data-fv="side">Side by side</button><button data-fv="mask">Mask</button></span>
+            <span class="seg" id="fvFilter" title="which keyframes to step through"><button data-ff="all">All</button><button data-ff="flagged">Flagged</button></span>
+            <button class="btn" id="fvPrev" title="previous (←)">‹</button><span id="fvPos" class="fv-pos"></span><button class="btn" id="fvNext" title="next (→)">›</button>
+            <button class="btn" id="fvCam" title="look at the model from this keyframe's camera">View from this camera</button>
+          </div>
+          <div class="fv-info" id="fvInfo"></div>
+          <div class="fv-stage" id="fvStage"><canvas id="fvCanvas"></canvas><div class="hint" id="fvHint" hidden></div></div>
+          <div class="fv-track"><canvas id="fvTrack" title="subject coverage per keyframe; red: flagged"></canvas></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="orient" id="orientPanel" hidden>
+  <h2>Orientation <span class="muted" id="orState"></span></h2>
+  <div class="note" id="orHelp">Drag to look around. Click a flat spot to make it the floor, or turn it in 90° steps. Orbit until you face its front, then press <i>This view is the front</i>.</div>
+  <div class="btns"><button class="btn primary" id="orFloor" title="then click the spot of the model that should rest on the floor">Click the floor…</button>
+    <button class="btn" id="orFront" title="turn it so the side you are looking at now is its front">This view is the front</button></div>
+  <div class="or-grid">
+    <span>Turn 90°</span>
+    <button class="btn" data-turn="x,1" title="tip forward">X ⟳</button><button class="btn" data-turn="x,-1" title="tip back">X ⟲</button>
+    <button class="btn" data-turn="y,1" title="spin left">Y ⟳</button><button class="btn" data-turn="y,-1" title="spin right">Y ⟲</button>
+    <button class="btn" data-turn="z,1" title="roll">Z ⟳</button><button class="btn" data-turn="z,-1" title="roll back">Z ⟲</button>
+  </div>
+  <div class="btns"><span class="seg" id="orHandles"><button data-h="off">No handles</button><button data-h="rotate" title="free rotation rings">Rotate</button><button data-h="translate" title="move arrows">Move</button></span></div>
+  <div class="btns"><button class="btn" id="orCentre" title="centre it over the grid">Centre</button><button class="btn" id="orDrop" title="rest its lowest point on the floor">Drop to floor</button></div>
+  <div class="btns or-save"><button class="btn primary" id="orSave">Save</button><button class="btn" id="orCancel">Cancel</button>
+    <button class="btn" id="orReset" title="forget your orientation: back to the automatic one (floor plane, else the camera path)">Reset to automatic</button></div>
+  <div class="muted" id="orMsg" style="font-size:12px;margin-top:6px"></div>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+const $ = (id) => document.getElementById(id);
+const STAGES = ['frames', 'mask', 'sfm', 'mvs', 'vggt', 'clean', 'texture'];
+const DEFAULT_ON = new Set(['frames', 'mask', 'sfm', 'mvs', 'clean', 'texture']);
+const LAYERS = [
+  ['cameras', 'Cameras'], ['sparse', 'Sparse points'], ['dense', 'Dense cloud'],
+  ['raw', 'Raw mesh'], ['clean', 'Clean mesh'], ['textured', 'Textured model'], ['custom', 'Custom (edited)'],
+];
+const api = async (path, opts = {}) => {
+  const r = await fetch(path, opts);
+  const ct = r.headers.get('content-type') || '';
+  const body = ct.includes('json') ? await r.json() : await r.arrayBuffer();
+  if (!r.ok) throw new Error(body.error || r.statusText);
+  return body;
+};
+
+// ---------------------------------------------------------------- state
+let current = null;        // scan (workspace folder) name
+let wsState = null;        // last /state
+let jobSince = 0, jobSnap = null, lastVersion = null, layerDefaultsFor = null;
+const layerOn = { cameras: true, sparse: true, dense: false, raw: false, clean: false, textured: true };
+
+// ---------------------------------------------------------------- viewer
+const view = $('view');
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+view.prepend(renderer.domElement);
+const scene3 = new THREE.Scene();
+scene3.background = new THREE.Color(0x0f1115);
+const persp = new THREE.PerspectiveCamera(50, 1, 0.01, 1000);
+persp.position.set(2, 1.5, 2);
+let camera = persp;                        // persp, or proj's orthographic camera (key 5, view cube button)
+const controls = new OrbitControls(persp, renderer.domElement);
+controls.enableDamping = false;            // render on demand only
+scene3.add(new THREE.HemisphereLight(0xffffff, 0x404050, 1.6));
+const sun = new THREE.DirectionalLight(0xffffff, 1.4);
+persp.add(sun); sun.position.set(1, 2, 1); scene3.add(persp);
+
+// Perspective or orthographic view of the same orbit: the orthographic camera frames what the
+// perspective one sees at the orbit target and zooms instead of moving. Code that places the
+// camera (fit, fly to a keyframe) moves the perspective one, then framed() brings the other along.
+function projection(persp, controls, light, onSwitch) {
+  const rad = THREE.MathUtils.degToRad, ortho = new THREE.OrthographicCamera(-1, 1, 1, -1, persp.near, persp.far);
+  persp.parent?.add(ortho);
+  const P = {
+    camera: persp, aspect: persp.aspect,
+    set(on) {
+      if (on === !!P.camera.isOrthographicCamera) return;
+      const t = controls.target;
+      if (on) {
+        const half = persp.position.distanceTo(t) * Math.tan(rad(persp.fov / 2));
+        Object.assign(ortho, { top: half, bottom: -half, left: -half * P.aspect, right: half * P.aspect, zoom: 1, near: persp.near, far: persp.far });
+        ortho.position.copy(persp.position); ortho.quaternion.copy(persp.quaternion); ortho.up.copy(persp.up);
+        ortho.updateProjectionMatrix(); P.camera = ortho;
+      } else {
+        const d = ortho.top / ortho.zoom / Math.tan(rad(persp.fov / 2)), dir = ortho.position.clone().sub(t).normalize();
+        persp.position.copy(t).addScaledVector(dir, d); persp.quaternion.copy(ortho.quaternion); persp.up.copy(ortho.up);
+        persp.updateProjectionMatrix(); P.camera = persp;
+      }
+      if (light) P.camera.add(light);
+      controls.object = P.camera; controls.update();
+      onSwitch?.(P.camera);
+    },
+    resize(aspect) {
+      P.aspect = aspect; persp.aspect = aspect; persp.updateProjectionMatrix();
+      ortho.left = -ortho.top * aspect; ortho.right = ortho.top * aspect; ortho.updateProjectionMatrix();
+    },
+    framed() { if (P.camera === ortho) { P.camera = persp; P.set(true); } else controls.update(); },
+    pxPerUnit(h, dist) {  // screen pixels per scene unit at the orbit target
+      return P.camera === ortho ? h * ortho.zoom / (ortho.top - ortho.bottom) : h / (2 * dist * Math.tan(rad(persp.fov / 2)));
+    },
+  };
+  return P;
+}
+let mainCube = null;
+const proj = projection(persp, controls, sun, (c) => { camera = c; if (OR.tc) OR.tc.camera = c; render(); mainCube?.update(); });
+const grid = new THREE.GridHelper(1, 20, 0x2a3140, 0x1d222c);
+scene3.add(grid);
+// raw SfM frame; matrix = scene transform (Y-up). The pivot above it is identity except while
+// orienting by hand, when it turns and moves the model about its centre (see "orientation").
+const pivot = new THREE.Group();
+scene3.add(pivot);
+const root = new THREE.Group();
+root.matrixAutoUpdate = false;
+pivot.add(root);
+let sceneT = new THREE.Matrix4(), autoT = new THREE.Matrix4();
+const layerObj = {};                       // name -> Object3D
+let extent = 1, camData = [], camLines = null, selCam = -1;
+
+let pending = false;
+function render() {
+  if (pending) return;
+  pending = true;
+  requestAnimationFrame(() => {
+    pending = false;
+    fadeWires();
+    renderer.render(scene3, camera);
+    const i = renderer.info.render;
+    $('stats').textContent = `${i.calls} draw calls · ${fmt(i.triangles)} tris · ${fmt(i.points)} pts`;
+  });
+}
+controls.addEventListener('change', render);
+new ResizeObserver(() => {
+  const w = view.clientWidth, h = view.clientHeight;
+  renderer.setSize(w, h, false); proj.resize(w / Math.max(h, 1)); render();
+}).observe(view);
+const fmt = (n) => n >= 1e6 ? (n / 1e6).toFixed(2) + 'M' : n >= 1e3 ? (n / 1e3).toFixed(1) + 'k' : String(n);
+
+function disposeObj(o) {
+  o.traverse((c) => {
+    c.geometry?.dispose();
+    const u = c.userData, ms = new Set([c.material, u.base, u.solid, u.wireOnly].flat().filter(Boolean));
+    ms.forEach((m) => { m.map?.dispose(); m.dispose(); });
+  });
+}
+function setLayer(name, obj, count) {
+  if (layerObj[name]) { root.remove(layerObj[name]); disposeObj(layerObj[name]); }
+  layerObj[name] = obj;
+  if (obj) { obj.visible = layerOn[name]; root.add(obj); }
+  if (obj && placed && ['cameras', 'sparse', 'dense'].includes(name) && obj.visible) {  // the place step shows just the model
+    obj.visible = false; if (!placed.hide.includes(name)) placed.hide.push(name);
+  }
+  const c = document.querySelector(`[data-count="${name}"]`);
+  if (c) c.textContent = count ?? '';
+  render();
+}
+
+function pointMaterial() {
+  return new THREE.PointsMaterial({ size: extent * 0.003 * +$('ptSize').value, vertexColors: true, sizeAttenuation: true });
+}
+async function loadPoints(kind) {
+  const buf = await api(`/api/workspaces/${current}/points/${kind}`);
+  const n = new DataView(buf).getUint32(0, true);
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(buf, 4, n * 3), 3));
+  g.setAttribute('color', new THREE.BufferAttribute(new Uint8Array(buf, 4 + 12 * n, n * 3), 3, true));
+  g.computeBoundingSphere();
+  return [new THREE.Points(g, pointMaterial()), fmt(n)];
+}
+async function loadMesh(kind) {
+  const url = `/api/workspaces/${current}/mesh/${kind}.glb?v=${lastVersion}`;
+  const gltf = await new GLTFLoader().loadAsync(url);
+  let tris = 0;
+  gltf.scene.traverse((o) => {
+    if (!o.isMesh) return;
+    const g = o.geometry;
+    tris += g.index ? g.index.count / 3 : g.attributes.position.count / 3;
+    const map = o.material?.map;
+    if (map) {
+      // Photogrammetry textures already contain the lighting: show them unlit.
+      map.colorSpace = THREE.SRGBColorSpace;
+      o.material = new THREE.MeshBasicMaterial({ map, side: THREE.DoubleSide });
+    } else {
+      if (!g.attributes.normal) g.computeVertexNormals();
+      o.material = new THREE.MeshStandardMaterial({
+        color: kind === 'raw' ? 0x8796ad : 0xd0d4da, roughness: .85, metalness: 0,
+        vertexColors: !!g.attributes.color, side: THREE.DoubleSide, flatShading: kind === 'raw' });
+    }
+    o.userData.base = o.material; o.userData.raw = kind === 'raw';
+  });
+  applyDisplay(gltf.scene);
+  return [gltf.scene, fmt(tris) + ' tris'];
+}
+function buildCameras(cams) {
+  // All frusta in one LineSegments: one draw call however many frames.
+  const d = extent * 0.035, pos = [], col = [];
+  const base = new THREE.Color(0x5aa9ff);
+  cams.forEach((c) => {
+    const M = c.world_from_cam, C = c.center;
+    const w = (c.w / 2) / c.fx * d, h = (c.h / 2) / c.fy * d;
+    const P = (x, y, z) => [0, 1, 2].map((r) => M[r][0] * x + M[r][1] * y + M[r][2] * z + C[r]);
+    const k = [P(-w, -h, d), P(w, -h, d), P(w, h, d), P(-w, h, d)];
+    const segs = [[C, k[0]], [C, k[1]], [C, k[2]], [C, k[3]], [k[0], k[1]], [k[1], k[2]], [k[2], k[3]], [k[3], k[0]],
+                  [k[0], P(0, -h * 1.5, d)], [P(0, -h * 1.5, d), k[1]]];   // little roof marks image "up"
+    segs.forEach(([a, b]) => { pos.push(...a, ...b); col.push(base.r, base.g, base.b, base.r, base.g, base.b); });
+  });
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  camLines = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ vertexColors: true }));
+  return camLines;
+}
+function highlightCamera(i) {
+  if (!camLines) return;
+  const col = camLines.geometry.attributes.color, per = 20;
+  const paint = (k, c) => { for (let j = k * per; j < (k + 1) * per; j++) col.setXYZ(j, c.r, c.g, c.b); };
+  if (selCam >= 0) paint(selCam, new THREE.Color(0x5aa9ff));
+  selCam = i;
+  if (i >= 0) paint(i, new THREE.Color(0xf0b429));
+  col.needsUpdate = true; render();
+}
+function flyToCamera(name) {
+  const i = camData.findIndex((c) => c.name === name);
+  if (i < 0) return;
+  highlightCamera(i);
+  const c = camData[i], M = c.world_from_cam;
+  proj.set(false);  // through a real camera: perspective
+  root.updateMatrixWorld(true);
+  const pos = new THREE.Vector3(...c.center).applyMatrix4(root.matrixWorld);
+  const dir = new THREE.Vector3(M[0][2], M[1][2], M[2][2]).transformDirection(root.matrixWorld);
+  camera.fov = THREE.MathUtils.radToDeg(2 * Math.atan(c.h / 2 / c.fy));
+  camera.position.copy(pos);
+  controls.target.copy(pos.clone().addScaledVector(dir, extent * 0.4));
+  camera.updateProjectionMatrix(); controls.update(); render();
+}
+function fitView() {
+  const box = new THREE.Box3();
+  ['custom', 'textured', 'clean', 'raw', 'dense', 'sparse'].some((k) => {
+    const o = layerObj[k];
+    if (o && o.visible) { box.setFromObject(o, true); return !box.isEmpty(); }
+    return false;
+  });
+  if (box.isEmpty()) box.setFromCenterAndSize(new THREE.Vector3(), new THREE.Vector3(1, 1, 1));
+  const size = box.getSize(new THREE.Vector3()).length(), ctr = box.getCenter(new THREE.Vector3());
+  persp.fov = 50;
+  persp.near = size / 500; persp.far = size * 50; persp.updateProjectionMatrix();
+  persp.position.copy(ctr).add(new THREE.Vector3(0.9, 0.6, 0.9).multiplyScalar(size));
+  controls.target.copy(ctr); persp.lookAt(ctr); proj.framed(); render();
+}
+
+async function reloadScene() {
+  const s = wsState;
+  const status = (txt) => { $('loading').style.display = txt ? 'block' : 'none'; $('loading').textContent = txt; };
+  if (!s.layers.cameras) {
+    LAYERS.forEach(([k]) => setLayer(k, null));
+    renderLayerToggles(); return;
+  }
+  status('loading scene…');
+  try {
+    const sc = await api(`/api/workspaces/${current}/scene`);
+    extent = sc.extent; camData = sc.cameras; selCam = -1;
+    sceneT = rowsToMatrix(sc.transform); autoT = rowsToMatrix(sc.auto || sc.transform);
+    if (!OR.active) { root.matrix.copy(sceneT); root.matrixWorldNeedsUpdate = true; }
+    // Rough scale for the ground grid: transformed extent.
+    grid.scale.setScalar(extent * 1.5); grid.visible = true;
+    setLayer('cameras', buildCameras(camData), `${camData.length}`);
+    for (const k of ['sparse', 'dense']) {
+      if (s.layers[k] && (layerOn[k] || k === 'sparse')) { status(`loading ${k}…`); setLayer(k, ...(await loadPoints(k))); }
+      else if (!s.layers[k]) setLayer(k, null);
+    }
+    for (const k of ['raw', 'clean', 'textured', 'custom']) {
+      if (s.layers[k] && layerOn[k]) { status(`loading ${k} mesh…`); setLayer(k, ...(await loadMesh(k))); }
+      else if (!s.layers[k]) setLayer(k, null);
+      else if (layerObj[k]) setLayer(k, null);
+    }
+    if (!s.layers.textured && s.layers.clean && !layerOn.clean) { layerOn.clean = true; setLayer('clean', ...(await loadMesh('clean'))); }
+    renderLayerToggles(); refreshHoles();
+    if (!reloadScene.fitted) { fitView(); reloadScene.fitted = true; }
+    if (s.preview_stale) capturePreview();
+  } catch (e) { console.error(e); $('runErr').textContent = 'viewer: ' + e.message; }
+  status('');
+}
+
+// The scan list's thumbnail: a snapshot of the 3D view once a run has produced a mesh, taken here
+// (the server has no GPU renderer), without camera frusta, points or grid.
+async function capturePreview() {
+  const meshes = ['custom', 'textured', 'clean', 'raw'].filter((k) => layerObj[k]?.visible);
+  if (!meshes.length || !current) return;
+  const name = current, hide = ['cameras', 'sparse', 'dense'].filter((k) => layerObj[k]?.visible);
+  hide.forEach((k) => { layerObj[k].visible = false; });
+  const gridOn = grid.visible; grid.visible = false;
+  // Frame the model, seen from the current direction, so it fills the thumbnail.
+  const sphere = new THREE.Box3().setFromObject(layerObj[meshes[0]], true).getBoundingSphere(new THREE.Sphere());
+  const shot = persp.clone(), dir = camera.position.clone().sub(controls.target).normalize();  // thumbnails in perspective
+  shot.position.copy(sphere.center).addScaledVector(dir, sphere.radius / Math.sin(THREE.MathUtils.degToRad(shot.fov / 2)) * 1.02);
+  shot.near = sphere.radius / 100; shot.far = sphere.radius * 10;
+  const hidden = view.clientWidth < 64 || view.clientHeight < 48;  // Preview tab not shown
+  if (hidden) { renderer.setSize(640, 480, false); shot.aspect = 4 / 3; }
+  shot.lookAt(sphere.center); shot.updateProjectionMatrix(); shot.updateMatrixWorld();
+  const holes = holeLines().filter((l) => l.visible); holes.forEach((l) => { l.visible = false; });
+  const shown = display; if (shown !== 'textured') { display = 'textured'; meshes.forEach((k) => applyDisplay(layerObj[k])); }  // thumbnails in colour
+  renderer.render(scene3, shot);  // read back in the same task, before the frame is presented
+  if (shown !== 'textured') { display = shown; meshes.forEach((k) => applyDisplay(layerObj[k])); }
+  holes.forEach((l) => { l.visible = true; });
+  const src = renderer.domElement, W = 320, H = 240;
+  const k = Math.min(src.width / W, src.height / H), sw = W * k, sh = H * k;
+  const cv = Object.assign(document.createElement('canvas'), { width: W, height: H });
+  const g = cv.getContext('2d');
+  g.fillStyle = '#0f1115'; g.fillRect(0, 0, W, H);
+  g.drawImage(src, (src.width - sw) / 2, (src.height - sh) / 2, sw, sh, 0, 0, W, H);
+  hide.forEach((k2) => { layerObj[k2].visible = true; });
+  if (hidden) renderer.setSize(view.clientWidth, view.clientHeight, false);
+  grid.visible = gridOn; render();
+  const blob = await new Promise((ok) => cv.toBlob(ok, 'image/jpeg', 0.82));
+  try { await fetch(`/api/workspaces/${name}/preview`, { method: 'POST', body: blob }); refreshList(); } catch {}
+}
+
+function renderLayerToggles() {
+  const el = $('layers'), L = wsState?.layers || {};
+  el.innerHTML = '<h2>Layers</h2>' + LAYERS.map(([k, label]) =>
+    `<label class="${L[k] ? '' : 'na'}"><input type="checkbox" data-layer="${k}" ${layerOn[k] ? 'checked' : ''} ${L[k] ? '' : 'disabled'}>
+     ${label}<span class="count" data-count="${k}"></span></label>`).join('');
+  el.querySelectorAll('input[data-layer]').forEach((cb) => cb.addEventListener('change', async () => {
+    const k = cb.dataset.layer; layerOn[k] = cb.checked;
+    if (cb.checked && !layerObj[k]) {
+      $('loading').style.display = 'block'; $('loading').textContent = `loading ${k}…`;
+      try { setLayer(k, ...(await (['sparse', 'dense'].includes(k) ? loadPoints(k) : loadMesh(k)))); }
+      catch (e) { $('runErr').textContent = e.message; }
+      $('loading').style.display = 'none';
+    } else if (layerObj[k]) { layerObj[k].visible = cb.checked; render(); }
+    refreshHoles();
+  }));
+  // restore counts of already-loaded layers
+  for (const [k, o] of Object.entries(layerObj)) {
+    if (!o) continue;
+    const c = el.querySelector(`[data-count="${k}"]`);
+    if (c) c.textContent = k === 'cameras' ? camData.length
+      : o.isPoints ? fmt(o.geometry.attributes.position.count) : '';
+  }
+}
+$('ptSize').addEventListener('input', () => {
+  ['sparse', 'dense'].forEach((k) => { if (layerObj[k]) layerObj[k].material.size = extent * 0.003 * +$('ptSize').value; });
+  render();
+});
+$('fitBtn').addEventListener('click', fitView);
+// view cube (static/viewcube.js): which way the camera looks, click to look from a side, frame button
+const viewCube = (host, opts) => import('/viewcube.js').then(({ addViewCube }) => addViewCube(host, opts)).catch(() => null);
+viewCube(view, { projection: proj, controls, render, fit: () => (placed ? viewFront() : fitView()) }).then((c) => { mainCube = c; });
+const rowsToMatrix = (T) => new THREE.Matrix4().set(...T[0], ...T[1], ...T[2], ...T[3]);
+const matrixToRows = (m) => [0, 1, 2, 3].map((r) => [0, 1, 2, 3].map((c) => m.elements[c * 4 + r]));
+
+// ---------------------------------------------------------------- display modes
+// Colours (texture or vertex colours), plain grey to judge the shape, wireframe, or grey with the
+// wires on top. Wires fade out when the triangles get smaller than a few pixels: on a dense scan
+// they would otherwise turn the model into a grey blob.
+const DISPLAYS = ['textured', 'solid', 'wire', 'solidwire'];
+let display = 'textured';
+try { display = DISPLAYS.includes(localStorage.getItem('mg.display')) ? localStorage.getItem('mg.display') : display; } catch {}
+$('dispMode').value = display;
+const MESH_LAYERS = ['custom', 'textured', 'clean', 'raw'];
+function meshParts(obj) { const out = []; obj?.traverse((o) => { if (o.isMesh && !o.userData.overlay) out.push(o); }); return out; }
+function meanEdge(g) {  // average edge length of a sample of triangles, in the mesh's own units
+  const p = g.attributes.position, ix = g.index, n = ix ? ix.count / 3 : p.count / 3, step = Math.max(1, Math.floor(n / 4000));
+  const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
+  let sum = 0, k = 0;
+  for (let t = 0; t < n; t += step) {
+    const i = ix ? [ix.getX(3 * t), ix.getX(3 * t + 1), ix.getX(3 * t + 2)] : [3 * t, 3 * t + 1, 3 * t + 2];
+    a.fromBufferAttribute(p, i[0]); b.fromBufferAttribute(p, i[1]); c.fromBufferAttribute(p, i[2]);
+    sum += a.distanceTo(b) + b.distanceTo(c) + c.distanceTo(a); k += 3;
+  }
+  return k ? sum / k : 0;
+}
+function applyDisplay(obj) {
+  for (const o of meshParts(obj)) {
+    const u = o.userData;
+    if (display === 'solid' || display === 'solidwire') {
+      if (!o.geometry.attributes.normal) o.geometry.computeVertexNormals();
+      // pushed back a little so the wires drawn on top are not hidden by the surface
+      u.solid ||= new THREE.MeshStandardMaterial({ color: 0xc4cad3, roughness: .8, metalness: 0, side: THREE.DoubleSide,
+        flatShading: !!u.raw, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 });
+      o.material = u.solid;
+    } else if (display === 'wire') {
+      u.wireOnly ||= new THREE.MeshBasicMaterial({ color: 0xb4c2d4, wireframe: true, transparent: true, depthWrite: false });
+      o.material = u.wireOnly;
+    } else o.material = u.base;
+    if (display === 'solidwire' && !u.wires) {
+      u.wires = new THREE.Mesh(o.geometry, new THREE.MeshBasicMaterial({ color: 0x1c2430, wireframe: true, transparent: true, depthWrite: false }));
+      u.wires.userData.overlay = true; u.wires.raycast = () => {};
+      o.add(u.wires);
+    }
+    if (u.wires) u.wires.visible = display === 'solidwire';
+    if (display !== 'textured') u.edge ??= meanEdge(o.geometry);
+  }
+}
+function fadeWires() {
+  if (display !== 'wire' && display !== 'solidwire') return;
+  const h = renderer.domElement.clientHeight || 600, d = camera.position.distanceTo(controls.target) || 1, k = proj.pxPerUnit(h, d) * d;
+  for (const name of MESH_LAYERS) for (const o of meshParts(layerObj[name])) {
+    const px = (o.userData.edge || 0) * o.matrixWorld.getMaxScaleOnAxis() * k / d;  // triangle size on screen
+    const f = THREE.MathUtils.clamp((px - 1.5) / 6, 0, 1);
+    if (display === 'wire') o.material.opacity = 0.12 + 0.7 * f;
+    else if (o.userData.wires) o.userData.wires.material.opacity = 0.6 * f;
+  }
+}
+function setDisplay(d) {
+  display = d; $('dispMode').value = d;
+  try { localStorage.setItem('mg.display', d); } catch {}
+  MESH_LAYERS.forEach((k) => layerObj[k] && applyDisplay(layerObj[k]));
+  render();
+}
+$('dispMode').addEventListener('change', () => setDisplay($('dispMode').value));
+
+// Holes: edges that border a single triangle, drawn in orange on the top visible mesh. Vertices are
+// welded by position first, so texture seams (split vertices) do not count as openings.
+function openEdges(g) {
+  const p = g.attributes.position.array, nv = p.length / 3, id = new Int32Array(nv), seen = new Map();
+  for (let i = 0; i < nv; i++) {
+    const key = p[3 * i] + ',' + p[3 * i + 1] + ',' + p[3 * i + 2];
+    let v = seen.get(key); if (v === undefined) { v = i; seen.set(key, i); } id[i] = v;
+  }
+  const ix = g.index ? g.index.array : null, nt = (ix ? ix.length : nv) / 3, count = new Map();
+  for (let t = 0; t < nt; t++) for (let e = 0; e < 3; e++) {
+    let a = id[ix ? ix[3 * t + e] : 3 * t + e], b = id[ix ? ix[3 * t + (e + 1) % 3] : 3 * t + (e + 1) % 3];
+    if (a === b) continue;
+    if (a > b) [a, b] = [b, a];
+    const key = a * nv + b; count.set(key, (count.get(key) || 0) + 1);
+  }
+  const segs = [], parent = new Map();
+  const find = (x) => { while (parent.get(x) !== x) { parent.set(x, parent.get(parent.get(x))); x = parent.get(x); } return x; };
+  for (const [key, c] of count) {
+    if (c !== 1) continue;
+    const a = Math.floor(key / nv), b = key - a * nv;
+    segs.push(p[3 * a], p[3 * a + 1], p[3 * a + 2], p[3 * b], p[3 * b + 1], p[3 * b + 2]);
+    for (const v of [a, b]) if (!parent.has(v)) parent.set(v, v);
+    parent.set(find(a), find(b));
+  }
+  let loops = 0; for (const v of parent.keys()) if (find(v) === v) loops++;
+  return { segs: new Float32Array(segs), edges: segs.length / 6, loops };
+}
+const holeLines = () => MESH_LAYERS.flatMap((k) => meshParts(layerObj[k]).map((o) => o.userData.holes).filter(Boolean));
+function refreshHoles() {
+  const on = $('holesChk').checked, top = MESH_LAYERS.find((k) => layerObj[k]?.visible);
+  for (const k of MESH_LAYERS) for (const o of meshParts(layerObj[k])) if (o.userData.holes) o.userData.holes.visible = on && k === top;
+  if (!on || !top) { $('holesInfo').textContent = on ? 'show a mesh layer first' : ''; render(); return; }
+  const parts = meshParts(layerObj[top]);
+  if (parts.every((o) => o.userData.holes)) { holesSummary(top, parts); return; }
+  $('holesInfo').textContent = 'finding holes…';
+  setTimeout(() => {  // a moment for the message to show: this takes ~1 s on a million triangles
+    for (const o of parts) {
+      if (o.userData.holes) continue;
+      const r = openEdges(o.geometry), g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.BufferAttribute(r.segs, 3));
+      const l = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: 0xff7a2f }));
+      Object.assign(l.userData, { overlay: true, edges: r.edges, loops: r.loops }); l.raycast = () => {};
+      o.add(l); o.userData.holes = l;
+    }
+    holesSummary(top, parts);
+  }, 30);
+}
+function holesSummary(top, parts) {
+  const loops = parts.reduce((a, o) => a + o.userData.holes.userData.loops, 0), edges = parts.reduce((a, o) => a + o.userData.holes.userData.edges, 0);
+  $('holesInfo').textContent = loops ? `${top} mesh: ${loops.toLocaleString()} opening${loops === 1 ? '' : 's'} (${edges.toLocaleString()} open edges), in orange`
+    : `${top} mesh: closed, no holes`;
+  render();
+}
+$('holesChk').addEventListener('change', refreshHoles);
+
+// ---------------------------------------------------------------- orientation
+// Turning and moving the model by hand. While orienting, the pivot holds the change, about the
+// model's centre; saving sends pivot × root (SfM frame -> Y-up) to the server, which uses it for
+// every export from then on. Nothing is re-run: the meshes stay in the SfM frame.
+const OR = { active: false, dirty: false, picking: false, tc: null, handles: 'off' };
+let orientOpen = false, placed = null;
+const orientModel = () => [...MESH_LAYERS, 'dense', 'sparse'].map((k) => layerObj[k]).find((o) => o?.visible);
+function modelBox(precise) {
+  const o = orientModel(), b = new THREE.Box3();
+  if (o) { pivot.updateMatrixWorld(true); b.setFromObject(o, precise); }
+  return b;
+}
+function orientBegin() {
+  if (OR.active || !layerObj.cameras) return false;
+  const c = modelBox(false).getCenter(new THREE.Vector3());
+  pivot.position.copy(c); pivot.quaternion.identity(); pivot.updateMatrix();
+  root.matrix.copy(new THREE.Matrix4().makeTranslation(-c.x, -c.y, -c.z).multiply(sceneT)); root.matrixWorldNeedsUpdate = true;
+  OR.active = true; OR.dirty = false; orientUi(); render();
+  return true;
+}
+function recentrePivot() {  // turn about the model's centre as it is now, without moving it
+  const c = modelBox(false).getCenter(new THREE.Vector3());
+  if (!Number.isFinite(c.x)) return;
+  pivot.updateMatrix(); const before = pivot.matrix.clone();
+  pivot.position.copy(c); pivot.updateMatrix();
+  root.matrix.premultiply(pivot.matrix.clone().invert().multiply(before)); root.matrixWorldNeedsUpdate = true;
+}
+function orientCurrent() { pivot.updateMatrix(); return new THREE.Matrix4().multiplyMatrices(pivot.matrix, root.matrix); }
+function orientEnd(T) {  // T: the transform now in use (just saved), or null to drop the changes
+  if (T) sceneT.copy(T);
+  setHandles('off'); armFloor(false);
+  pivot.position.set(0, 0, 0); pivot.quaternion.identity(); pivot.updateMatrix();
+  root.matrix.copy(sceneT); root.matrixWorldNeedsUpdate = true;
+  OR.active = false; OR.dirty = false; orientUi(); render();
+}
+function orientChanged() { OR.dirty = true; orientUi(); render(); }
+function settle(centre = true, drop = true) {  // over the grid's centre, lowest point on the floor
+  const b = modelBox(true); if (b.isEmpty()) return;
+  const c = b.getCenter(new THREE.Vector3());
+  if (centre) { pivot.position.x -= c.x; pivot.position.z -= c.z; }
+  if (drop) pivot.position.y -= b.min.y;
+  orientChanged();
+}
+function turn(axis, sign) {
+  orientBegin(); recentrePivot();
+  const a = new THREE.Vector3(axis === 'x' ? 1 : 0, axis === 'y' ? 1 : 0, axis === 'z' ? 1 : 0);
+  pivot.quaternion.premultiply(new THREE.Quaternion().setFromAxisAngle(a, sign * Math.PI / 2));
+  settle();
+}
+function viewFront() {
+  const b = modelBox(false); if (b.isEmpty()) return;
+  const size = b.getSize(new THREE.Vector3()).length(), c = b.getCenter(new THREE.Vector3());
+  persp.fov = 50; persp.near = size / 500; persp.far = size * 50; persp.updateProjectionMatrix();
+  persp.position.copy(c).add(new THREE.Vector3(0, 0.3, 1).normalize().multiplyScalar(size * 0.9));
+  controls.target.copy(c); persp.lookAt(c); proj.framed(); render();
+}
+function makeFront() {  // the side being looked at becomes the front (+Z, what the default view and thumbnails show)
+  orientBegin(); recentrePivot();
+  const d = camera.position.clone().sub(controls.target); d.y = 0;
+  if (d.lengthSq() < 1e-12) return;
+  pivot.quaternion.premultiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), -Math.atan2(d.x, d.z)));
+  settle(); viewFront();
+  $('orMsg').textContent = 'that side is now the front';
+}
+function armFloor(on) {
+  OR.picking = on;
+  $('orFloor').classList.toggle('armed', on);
+  $('orFloor').textContent = on ? 'Click the spot… (Esc)' : 'Click the floor…';
+  view.classList.toggle('picking', on);
+}
+function areaNormal(hit) {  // the surface's direction around the clicked point (not one noisy triangle)
+  const o = hit.object, g = o.geometry;
+  if (!g.attributes.normal) g.computeVertexNormals();
+  if (!g.boundingBox) g.computeBoundingBox();
+  const r = g.boundingBox.getSize(new THREE.Vector3()).length() * 0.03, r2 = r * r;
+  const q = o.worldToLocal(hit.point.clone()), P = g.attributes.position.array, N = g.attributes.normal.array, n = new THREE.Vector3();
+  for (let i = 0; i < P.length; i += 3) {
+    const dx = P[i] - q.x, dy = P[i + 1] - q.y, dz = P[i + 2] - q.z;
+    if (dx * dx + dy * dy + dz * dz < r2) { n.x += N[i]; n.y += N[i + 1]; n.z += N[i + 2]; }
+  }
+  if (n.lengthSq() < 1e-12) n.copy(hit.face.normal);
+  return n.normalize().transformDirection(o.matrixWorld);
+}
+const picker = new THREE.Raycaster();
+function floorAt(e) {
+  const r = renderer.domElement.getBoundingClientRect();
+  picker.setFromCamera(new THREE.Vector2((e.clientX - r.left) / r.width * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), camera);
+  pivot.updateMatrixWorld(true);
+  const objs = MESH_LAYERS.flatMap((k) => (layerObj[k]?.visible ? meshParts(layerObj[k]) : []));
+  const hit = picker.intersectObjects(objs, false)[0];
+  if (!hit) { $('orMsg').textContent = objs.length ? 'that missed the model: click on it' : 'show a mesh layer first'; return; }
+  recentrePivot();
+  const n = areaNormal(hit);
+  if (n.dot(camera.position.clone().sub(hit.point)) < 0) n.negate();  // the side you clicked faces you
+  pivot.quaternion.premultiply(new THREE.Quaternion().setFromUnitVectors(n, new THREE.Vector3(0, -1, 0)));
+  armFloor(false); settle();
+  $('orMsg').textContent = 'that spot now rests on the floor';
+}
+let downAt = null;
+renderer.domElement.addEventListener('pointerdown', (e) => { downAt = [e.clientX, e.clientY]; });
+renderer.domElement.addEventListener('pointerup', (e) => {
+  if (OR.picking && downAt && Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) < 5) floorAt(e);
+  downAt = null;
+});
+async function setHandles(h) {
+  OR.handles = h;
+  document.querySelectorAll('#orHandles button').forEach((b) => b.classList.toggle('on', b.dataset.h === h));
+  if (h === 'off') { if (OR.tc) { OR.tc.detach(); OR.tc.getHelper().visible = false; } render(); return; }
+  orientBegin();
+  if (!OR.tc) {
+    const { TransformControls } = await import('three/addons/controls/TransformControls.js');
+    OR.tc = new TransformControls(camera, renderer.domElement);
+    OR.tc.addEventListener('change', render);
+    OR.tc.addEventListener('dragging-changed', (e) => { controls.enabled = !e.value; if (!e.value) orientChanged(); });
+    scene3.add(OR.tc.getHelper());
+  }
+  recentrePivot();
+  OR.tc.setMode(h); OR.tc.attach(pivot); OR.tc.getHelper().visible = true; render();
+}
+async function orientPost(T) {
+  try {
+    await api(`/api/workspaces/${current}/orientation`, { method: 'POST', body: JSON.stringify({ transform: T && matrixToRows(T) }) });
+    return true;
+  } catch (e) {
+    $('orMsg').textContent = /not found/.test(e.message) ? 'not saved: restart mg ui first (the running server predates orientations)' : 'not saved: ' + e.message;
+    return false;
+  }
+}
+async function orientSave() {
+  const T = orientCurrent();
+  $('orMsg').textContent = 'saving…';
+  if (!(await orientPost(T))) return false;
+  orientEnd(T); orientOpen = false;
+  $('orMsg').textContent = 'saved: every export uses it from now on';
+  await refreshState(); capturePreview(); orientHome();
+  return true;
+}
+async function orientReset() {
+  if (!(await orientPost(null))) return;
+  orientEnd(autoT.clone());
+  $('orMsg').textContent = 'back to the automatic orientation';
+  await refreshState(); capturePreview();
+}
+function orientUi() {
+  const o = wsState?.orientation || {};
+  $('orState').textContent = OR.dirty ? '· not saved' : o.user ? '· yours' : '· automatic';
+  $('orSave').disabled = !OR.dirty; $('orCancel').disabled = !OR.dirty;
+  $('orReset').disabled = !o.user;
+  $('orientNote').textContent = o.updating ? 'updating the export files for the new orientation…'
+    : OR.dirty ? 'orientation changed: not saved yet' : o.lapsed ? 'your orientation no longer applies: the cameras were re-run'
+    : o.user ? 'using your orientation' : '';
+  $('orientBtn').classList.toggle('primary', !$('orientPanel').hidden && !placed);
+  if ($('asLooks')) $('asLooks').textContent = OR.dirty ? 'Save and continue' : 'Looks right';
+}
+function orientHome() {  // the panel's place outside the assistant: the Preview's side column
+  if (placed) return;
+  const panel = $('orientPanel');
+  $('orientHome').appendChild(panel);
+  panel.hidden = !(orientOpen || OR.dirty); $('orientHome').hidden = panel.hidden;
+  if (!panel.hidden) orientBegin(); else if (OR.active && !OR.dirty) orientEnd(null);
+  orientUi();
+}
+function mountPlace(viewSlot, toolSlot) {
+  const moved = !isShown('preview');  // side by side: the Preview already shows the model
+  if (moved) viewSlot.appendChild(view); else viewSlot.innerHTML = '<div class="hint">the model is in the Preview, on the right</div>';
+  toolSlot.appendChild($('orientPanel')); $('orientPanel').hidden = false;
+  const hide = ['cameras', 'sparse', 'dense'].filter((k) => layerObj[k]?.visible);
+  hide.forEach((k) => { layerObj[k].visible = false; });  // just the model
+  placed = { hide, moved };
+  if (orientBegin()) viewFront();
+  orientUi();
+}
+function unmountPlace(remount = false) {  // remount: the place step is redrawn, keep the session going
+  if (!placed) return;
+  if (placed.moved) $('pv3d').prepend(view);
+  placed.hide.forEach((k) => { if (layerObj[k]) layerObj[k].visible = true; });
+  placed = null;
+  if (remount) { $('orientHome').appendChild($('orientPanel')); $('orientPanel').hidden = $('orientHome').hidden = true; } else orientHome();
+  render();
+}
+$('orientBtn').addEventListener('click', () => { orientOpen = $('orientPanel').hidden; if (!orientOpen && OR.dirty) orientEnd(null); orientHome(); });
+$('orFloor').addEventListener('click', () => { orientBegin(); armFloor(!OR.picking); });
+$('orFront').addEventListener('click', makeFront);
+document.querySelectorAll('[data-turn]').forEach((b) => b.addEventListener('click', () => { const [a, s] = b.dataset.turn.split(','); turn(a, +s); }));
+document.querySelectorAll('#orHandles button').forEach((b) => b.addEventListener('click', () => setHandles(b.dataset.h)));
+$('orCentre').addEventListener('click', () => { orientBegin(); settle(true, false); });
+$('orDrop').addEventListener('click', () => { orientBegin(); settle(false, true); });
+$('orSave').addEventListener('click', orientSave);
+$('orCancel').addEventListener('click', () => { orientEnd(null); $('orMsg').textContent = ''; if (placed) orientBegin(); else { orientOpen = false; orientHome(); } });
+$('orReset').addEventListener('click', orientReset);
+setHandles('off');
+
+// ---------------------------------------------------------------- frame viewer
+// Every keyframe big, with its mask as an overlay, a before/after slider, side by side or alone,
+// and per-frame flags (blur, no camera, mask missing or jumping) to find the bad ones quickly.
+const FV = { i: 0, mode: 'overlay', filter: 'all', stats: null, statsFor: null, img: null, mask: null, layer: null,
+             loadedFor: null, zoom: 1, ox: 0, oy: 0, split: 0.5 };
+try { FV.mode = localStorage.getItem('mg.fv') || FV.mode; } catch {}
+function fvOpen() {
+  if (!current || !wsState) return;
+  document.querySelectorAll('#fvSeg button').forEach((b) => b.classList.toggle('on', b.dataset.fv === FV.mode));
+  document.querySelectorAll('#fvFilter button').forEach((b) => b.classList.toggle('on', b.dataset.ff === FV.filter));
+  $('fvStage').classList.toggle('compare', FV.mode === 'compare');
+  fvStats(); fvLoad();
+}
+async function fvStats() {
+  const key = [current, wsState.frames.length, wsState.masks.length, lastVersion].join('|');
+  if (FV.statsFor === key) return;
+  FV.statsFor = key; FV.stats = null;
+  try { FV.stats = await api(`/api/workspaces/${current}/frame-stats`); } catch { FV.stats = []; }
+  fvTrack(); fvInfo();
+  if (FV.pendingFlagged) { FV.pendingFlagged = false; const l = fvList(); if (l.length) fvGo(l[0]); }
+}
+const median = (a) => { const b = a.filter((x) => x != null).sort((x, y) => x - y); return b.length ? b[Math.floor(b.length / 2)] : null; };
+function localSharp(i) {  // sharpness against the neighbouring keyframes: the scene changes around an orbit
+  if (!FV.stats?.[i]) return null;
+  const r = FV.stats[i], m = median(FV.stats.slice(Math.max(0, i - 4), i + 5).filter((x) => x !== r).map((x) => x.sharpness));
+  return r?.sharpness != null && m ? r.sharpness / m : null;
+}
+function fvFlags(i) {  // why a keyframe deserves a look
+  const r = FV.stats?.[i]; if (!r) return [];
+  const out = [], ls = localSharp(i);
+  if (ls != null && ls < 0.45) out.push(['warn', 'blurrier than its neighbours']);
+  if (r.posed === false) out.push(['bad', 'no camera position']);
+  if (r.coverage != null) {
+    const nb = FV.stats.slice(Math.max(0, i - 3), i + 4).filter((x, k) => x !== r && x.coverage != null).map((x) => x.coverage).sort((a, b) => a - b);
+    const med = nb[Math.floor(nb.length / 2)];
+    if (r.coverage < 0.005) out.push(['bad', 'the mask found no subject']);
+    else if (med && Math.abs(r.coverage - med) / med > 0.5) out.push(['warn', `mask much ${r.coverage > med ? 'bigger' : 'smaller'} than its neighbours`]);
+  }
+  return out;
+}
+function fvList() {
+  const all = [...Array(wsState?.frames.length || 0).keys()];
+  return FV.filter === 'flagged' ? all.filter((i) => fvFlags(i).length) : all;
+}
+function fvGo(i) {
+  const n = wsState?.frames.length || 0;
+  FV.i = Math.max(0, Math.min(n - 1, i)); FV.zoom = 1; FV.ox = FV.oy = 0;
+  fvLoad(); fvTrack();
+}
+function fvStep(d) {
+  const l = fvList(); if (!l.length) return;
+  const k = l.findIndex((i) => i >= FV.i);
+  const at = k < 0 ? l.length : k, cur = l[at] === FV.i ? at : (d > 0 ? at - 1 : at);
+  fvGo(l[Math.max(0, Math.min(l.length - 1, cur + d))]);
+}
+function openFrames(filter = 'all') {
+  showG('preview'); FV.filter = filter;
+  if (filter === 'flagged') FV.pendingFlagged = true;
+  showPv('frames');
+  if (filter === 'flagged' && FV.stats) { FV.pendingFlagged = false; const l = fvList(); if (l.length) fvGo(l[0]); }
+}
+const loadImg = (src, fallback) => new Promise((ok) => {
+  const im = new Image();
+  im.onload = () => ok(im);
+  im.onerror = () => { if (fallback) { im.onerror = () => ok(null); im.src = fallback; fallback = null; } else ok(null); };
+  im.src = src;
+});
+async function fvLoad() {
+  const name = wsState?.frames[FV.i];
+  $('fvHint').hidden = !!name; $('fvHint').textContent = 'no keyframes yet: run the frames step';
+  if (!name) { FV.img = null; fvDraw(); fvInfo(); return; }
+  const want = `${current}/${name}/${lastVersion}`;
+  fvInfo();
+  if (FV.loadedFor === want) { fvDraw(); return; }
+  FV.loadedFor = want;
+  const base = `/api/workspaces/${current}`, f = encodeURIComponent(name);
+  const [img, mask] = await Promise.all([loadImg(`${base}/image/frames/${f}?v=${lastVersion}`, `${base}/thumb/frames/${f}`),
+    wsState.masks.includes(name) ? loadImg(`${base}/image/masks/${f}?v=${lastVersion}`, `${base}/thumb/masks/${f}`) : null]);
+  if (FV.loadedFor !== want) return;  // moved on meanwhile
+  FV.img = img; FV.mask = mask;
+  FV.layer = img && mask ? overlayLayer(mask, img.naturalWidth, img.naturalHeight) : null;
+  fvDraw();
+}
+function overlayLayer(mask, w, h) {  // the background veiled, the subject tinted blue
+  const a = document.createElement('canvas'); a.width = w; a.height = h;
+  const ag = a.getContext('2d'); ag.drawImage(mask, 0, 0, w, h);
+  const d = ag.getImageData(0, 0, w, h), px = d.data;
+  for (let i = 0; i < px.length; i += 4) { px[i + 3] = px[i]; px[i] = px[i + 1] = px[i + 2] = 255; }  // brightness -> opacity
+  ag.putImageData(d, 0, 0);
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const g = c.getContext('2d');
+  g.fillStyle = 'rgba(4,7,11,.68)'; g.fillRect(0, 0, w, h);
+  g.globalCompositeOperation = 'destination-out'; g.drawImage(a, 0, 0);
+  g.globalCompositeOperation = 'source-over';
+  ag.globalCompositeOperation = 'source-in'; ag.fillStyle = 'rgba(90,169,255,.2)'; ag.fillRect(0, 0, w, h);
+  g.drawImage(a, 0, 0);
+  return c;
+}
+function fvGeom() {
+  const st = $('fvStage'), W = st.clientWidth, H = st.clientHeight, img = FV.img;
+  if (!img) return null;
+  const iw = img.naturalWidth, ih = img.naturalHeight, side = FV.mode === 'side', gap = side ? Math.round(iw * 0.02) : 0;
+  const tw = side ? 2 * iw + gap : iw, s = Math.min(W / tw, H / ih) * 0.97 * FV.zoom;
+  return { W, H, iw, ih, gap, s, x0: (W - tw * s) / 2 + FV.ox, y0: (H - ih * s) / 2 + FV.oy };
+}
+function fvDraw() {
+  const cv = $('fvCanvas'), st = $('fvStage'), dpr = devicePixelRatio || 1;
+  const W = st.clientWidth, H = st.clientHeight;
+  if (!W || !H) return;
+  if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
+  const g = cv.getContext('2d');
+  g.setTransform(1, 0, 0, 1, 0, 0); g.fillStyle = '#090b0e'; g.fillRect(0, 0, cv.width, cv.height);
+  const G = fvGeom(); if (!G) return;
+  const { iw, ih, gap, s, x0, y0 } = G, img = FV.img;
+  g.setTransform(dpr * s, 0, 0, dpr * s, dpr * x0, dpr * y0);  // image pixels from here on
+  g.imageSmoothingQuality = 'high';
+  const noMask = () => { g.fillStyle = 'rgba(0,0,0,.6)'; g.fillRect(0, 0, iw, ih); };
+  if (FV.mode === 'mask') { if (FV.mask) g.drawImage(FV.mask, 0, 0, iw, ih); else noMask(); }
+  else g.drawImage(img, 0, 0);
+  if (FV.mode === 'overlay' && FV.layer) g.drawImage(FV.layer, 0, 0);
+  if (FV.mode === 'side') { if (FV.mask) g.drawImage(FV.mask, iw + gap, 0, iw, ih); else { g.fillStyle = '#161a21'; g.fillRect(iw + gap, 0, iw, ih); } }
+  if (FV.mode === 'compare' && FV.layer) {
+    const x = Math.round(iw * FV.split);
+    g.save(); g.beginPath(); g.rect(x, 0, iw - x, ih); g.clip(); g.drawImage(FV.layer, 0, 0); g.restore();
+    g.fillStyle = '#ffffff'; g.fillRect(x - 1 / s, 0, 2 / s, ih);
+  }
+}
+function fvInfo() {
+  const n = wsState?.frames.length || 0, name = wsState?.frames[FV.i], l = fvList();
+  $('fvPos').textContent = !n ? '' : FV.filter === 'flagged' ? `${Math.max(0, l.indexOf(FV.i)) + 1} of ${l.length} flagged` : `${FV.i + 1} / ${n}`;
+  if (!name) { $('fvInfo').innerHTML = ''; return; }
+  const r = FV.stats?.[FV.i], flags = fvFlags(FV.i);
+  const chip = (cls, t) => `<span class="chip ${cls}">${esc(t)}</span>`;
+  $('fvInfo').innerHTML = [`<b>${esc(name)}</b>`,
+    localSharp(FV.i) != null ? chip('', `sharpness ${localSharp(FV.i).toFixed(2)}× its neighbours`) : '',
+    r?.coverage != null ? chip('', `subject ${(100 * r.coverage).toFixed(0)}% of the frame`) : !wsState.masks.includes(name) ? chip('', 'no mask yet') : '',
+    r?.posed != null ? chip(r.posed ? 'ok' : 'bad', r.posed ? 'camera placed' : 'no camera position') : '',
+    ...flags.filter(([, t]) => t !== 'no camera position').map(([c, t]) => chip(c, t)),
+    FV.filter === 'flagged' && !l.length && FV.stats ? '<span class="muted">nothing flagged: every keyframe looks fine</span>' : '',
+    !FV.stats ? '<span class="muted">measuring the keyframes…</span>' : ''].filter(Boolean).join(' ');
+  $('fvCam').disabled = !camData.some((c) => c.name === name);
+}
+function fvTrack() {  // subject coverage per keyframe, flagged ones in red, the current one in white
+  const cv = $('fvTrack'), dpr = devicePixelRatio || 1, W = cv.clientWidth, H = cv.clientHeight;
+  if (!W) return;
+  cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+  const g = cv.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, W, H);
+  const n = wsState?.frames.length || 0; if (!n) return;
+  const bw = W / n, maxc = Math.max(0.05, ...(FV.stats || []).map((r) => r.coverage || 0));
+  for (let i = 0; i < n; i++) {
+    const r = FV.stats?.[i], fl = fvFlags(i), c = r?.coverage ?? 0.5 * maxc, h = Math.max(2, (H - 8) * c / maxc);
+    g.fillStyle = fl.some(([k]) => k === 'bad') ? '#ef5d5d' : fl.length ? '#f0b429' : '#3a5f8a';
+    g.fillRect(i * bw + 0.5, H - h, Math.max(1, bw - 1), h);
+  }
+  g.fillStyle = '#ffffff'; g.fillRect(FV.i * bw, 0, Math.max(2, bw), 4);
+  g.fillRect(FV.i * bw + bw / 2 - 1, 0, 2, H);
+}
+let fvDrag = null;
+$('fvCanvas').addEventListener('pointerdown', (e) => {
+  $('fvCanvas').setPointerCapture(e.pointerId);
+  fvDrag = { x: e.clientX, y: e.clientY, ox: FV.ox, oy: FV.oy, pan: FV.mode !== 'compare' || e.shiftKey || e.button !== 0 };
+  if (!fvDrag.pan) fvSplitAt(e);
+});
+function fvSplitAt(e) {
+  const G = fvGeom(); if (!G) return;
+  const r = $('fvCanvas').getBoundingClientRect();
+  FV.split = Math.max(0, Math.min(1, (e.clientX - r.left - G.x0) / (G.iw * G.s))); fvDraw();
+}
+$('fvCanvas').addEventListener('pointermove', (e) => {
+  if (!fvDrag) return;
+  if (fvDrag.pan) { FV.ox = fvDrag.ox + e.clientX - fvDrag.x; FV.oy = fvDrag.oy + e.clientY - fvDrag.y; fvDraw(); } else fvSplitAt(e);
+});
+$('fvCanvas').addEventListener('pointerup', () => { fvDrag = null; });
+$('fvCanvas').addEventListener('wheel', (e) => {
+  e.preventDefault();
+  const G = fvGeom(); if (!G) return;
+  const r = $('fvCanvas').getBoundingClientRect(), mx = e.clientX - r.left - G.W / 2, my = e.clientY - r.top - G.H / 2;
+  const k = Math.exp(-e.deltaY * 0.0015), z = Math.max(1, Math.min(12, FV.zoom * k)), f = z / FV.zoom;
+  FV.ox = mx - (mx - FV.ox) * f; FV.oy = my - (my - FV.oy) * f; FV.zoom = z;  // zoom about the cursor
+  if (z === 1) FV.ox = FV.oy = 0;
+  fvDraw();
+}, { passive: false });
+$('fvCanvas').addEventListener('dblclick', () => { FV.zoom = 1; FV.ox = FV.oy = 0; fvDraw(); });
+const trackPick = (e) => { const r = $('fvTrack').getBoundingClientRect(), n = wsState?.frames.length || 0; if (n) fvGo(Math.floor((e.clientX - r.left) / r.width * n)); };
+$('fvTrack').addEventListener('pointerdown', (e) => { $('fvTrack').setPointerCapture(e.pointerId); trackPick(e); $('fvTrack').onpointermove = trackPick; });
+$('fvTrack').addEventListener('pointerup', () => { $('fvTrack').onpointermove = null; });
+document.querySelectorAll('#fvSeg button').forEach((b) => b.addEventListener('click', () => {
+  FV.mode = b.dataset.fv; FV.zoom = 1; FV.ox = FV.oy = 0;
+  try { localStorage.setItem('mg.fv', FV.mode); } catch {}
+  fvOpen();
+}));
+document.querySelectorAll('#fvFilter button').forEach((b) => b.addEventListener('click', () => {
+  FV.filter = b.dataset.ff; fvOpen();
+  const l = fvList(); if (FV.filter === 'flagged' && l.length && !l.includes(FV.i)) fvGo(l[0]);
+}));
+$('fvPrev').addEventListener('click', () => fvStep(-1));
+$('fvNext').addEventListener('click', () => fvStep(1));
+$('fvCam').addEventListener('click', () => { const name = wsState?.frames[FV.i]; showPv('3d'); setTimeout(() => flyToCamera(name), 0); });
+new ResizeObserver(() => { fvDraw(); fvTrack(); }).observe($('fvStage'));
+
+addEventListener('keydown', (e) => {
+  if (e.target.matches('input, select, textarea') || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (!$('exportModal').hidden) return;
+  if (isShown('preview') && pvMode === 'frames') {
+    if (e.key === 'ArrowRight') { e.preventDefault(); fvStep(1); } else if (e.key === 'ArrowLeft') { e.preventDefault(); fvStep(-1); }
+    else if (e.key === 'Home') fvGo(0); else if (e.key === 'End') fvGo(1e9);
+    return;
+  }
+  const viewShown = placed?.moved || (isShown('preview') && pvMode === '3d');
+  if (!viewShown) return;
+  if (e.key === 'Escape' && OR.picking) armFloor(false);
+  else if (e.key.toLowerCase() === 'w') setDisplay(DISPLAYS[(DISPLAYS.indexOf(display) + 1) % DISPLAYS.length]);
+  else if (e.key === '5') { proj.set(!camera.isOrthographicCamera); render(); }
+});
+
+// ---------------------------------------------------------------- run options (from /api/options)
+// One set of options per scan, used by both Assisted and Manual and kept in browser storage. A value
+// may carry the reason it was set (what you filmed, a preset, advice applied): the step pages show it.
+let optSpec = [], presets = {}, upstream = {};
+const RAW_MESH = { mvs: 'mvs/scene_mesh.ply', vggt: 'vggt/tsdf_mesh.ply' };
+const SOURCE_LABEL = { mvs: 'the MVS mesh', vggt: 'the VGGT mesh', custom: 'a custom mesh' };
+const RO_DEFAULT = () => ({ values: {}, why: {}, preset: '', from: '', sel: [...DEFAULT_ON], page: 'overview' });
+let RO = RO_DEFAULT();
+const optOf = (name) => optSpec.find((o) => o.name === name);
+function roLoad(name) {
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem('mg.run.' + name) || 'null'); } catch {}
+  RO = Object.assign(RO_DEFAULT(), saved || {});
+}
+function roSave() { if (current) try { localStorage.setItem('mg.run.' + current, JSON.stringify(RO)); } catch {} }
+const optValue = (o) => (o.name in RO.values ? RO.values[o.name] : o.default);
+function setOpt(name, v, why) {
+  const o = optOf(name); if (!o) return;
+  if (v === '' || v == null || v === o.default) { delete RO.values[name]; delete RO.why[name]; }
+  else { RO.values[name] = v; if (why) RO.why[name] = why; else delete RO.why[name]; }
+  roSave();
+}
+function runOptions() {  // what a run sends: the values that differ from the defaults
+  const out = Object.fromEntries(Object.entries(RO.values).filter(([k, v]) => optOf(k) && v !== '' && v != null));
+  if (RO.from && wsState?.raw_meshes.includes(RO.from) && !out.mesh) out.mesh = `${wsState.root}/${RAW_MESH[RO.from]}`;
+  return out;
+}
+function applyPreset(name) {
+  for (const [k, w] of Object.entries(RO.why)) if (w.startsWith('preset ')) setOpt(k, null);
+  RO.preset = name;
+  const p = presets[name];
+  if (p) Object.entries(p.options).forEach(([k, v]) => setOpt(k, v, `preset ${name}: ${p.description}`));
+  roSave();
+}
+function optInput(o) {  // an input bound to the scan's options
+  const v = optValue(o), a = `data-opt="${o.name}"`;
+  if (o.type === 'bool') return `<input type="checkbox" ${a} ${v ? 'checked' : ''}>`;
+  if (o.choices) return `<select ${a}>${o.choices.map((c) => `<option ${String(c) === String(v) ? 'selected' : ''}>${c}</option>`).join('')}</select>`;
+  return `<input type="${['int', 'float'].includes(o.type) ? 'number' : 'text'}" step="any" ${a} value="${v ?? ''}" placeholder="${o.default ?? 'auto'}">`;
+}
+function optRows(list, explain) {  // explain: the assistant's longer form, with defaults and reasons
+  return list.map((o) => `<div class="as-opt ${o.name in RO.values ? 'changed' : ''}" title="${esc(o.help)}"><code>${o.name}</code>${optInput(o)}
+    <div><div class="help">${esc(o.help)}${explain && o.default != null && o.default !== '' ? ` (default ${o.default})` : ''}</div>
+    ${RO.why[o.name] ? `<div class="why">→ ${esc(RO.why[o.name])}</div>` : ''}</div></div>`).join('');
+}
+function bindOpts(root) {
+  root.querySelectorAll('[data-opt]').forEach((el) => el.addEventListener('change', () => {
+    const o = optOf(el.dataset.opt);
+    let v = o.type === 'bool' ? el.checked : el.value === '' ? null : el.value;
+    if (v != null && o.type === 'int') v = parseInt(v, 10); else if (v != null && o.type === 'float') v = parseFloat(v);
+    setOpt(o.name, v);
+    el.closest('.as-opt')?.classList.toggle('changed', o.name in RO.values);
+    el.closest('.as-opt')?.querySelector('.why')?.remove();  // your value now
+    if (o.name === 'resolution_level') renderDisk();
+  }));
+}
+async function loadOptions() {
+  const r = await api('/api/options');
+  optSpec = r.options; presets = r.presets; upstream = r.upstream;
+  $('preset').innerHTML = '<option value="">none</option>' + Object.keys(presets).map((p) => `<option title="${esc(presets[p].description)}">${p}</option>`).join('');
+  $('preset').addEventListener('change', () => { applyPreset($('preset').value); renderRun(); });
+}
+
+// ---------------------------------------------------------------- side panel
+
+const ago = (t) => {
+  if (!t) return '';
+  const s = Date.now() / 1000 - t;
+  return s < 90 ? 'just now' : s < 3600 ? `${Math.round(s / 60)} min ago` : s < 86400 ? `${Math.round(s / 3600)} h ago` : `${Math.round(s / 86400)} d ago`;
+};
+const thumbUrl = (w) => `/api/workspaces/${encodeURIComponent(w.name)}/preview.jpg?v=${w.preview || 'k'}`;
+const scanInfo = (w) => [w.frames && `${w.frames} frames`, w.faces && `${fmt(w.faces)} faces`,
+  w.custom && 'edited', w.last_run && ago(w.last_run)].filter(Boolean).join(' · ');
+let scans = [];
+async function refreshList() {
+  scans = await api('/api/workspaces');
+  $('wsList').innerHTML = scans.length ? scans.map((w) => `
+    <div class="ws-item ${w.name === current ? 'active' : ''}" data-ws="${w.name}">
+      ${w.preview != null ? `<img class="ws-thumb" src="${thumbUrl(w)}" alt="" loading="lazy">` : '<span class="ws-thumb empty"></span>'}
+      <div class="ws-text"><div>${w.name}<span class="dots">${STAGES.map((s) => `<i class="${w.stages[s] ? 'on' : ''}" title="${s}"></i>`).join('')}</span>
+        ${w.job === 'running' ? ' <span class="muted">· running</span>' : ''}</div>
+        <small>${scanInfo(w) || (w.video ? w.video.split('/').pop() : 'no video yet')}</small></div></div>`).join('')
+    : '<div class="muted">none yet</div>';
+  renderGlimpse();
+  document.querySelectorAll('[data-ws]').forEach((el) => {
+    el.addEventListener('click', () => select(el.dataset.ws));
+    el.addEventListener('mouseenter', () => showScanCard(el));
+    el.addEventListener('mouseleave', () => { $('scanCard').hidden = true; });
+  });
+}
+function showScanCard(el) {  // floating card: a bigger preview and the details
+  const w = scans.find((x) => x.name === el.dataset.ws); if (!w) return;
+  const card = $('scanCard'), r = el.getBoundingClientRect();
+  const status = w.job === 'running' ? 'running now' : w.last_status ? `last run: ${w.last_status}` : 'not run yet';
+  card.innerHTML = `${w.preview != null ? `<img src="${thumbUrl(w)}" alt="">` : ''}
+    <b>${w.name}</b><div class="muted">${[w.frames && `${w.frames} keyframes`, w.faces && `${fmt(w.faces)} faces (clean)`,
+      w.textured && 'textured', w.custom && 'has a custom edit'].filter(Boolean).join(' · ') || 'no results yet'}</div>
+    <div class="muted">${status}${w.last_run ? ' · ' + ago(w.last_run) : ''}</div>
+    ${w.video ? `<div class="muted small">${w.video.split('/').pop()}</div>` : ''}`;
+  card.style.top = Math.min(r.top, innerHeight - 290) + 'px'; card.style.left = r.right + 10 + 'px';
+  card.hidden = false;
+}
+
+async function select(name) {
+  unmountPlace();
+  if (OR.active) orientEnd(null);
+  orientOpen = false; orientHome();
+  FV.i = 0; FV.loadedFor = FV.statsFor = null; FV.stats = null;
+  roLoad(name); asLoad(name);
+  current = name; jobSince = 0; lastVersion = null; reloadScene.fitted = false;
+  liveTracks = {}; trackState = { stage: null }; trackSince = 0;
+  stepsOpen.clear(); stepsClosed.clear(); Object.keys(fileTracks).forEach((k) => delete fileTracks[k]);
+  $('rerunInfo').textContent = ''; $('checkOut').innerHTML = ''; $('runErr').textContent = '';
+  $('log').textContent = ''; $('hint').style.display = 'none';
+  Object.keys(layerObj).forEach((k) => setLayer(k, null));
+  history.replaceState(null, '', '#' + name);
+  await refreshList();
+  await refreshState();
+  runMode = modeFor(name); await loadAdvice(); renderRun();
+  if (isShown('preview') && pvMode === 'frames') fvOpen();
+}
+
+async function refreshState(beforeScene) {  // beforeScene: runs once the state is in, before the (slow) 3D reload
+  if (!current) return;
+  wsState = await api(`/api/workspaces/${current}/state`);
+  await refreshHistory();
+  $('wsTitle').textContent = '· ' + current;
+  renderStages(); renderRail();
+  renderFilm();
+  renderOutputs();
+  $('dupBox').hidden = !wsState.done.frames;
+  beforeScene?.();
+  if (layerDefaultsFor !== current) {
+    layerDefaultsFor = current;
+    layerOn.custom = !!wsState.layers.custom;
+    layerOn.textured = !wsState.layers.custom;
+  }
+  if (wsState.version !== lastVersion) {
+    if (lastVersion != null && !isShown('preview')) $('pvPip').hidden = false;  // something new to look at
+    lastVersion = wsState.version; await reloadScene();
+    if (isShown('preview') && pvMode === 'frames') fvOpen();
+  } else renderLayerToggles();
+  orientUi();
+}
+
+const gb = (b) => (b / 1e9).toFixed(1) + ' GB';
+function renderDisk() {  // on the raw-mesh page, next to resolution_level
+  const d = wsState?.disk, el = $('diskInfo'); if (!d || !el) return;
+  const need = d.mvs_need?.[optValue(optOf('resolution_level') || { name: 'resolution_level', default: 1 })];
+  el.textContent = need != null ? `depth maps need ~${gb(need)} · ${gb(d.free)} free` : `${gb(d.free)} free on this disk`;
+  el.style.color = need != null && need * 1.15 > d.free ? 'var(--bad)' : '';
+}
+
+// ---------------------------------------------------------------- Run: steps, step pages, log drawer
+// One layout for both modes. On the left the steps (they are the pipeline: status, time, progress);
+// on the right the selected step's page: what it does, the run in progress, the result and advice,
+// its options. Assisted goes one step at a time with explanations and suggested values; Manual
+// shows every option, lets you tick several steps and adds an overview of them all.
+const AS_STAGES = ['frames', 'mask', 'sfm', 'mvs', 'clean', 'texture'];
+const AS_INFO = {
+  frames: ['Pick keyframes', 'Reads the video, scores every frame for sharpness and keeps the sharpest ones, spread evenly along your path around the subject. Blurred and duplicate views are dropped.', 'under a minute'],
+  mask: ['Find the subject', 'An AI segmentation model outlines the subject in every keyframe. These masks later decide what is subject and what is background.', '1-3 minutes'],
+  sfm: ['Place the cameras', 'Matches features between keyframes to work out where the camera was for each one (structure from motion). Everything after depends on these positions.', '1-3 minutes'],
+  mvs: ['Build the raw mesh', 'Computes a depth map per keyframe and fuses them into a dense point cloud and a mesh. This is the slow step; it includes the background.', '5-30 minutes'],
+  vggt: ['Raw mesh with VGGT', 'An alternative to the two steps before: an AI model predicts depth from all keyframes at once (needs a GPU). Faster and less detailed, and it replaces the camera positions; try it on a duplicate of the scan.', '1-2 minutes'],
+  clean: ['Isolate the subject', 'Carves away what the masks say is background, removes the floor or table, fills holes, keeps the main piece and writes the 3D print file.', 'about a minute'],
+  texture: ['Paint the photos on', 'Projects the keyframes onto the clean mesh to make the colour texture of the final model.', '1-5 minutes'],
+};
+const PAGE_LABEL = { overview: 'All steps', start: 'Your scan', subject: 'What you filmed', place: 'Place your model', done: 'Done' };
+const pageLabel = (p) => PAGE_LABEL[p] || AS_INFO[p][0];
+const AS_DEFAULT = () => ({ step: 'start', subject: null, coverage: null, flags: {}, placed: false, waiting: null, advice: [] });
+let AS = AS_DEFAULT(), asChoices = null;
+function asLoad(name) {  // the assistant remembers where it was for each scan
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem('mg.assist.' + name) || 'null'); } catch {}
+  if (saved?.opts && !Object.keys(RO.values).length) { RO.values = saved.opts; RO.why = saved.why || {}; roSave(); }  // older layout
+  const { opts, why, ...rest } = saved || {};
+  AS = Object.assign(AS_DEFAULT(), rest, { waiting: null, advice: [] });
+}
+function asSave() {
+  if (!current) return;
+  const { waiting, advice, ...keep } = AS;
+  try { localStorage.setItem('mg.assist.' + current, JSON.stringify(keep)); } catch {}
+}
+function pages() {
+  const stages = runMode === 'manual' || wsState?.done?.vggt ? ['frames', 'mask', 'sfm', 'mvs', 'vggt', 'clean', 'texture'] : AS_STAGES;
+  return [...(runMode === 'manual' ? ['overview'] : []), 'start', 'subject', ...stages, 'place', ...(runMode === 'assisted' ? ['done'] : [])];
+}
+const curPage = () => (runMode === 'assisted' ? AS.step : RO.page);
+function goPage(p) {
+  if (runMode === 'assisted') AS.step = p; else { RO.page = p; roSave(); }
+  renderRun();
+  $('stepPage').scrollTop = 0;
+}
+const stepNo = (p) => pages().filter((x) => x !== 'overview').indexOf(p) + 1;
+let lastDur = {};  // stage -> seconds of its last finished run (from the history)
+function stageState(st) {
+  const j = jobSnap?.stages?.[st];
+  if (j?.status === 'running') return 'run';
+  if (j?.status === 'queued') return 'queued';
+  if (j && ['failed', 'gate-failed', 'preflight-failed', 'cancelled'].includes(j.status)) return 'bad';
+  if (wsState?.done?.[st]) return (wsState.stale || []).includes(st) ? 'stale' : 'done';
+  return '';
+}
+function pageState(p) {
+  if (AS_INFO[p]) return stageState(p);
+  if (p === 'start') return wsState?.meta?.video ? 'done' : '';
+  if (p === 'subject') return AS.subject && AS.coverage ? 'done' : '';
+  if (p === 'place') return wsState?.orientation?.user || AS.placed ? 'done' : '';
+  return '';
+}
+function renderRail() {
+  const cur = curPage(), manual = runMode === 'manual', sel = new Set(RO.sel);
+  const warn = (st) => (wsState?.manifest?.diagnostics?.[st] || []).some((d) => d.level !== 'info') || AS.advice.some((a) => a.stage === st && a.level === 'fix');
+  $('rail').innerHTML = '<h2>Steps</h2>' + pages().map((p) => {
+    const st = pageState(p), j = jobSnap?.stages?.[p], stage = !!AS_INFO[p], box = manual && stage;
+    const t = st === 'run' && j?.start ? Date.now() / 1000 - j.start : stage && st !== 'queued' ? lastDur[p] : null;
+    const tr = st === 'run' ? liveTracks[p] : null, cnt = tr ? viewSteps(tr, true) : null, k = cnt ? cnt.findIndex((s) => s.st === 'run') : -1;
+    const f = k >= 0 && cnt[k].p ? (k + cnt[k].p.f) / cnt.length : k >= 0 ? k / cnt.length : null;
+    return `${p === 'start' && manual ? '<div class="sep"></div>' : ''}${p === 'place' ? '<div class="sep"></div>' : ''}
+      <div class="rs ${st} ${p === cur ? 'cur' : ''} ${box ? '' : 'nobox'}" data-page="${p}" title="${stage ? p : ''}">
+      ${box ? `<input type="checkbox" data-stage="${p}" ${sel.has(p) ? 'checked' : ''} title="run this step with Run selected">` : ''}
+      <span class="dot"></span><span class="t">${pageLabel(p)}${stage && warn(p) && st !== 'run' ? '<span class="w" title="has warnings or a suggestion">⚠</span>' : ''}</span>
+      <span class="tm">${t != null ? dur(t) : ''}</span>
+      ${st === 'run' ? `<div class="rbar ${f == null ? 'indet' : ''}"><i style="width:${f != null ? Math.round(f * 100) : 30}%"></i></div>` : ''}</div>`;
+  }).join('');
+  $('rail').querySelectorAll('[data-page]').forEach((el) => el.addEventListener('click', (e) => { if (!e.target.matches('input')) goPage(el.dataset.page); }));
+  $('rail').querySelectorAll('[data-stage]').forEach((c) => c.addEventListener('change', () => {
+    const s = new Set(RO.sel); c.checked ? s.add(c.dataset.stage) : s.delete(c.dataset.stage);
+    RO.sel = STAGES.filter((x) => s.has(x)); roSave(); renderRunBar();
+  }));
+}
+function renderRunBar() {
+  const manual = runMode === 'manual', running = jobSnap?.status === 'running';
+  document.querySelectorAll('#modeSeg button').forEach((b) => b.classList.toggle('on', b.dataset.mode === runMode));
+  $('preset').value = RO.preset || '';
+  $('runBtn').hidden = $('checkBtn').hidden = !manual;
+  $('runBtn').textContent = `Run selected (${RO.sel.length})`;
+  $('runBtn').disabled = running || !RO.sel.length || !current;
+  $('cancelBtn').hidden = !running;
+  const s = $('runStatus'), tr = running && liveTracks[jobSnap.current];
+  s.className = 'runstatus' + (running ? ' run' : jobSnap && !['done', 'warning'].includes(jobSnap.status) && jobSnap.status ? ' bad' : '');
+  s.textContent = running ? `running ${pageLabel(jobSnap.current) || jobSnap.current}${tr ? ' · ' + stepCounter(tr).replace(/ · $/, '') : ''}`
+    : jobSnap?.status ? `last run: ${jobSnap.status}` : '';
+  s.title = running ? 'open this step' : '';
+}
+$('runStatus').addEventListener('click', () => { if (jobSnap?.status === 'running') goPage(jobSnap.current); });
+function renderRun() {
+  renderRunBar(); renderRail();
+  unmountPlace(true);  // the 3D view goes back to the Preview before the page below is rebuilt
+  const p = curPage();
+  if (p !== 'place') orientHome();
+  asSave();
+  const main = $('asMain');
+  if (!pages().includes(p)) return goPage(pages()[0]);
+  if (p === 'overview') return overviewPage(main);
+  if (p === 'start') return asStart(main);
+  if (p === 'subject') return asSubject(main);
+  if (p === 'place') return asPlace(main);
+  if (p === 'done') return asDone(main);
+  return stagePage(main, p);
+}
+const asRender = renderRun;
+// Manual's overview: every step's result at a glance (the cards the Pipeline tab used to hold).
+function overviewPage(main) {
+  const gen = optSpec.filter((o) => o.stages.includes('*'));
+  main.innerHTML = `<div class="ph"><h3>All steps</h3><span class="muted">${current ? esc(current) : 'no scan selected'}</span></div>
+    <p class="muted">Each step's result and warnings. Tick steps on the left and press <b>Run selected</b>; click a step for its options.</p>
+    <div class="banner" id="banner" hidden></div><div class="stages" id="stages"></div>
+    <h4>General options</h4>${optRows(gen, false)}`;
+  bindOpts(main);
+  renderStages();
+}
+function asStart(main) {
+  const has = current && wsState?.meta?.video;
+  main.innerHTML = `<div class="ph"><h3>${stepNo('start')}. Your scan</h3></div>
+    ${runMode === 'assisted' ? `<p>I'll go through it one step at a time: what each step does, what its options mean, and which values suit your capture.
+    After every step I look at the results and tell you if something should change.</p>` : ''}
+    <p class="muted">Filming tips: walk slowly all the way around the subject, keep it in the middle and fully in the frame,
+    use even light, avoid motion blur, and keep the subject still. 20-60 seconds of video is plenty.</p>
+    ${has ? `<div class="as-advice ok"><b>${esc(current)}</b>video: ${esc(String(wsState.meta.video).split('/').pop())}</div>
+      <div class="btns"><button class="btn primary" id="asUse">${runMode === 'assisted' ? 'Continue with this scan' : 'Next: what you filmed'}</button></div>
+      <p class="muted" style="margin-top:14px">or start a new scan:</p>` : ''}
+    <label class="row" style="max-width:420px">Name <input type="text" id="asName" placeholder="my-scan" style="width:220px"></label>
+    <div class="btns"><label class="btn ${has ? '' : 'primary'}" style="cursor:pointer">Choose a video…<input type="file" id="asFile" accept="video/*" hidden></label></div>
+    <progress id="asProg" value="0" max="1" hidden></progress><div class="err" id="asErr"></div>`;
+  $('asUse')?.addEventListener('click', () => goPage('subject'));
+  $('asFile').addEventListener('change', async () => {
+    const file = $('asFile').files[0]; if (!file) return;
+    const name = ($('asName').value.trim() || file.name.replace(/\.[^.]+$/, '')).replace(/[^A-Za-z0-9._-]/g, '-').slice(0, 60);
+    try {
+      await api('/api/workspaces', { method: 'POST', body: JSON.stringify({ name }) });
+      const prog = $('asProg'); prog.hidden = false;
+      await new Promise((ok, bad) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('PUT', `/api/workspaces/${name}/video?name=${encodeURIComponent(file.name)}`);
+        xhr.upload.onprogress = (e) => { if (e.lengthComputable) prog.value = e.loaded / e.total; };
+        xhr.onload = () => (xhr.status < 300 ? ok() : bad(new Error(JSON.parse(xhr.responseText).error)));
+        xhr.onerror = () => bad(new Error('upload failed'));
+        xhr.send(file);
+      });
+      try { localStorage.setItem('mg.mode.' + name, runMode); } catch {}
+      await select(name);
+      goPage('subject');
+    } catch (e) { $('asErr').textContent = e.message; }
+  });
+}
+function asApplyChoices() {
+  // what you filmed -> starting options, each with the reason (replacing the earlier choices)
+  for (const [k, w] of Object.entries(RO.why)) if (w.startsWith('you filmed ')) setOpt(k, null);
+  const take = (src, reason) => Object.entries(src || {}).forEach(([k, v]) => setOpt(k, v, 'you filmed ' + reason));
+  const c = asChoices;
+  for (const pick of [c.subjects[AS.subject], c.coverage[AS.coverage]]) {
+    if (!pick) continue;
+    if (pick.preset) take(presets[pick.preset].options, `${pick.label.toLowerCase()}: ${pick.why}`);
+    take(pick.options, `${pick.label.toLowerCase()}${pick.why ? ': ' + pick.why : ''}`);
+  }
+  if (AS.flags.lowtex) take(presets['low-texture'].options, 'something dark, plain or shiny: more and weaker features keep the views connected');
+  if (AS.flags.quick) take(presets['quick-preview'].options, 'and want a quick preview first: low resolution to check the capture in a few minutes');
+  const d = wsState?.disk, lvl = optValue(optOf('resolution_level'));
+  if (d?.mvs_need?.[lvl] && d.mvs_need[lvl] * 1.15 > d.free) setOpt('resolution_level', Math.min(2, lvl + 1), 'you filmed it, but there is not enough free disk for this resolution');
+}
+async function asSubject(main) {
+  asChoices ||= await api('/api/assist');
+  const c = asChoices;
+  const cards = (group, key) => Object.entries(c[group]).map(([k, v]) =>
+    `<div class="as-card ${AS[key] === k ? 'on' : ''}" data-${key}="${k}">${esc(v.label)}${v.why ? `<small>${esc(v.why)}</small>` : ''}</div>`).join('');
+  main.innerHTML = `<div class="ph"><h3>${stepNo('subject')}. What did you film?</h3></div><p>This sets sensible starting options; you can change any of them on each step's page.</p>
+    <div class="as-cards">${cards('subjects', 'subject')}</div>
+    <h4>How did you film it?</h4><div class="as-cards">${cards('coverage', 'coverage')}</div>
+    <label class="check"><input type="checkbox" id="asLowtex" ${AS.flags.lowtex ? 'checked' : ''}> it is dark, plain or shiny (few visible details)</label>
+    <label class="check"><input type="checkbox" id="asQuick" ${AS.flags.quick ? 'checked' : ''}> do a quick low-resolution preview first</label>
+    <div id="asChosen"></div>
+    <div class="btns"><button class="btn primary" id="asNext" ${AS.subject && AS.coverage ? '' : 'disabled'}>Next: ${AS_INFO.frames[0]}</button></div>`;
+  const pick = (k, v) => { AS[k] = v; asApplyChoices(); renderRun(); };
+  main.querySelectorAll('[data-subject]').forEach((el) => el.addEventListener('click', () => pick('subject', el.dataset.subject)));
+  main.querySelectorAll('[data-coverage]').forEach((el) => el.addEventListener('click', () => pick('coverage', el.dataset.coverage)));
+  $('asLowtex').addEventListener('change', (e) => { AS.flags.lowtex = e.target.checked; if (AS.subject && AS.coverage) asApplyChoices(); renderRun(); });
+  $('asQuick').addEventListener('change', (e) => { AS.flags.quick = e.target.checked; if (AS.subject && AS.coverage) asApplyChoices(); renderRun(); });
+  if (AS.subject && AS.coverage) {
+    const rows = Object.keys(RO.values).filter((k) => RO.why[k]);
+    $('asChosen').innerHTML = rows.length ? '<h4>Starting options</h4>' + rows.map((k) =>
+      `<div class="as-opt"><code>${k}</code><span>${esc(String(RO.values[k]))}</span><span class="why">${esc(RO.why[k])}</span></div>`).join('')
+      : '<p class="muted">The defaults suit this; I will adjust after each step if needed.</p>';
+  }
+  $('asNext').addEventListener('click', () => goPage('frames'));
+}
+async function runStages(stages) {
+  $('runErr').textContent = ''; $('checkOut').innerHTML = ''; $('rerunInfo').textContent = '';
+  await api(`/api/workspaces/${current}/run`, { method: 'POST', body: JSON.stringify({ stages, options: runOptions() }) });
+  liveTracks = {}; trackState = { stage: null }; trackSince = 0; stepsClosed.clear(); setLogMode('live'); lastFailure = null;
+  jobSnap = { status: 'running', current: stages[0], stages: Object.fromEntries(stages.map((s, i) => [s, { status: i ? 'queued' : 'running' }])) };
+  AS.waiting = stages; renderRun();
+}
+const asRun = runStages;
+const prevTrack = (s) => { const t = lastLog[s] && fileTracks[lastLog[s]]; return t && t !== 'loading' ? t : null; };
+function asRunHtml() {  // a step running: its sub-steps, a glimpse of the result, the log, Stop
+  const st = jobSnap.current, tr = liveTracks[st];
+  return `<div class="as-run"><div class="run-grid"><div><b>Running: ${esc(AS_INFO[st]?.[0] || st || '')}</b>
+      <span class="muted" id="asRunCount">${tr ? stepCounter(tr) : ''}</span>
+      <div id="asRunSteps">${tr ? stepsHtml(tr, true, prevTrack(st)) : '<div class="muted">starting…</div>'}</div></div>
+      <div>${glimpseHtml()}</div></div>
+    <div class="btns"><button class="btn" id="asLogBtn">${drawerOpen ? 'Hide log' : 'Show log'}</button><button class="btn" id="asStop">Stop this step</button></div>
+    <div class="muted" style="font-size:12px;margin-top:6px">Switching mode, tab or scan does not stop it: only Stop does.</div></div>`;
+}
+function asTick() {  // every poll while a step runs: the live parts only (typing in an option is not disturbed)
+  renderRunBar(); renderRail();
+  const el = $('asRunSteps'), st = jobSnap?.current, tr = liveTracks[st];
+  if (!el || jobSnap?.status !== 'running' || !tr) return;
+  el.innerHTML = stepsHtml(tr, true, prevTrack(st));
+  $('asRunCount').textContent = stepCounter(tr);
+}
+function bindStop(btn, label = 'Stop this step') {  // two clicks, so a stray one does not throw away a long step
+  btn?.addEventListener('click', () => {
+    if (btn.dataset.armed) { btn.disabled = true; btn.textContent = 'Stopping…'; api(`/api/workspaces/${current}/cancel`, { method: 'POST' }); return; }
+    btn.dataset.armed = '1'; btn.textContent = 'Click again to stop';
+    setTimeout(() => { if (!btn.disabled) { delete btn.dataset.armed; btn.textContent = label; } }, 3000);
+  });
+}
+const FRAME_STAGES = new Set(['frames', 'mask', 'sfm']);
+function stagePage(main, st) {
+  const assisted = runMode === 'assisted', [title, what, time] = AS_INFO[st];
+  const running = jobSnap?.status === 'running', mine = running && jobSnap.current === st, queued = jobSnap?.stages?.[st]?.status === 'queued';
+  const state = stageState(st), done = state === 'done' || state === 'stale';
+  const tips = AS.advice.filter((a) => a.stage === st);
+  const j = jobSnap?.stages?.[st];
+  const diags = ((j?.diagnostics?.length ? j.diagnostics : (wsState?.manifest?.diagnostics || {})[st]) || []).filter((d) => d.level !== 'info' || !mine);
+  const f = jobSnap?.failure || lastFailure;
+  const opts = optSpec.filter((o) => o.stages.includes(st) && !o.stages.includes('*'));
+  const shown = assisted ? opts.filter((o) => o.group === 'basic' || o.name in RO.values) : opts.filter((o) => o.group === 'basic');
+  const rest = opts.filter((o) => !shown.includes(o));
+  const next = pages()[pages().indexOf(st) + 1], prev = pages()[pages().indexOf(st) - 1];
+  const status = { run: 'running now', queued: 'waiting for its turn', bad: 'did not finish', stale: 'out of date: an earlier step was re-run', done: 'done', '': 'not run yet' }[state];
+  main.innerHTML = `<div class="ph"><h3>${stepNo(st)}. ${title}</h3><span class="muted">${status}${lastDur[st] && !mine ? ` · took ${dur(lastDur[st])}` : ''} · usually ${time}</span></div>
+    <p class="${assisted ? '' : 'muted'}">${what}</p>
+    <div id="asTop">${mine ? asRunHtml() : running && !queued ? `<div class="as-advice"><b>Running ${esc(pageLabel(jobSnap.current) || jobSnap.current)}</b><a data-go="${jobSnap.current}" style="color:var(--accent);cursor:pointer">open it</a></div>` : ''}</div>
+    <div id="asResult"></div>
+    ${lastLog[st] && !mine ? `<details id="lastRun"><summary>how the last run went</summary><div id="lastSteps"></div>
+      <a data-log="${lastLog[st]}" style="color:var(--accent);cursor:pointer;font-size:12px">open its log</a></details>` : ''}
+    <h4>Options</h4>
+    ${st === 'clean' && wsState?.raw_meshes?.length > 1 ? `<div class="as-opt"><code>clean from</code><select id="cleanFrom"><option value="">newest</option><option value="mvs">MVS mesh</option><option value="vggt">VGGT mesh</option></select><div class="help">which raw mesh clean carves</div></div>` : ''}
+    ${optRows(shown, assisted) || '<p class="muted">none</p>'}
+    ${st === 'mvs' ? '<div class="muted" id="diskInfo" style="font-size:12px;margin-top:6px"></div>' : ''}
+    ${rest.length ? `<details ${assisted ? '' : 'open'}><summary>${assisted ? 'all options of this step' : 'advanced'}</summary>${optRows(rest, assisted)}</details>` : ''}
+    <div class="btns">
+      <button class="btn primary" id="asGo" ${running ? 'disabled' : ''}>${mine ? 'Running…' : done ? 'Re-run this step' : 'Run this step'}</button>
+      ${!assisted ? `<button class="btn" data-rerun="${st}" title="tick this step and the ones that depend on it, then Run selected">Tick this and later steps</button>` : ''}
+      ${assisted && done && !running && next ? `<button class="btn primary" id="asNext">Continue: ${pageLabel(next)}</button>` : ''}
+      ${assisted && prev ? '<button class="btn" id="asBack">Back</button>' : ''}
+      ${!mine ? `<button class="btn" id="asLogBtn">${drawerOpen ? 'Hide log' : 'Show log'}</button>` : ''}</div>`;
+  if (f && f.stage === st && !mine && state !== 'done') {
+    const what2 = { 'preflight-failed': 'did not start', 'gate-failed': 'failed a quality check', cancelled: 'was stopped', failed: 'failed' }[f.status] || f.status;
+    $('asResult').innerHTML = `<div class="as-advice fix"><b>${esc(title)} ${what2}</b>
+      ${(f.diagnostics || []).map((d) => `${esc(d.message)}${d.hint ? ` → ${esc(d.hint)}` : ''}`).join('<br>') || 'the log says what happened'}
+      ${f.log ? `<div class="btns"><button class="btn" data-log="${f.log}">Open the log</button></div>` : ''}</div>`;
+  } else if (done) {
+    const m = wsState.manifest || {};
+    $('asResult').innerHTML = `<div class="as-advice ${tips.some((a) => a.level === 'fix') || state === 'stale' ? '' : 'ok'}"><b>Result</b>${esc(stageDetail(st, m) || 'done')}
+        ${diags.map((d) => `<div class="diag ${d.level}">${esc(d.message)}${d.hint ? `<span class="h">→ ${esc(d.hint)}</span>` : ''}</div>`).join('')}</div>` +
+      tips.filter((a) => a.level !== 'ok' || assisted).map((a) => `<div class="as-advice ${a.level}"><b>${a.level === 'ok' ? '✓ ' : a.level === 'fix' ? '⚠ ' : 'ℹ '}${esc(a.title)}</b>${esc(a.detail)}
+        ${Object.keys(a.apply).length ? `<div class="muted" style="margin-top:4px">suggested: ${Object.entries(a.apply).map(([k, v]) => `<code>${k} = ${v}</code>`).join(', ')}${a.rerun.length ? ` · re-runs ${a.rerun.join(' → ')}` : ''}</div>` : ''}
+        <div class="btns">${Object.keys(a.apply).length ? `<button class="btn primary" data-asfix="${tips.indexOf(a)}">Apply &amp; re-run</button>` : ''}
+          ${a.level !== 'ok' && FRAME_STAGES.has(st) ? '<button class="btn" data-asframes>Show the flagged keyframes</button>' : ''}</div></div>`).join('') +
+      (FRAME_STAGES.has(st) ? '<p class="muted" style="font-size:12px">Every keyframe and its mask, big: <a data-asframes style="color:var(--accent);cursor:pointer">Preview → Frames &amp; masks</a></p>' : '');
+  }
+  if ($('cleanFrom')) { $('cleanFrom').value = RO.from; $('cleanFrom').addEventListener('change', () => { RO.from = $('cleanFrom').value; roSave(); }); }
+  bindOpts(main); renderDisk();
+  if ($('lastRun')) $('lastRun').addEventListener('toggle', renderLastSteps);
+  if (assisted) main.querySelector('.as-advice.fix')?.scrollIntoView({ block: 'nearest' });
+  $('asGo').addEventListener('click', () => runStages([st]).catch((e) => { $('asResult').innerHTML = `<div class="err">${esc(e.message)}</div>`; }));
+  $('asNext')?.addEventListener('click', () => goPage(next));
+  $('asBack')?.addEventListener('click', () => goPage(prev));
+  $('asLogBtn')?.addEventListener('click', () => { openDrawer(!drawerOpen); $('asLogBtn').textContent = drawerOpen ? 'Hide log' : 'Show log'; });
+  bindStop($('asStop'));
+  main.querySelectorAll('[data-go]').forEach((a) => a.addEventListener('click', () => goPage(a.dataset.go)));
+  main.querySelectorAll('[data-log]').forEach((a) => a.addEventListener('click', (e) => { e.preventDefault(); openLog(a.dataset.log); }));
+  main.querySelectorAll('[data-rerun]').forEach((a) => a.addEventListener('click', () => rerunFrom(a.dataset.rerun)));
+  main.querySelectorAll('[data-asframes]').forEach((b) => b.addEventListener('click', () => openFrames(b.tagName === 'BUTTON' ? 'flagged' : 'all')));
+  main.querySelectorAll('[data-asfix]').forEach((b) => b.addEventListener('click', () => {
+    const a = tips[+b.dataset.asfix];
+    Object.entries(a.apply).forEach(([k, v]) => setOpt(k, v, a.title));
+    runStages(a.rerun.length ? a.rerun : [st]).catch((e) => { $('asResult').innerHTML = `<div class="err">${esc(e.message)}</div>`; });
+  }));
+}
+function renderLastSteps() {  // the finished run's sub-steps with their times, read from its log
+  const el = $('lastSteps'), st = curPage(); if (!el || !lastLog[st]) return;
+  const tr = lastLog[st] in fileTracks ? fileTracks[lastLog[st]] : (fileTrack(lastLog[st], st), 'loading');
+  el.innerHTML = stepsHtml(tr, false, null) || '<div class="muted">no sub-steps recorded</div>';
+}
+// Last step: the orientation every export uses, with the 3D view brought into the page.
+function asPlace(main) {
+  const has = MESH_LAYERS.some((k) => wsState?.layers?.[k]);
+  const guessed = wsState?.manifest?.clean && !wsState.manifest.clean.support_plane;
+  main.innerHTML = `<div class="ph"><h3>${stepNo('place')}. Place your model</h3></div>
+    <p>Does it stand the right way up, with its front towards you? Every export uses this: the 3D print stands on the grid's floor.</p>
+    ${guessed ? '<div class="as-advice"><b>I had to guess which way is up</b>no table or floor was found under the subject, so "up" comes from how the camera moved: check it.</div>' : ''}
+    ${has ? '<div class="as-place"><div class="slot" id="asViewSlot"></div><div class="tools" id="asToolSlot"></div></div>'
+      : '<p class="muted">There is no mesh yet: run the steps before this one.</p>'}
+    <div class="btns"><button class="btn primary" id="asLooks">${OR.dirty ? 'Save and continue' : 'Looks right'}</button>
+      ${runMode === 'assisted' ? '<button class="btn" id="asBack">Back</button>' : ''}</div>`;
+  if (has) mountPlace($('asViewSlot'), $('asToolSlot'));
+  $('asLooks').addEventListener('click', async () => {
+    if (OR.dirty && !(await orientSave())) return;
+    AS.placed = true;
+    if (runMode === 'assisted') goPage('done'); else { renderRun(); }
+  });
+  $('asBack')?.addEventListener('click', () => goPage(pages()[pages().indexOf('place') - 1]));
+}
+function asDone(main) {
+  const tips = AS.advice.filter((a) => a.level !== 'ok');
+  main.innerHTML = `<div class="ph"><h3>Your model is ready</h3></div><p>The textured model, the clean mesh and a 3D-print file are under Files in the Preview tab.</p>
+    ${tips.map((a) => `<div class="as-advice ${a.level}"><b>${esc(a.title)}</b>${esc(a.detail)}</div>`).join('')}
+    <div class="btns"><button class="btn primary" id="asExport">Export a file…</button><button class="btn" id="asPreview">Open the Preview</button>
+      <a class="btn" href="${editorUrl()}">Touch it up in Edit &amp; paint</a><button class="btn" id="asManual">Switch to Manual</button></div>`;
+  $('asExport').addEventListener('click', () => { showG('preview'); showPv('3d'); openExport(); });
+  $('asPreview').addEventListener('click', () => { showG('preview'); showPv('3d'); });
+  $('asManual').addEventListener('click', () => setMode('manual'));
+}
+async function asRefresh() {  // from the poller when a step starts or ends
+  if (!current) return;
+  if (AS.waiting && jobSnap?.status !== 'running') {
+    const ran = AS.waiting; AS.waiting = null;
+    await loadAdvice();
+    if (!isShown('run')) {  // finished while you were looking at the Preview
+      const st = ran.filter((s) => jobSnap?.stages?.[s]).pop() || ran[ran.length - 1];
+      const fixes = AS.advice.filter((a) => ran.includes(a.stage) && a.level === 'fix').length;
+      const failed = jobSnap?.status && !['done', 'warning'].includes(jobSnap.status);
+      $('runPip').hidden = false; $('runPip').classList.toggle('bad', !!failed);
+      toast(`<b>${esc(AS_INFO[st]?.[0] || st)}</b> ${failed ? 'did not finish' : 'finished'}${fixes ? ` · ${fixes} suggestion${fixes > 1 ? 's' : ''}` : ''}`, () => { showG('run'); goPage(st); });
+    } else if (runMode === 'assisted' && ran.includes(curPage())) { /* stay: the result shows here */ }
+  }
+  renderRun();
+}
+async function loadAdvice() {
+  AS.advice = current ? await api(`/api/workspaces/${current}/advice?subject=${AS.subject || ''}`).catch(() => []) : [];
+}
+
+let runMode = 'assisted';
+function setMode(m, remember = true) {
+  runMode = m;
+  if (remember && current) try { localStorage.setItem('mg.mode.' + current, m); } catch {}
+  renderRun();
+}
+function modeFor(name) {
+  let m = null;
+  try { m = localStorage.getItem('mg.mode.' + name); } catch {}
+  return m || (wsState?.done?.frames ? 'manual' : 'assisted');
+}
+const modeHint = renderRunBar;
+document.querySelectorAll('#modeSeg button').forEach((b) => b.addEventListener('click', () => setMode(b.dataset.mode)));
+const openAssist = async () => { await loadAdvice(); renderRun(); };
+
+// The log: a drawer under the steps, closed unless you open it or a step fails.
+let drawerOpen = false;
+try { drawerOpen = localStorage.getItem('mg.drawer') === '1'; } catch {}
+function openDrawer(on) {
+  drawerOpen = on;
+  $('drawer').classList.toggle('open', on);
+  if (on) { $('logPip').hidden = true; $('logPip').classList.remove('bad'); $('log').scrollTop = $('log').scrollHeight; }
+  try { localStorage.setItem('mg.drawer', on ? '1' : '0'); } catch {}
+}
+$('drawerToggle').addEventListener('click', () => openDrawer(!drawerOpen));
+openDrawer(drawerOpen);
+const showPane = (name) => { if (name === 'log') openDrawer(true); };
+bindStop($('cancelBtn'), 'Stop');
+
+// ---------------------------------------------------------------- Run / Preview tabs
+let gtab = 'run', split = false;
+try { gtab = localStorage.getItem('mg.gtab') || gtab; split = localStorage.getItem('mg.split') === '1'; } catch {}
+const canSplit = () => innerWidth >= 1500;
+const isShown = (g) => (split && canSplit()) || gtab === g;
+function showG(g) {
+  gtab = g;
+  try { localStorage.setItem('mg.gtab', g); } catch {}
+  layoutG();
+}
+function layoutG() {
+  const sp = split && canSplit();
+  $('work').classList.toggle('split', sp);
+  $('splitLbl').hidden = !canSplit(); $('splitChk').checked = split;
+  document.querySelectorAll('.gtab').forEach((b) => b.classList.toggle('on', sp || b.dataset.g === gtab));
+  document.querySelectorAll('.gpane').forEach((p) => p.classList.toggle('on', sp || p.dataset.g === gtab));
+  if (isShown('preview')) $('pvPip').hidden = true;
+  if (isShown('run')) $('runPip').hidden = true;
+  // the place step borrows the 3D view only while the Preview is hidden
+  if (curPage() === 'place') { if (isShown('run')) renderRun(); else unmountPlace(); }
+  if (isShown('preview') && pvMode === 'frames') fvOpen();
+}
+document.querySelectorAll('.gtab').forEach((b) => b.addEventListener('click', () => showG(b.dataset.g)));
+$('splitChk').addEventListener('change', () => {
+  split = $('splitChk').checked;
+  try { localStorage.setItem('mg.split', split ? '1' : '0'); } catch {}
+  layoutG();
+});
+addEventListener('resize', () => { if (split) layoutG(); else $('splitLbl').hidden = !canSplit(); });
+let pvMode = '3d';
+try { pvMode = localStorage.getItem('mg.pv') === 'frames' ? 'frames' : '3d'; } catch {}
+function showPv(m) {
+  pvMode = m;
+  try { localStorage.setItem('mg.pv', m); } catch {}
+  $('pv3d').hidden = m !== '3d'; $('pvFrames').hidden = m !== 'frames';
+  document.querySelectorAll('#pvSeg button').forEach((b) => b.classList.toggle('on', b.dataset.pv === m));
+  $('pvHint').textContent = m === 'frames' ? '← → step through the keyframes · scroll to zoom, drag to pan, double-click to fit' : 'W: next display mode';
+  if (m === 'frames') fvOpen();
+}
+document.querySelectorAll('#pvSeg button').forEach((b) => b.addEventListener('click', () => showPv(b.dataset.pv)));
+function glimpseHtml() {  // the latest result, small, for the Run tab
+  const w = scans.find((x) => x.name === current);
+  if (!w || w.preview == null) return '<div class="muted glimpse-cap">nothing to show yet</div>';
+  return `<img class="glimpse" src="${thumbUrl(w)}" alt="" data-glimpse title="open the Preview">
+    <div class="muted glimpse-cap">${w.faces ? 'the model so far' : 'a keyframe'} · <a data-glimpse style="color:var(--accent);cursor:pointer">open the Preview</a></div>`;
+}
+function renderGlimpse() {  // the small picture at the end of the Run bar
+  const w = scans.find((x) => x.name === current), g = $('glimpseMini');
+  g.hidden = !w || w.preview == null;
+  if (!g.hidden && g.dataset.src !== thumbUrl(w)) { g.src = g.dataset.src = thumbUrl(w); }
+}
+document.addEventListener('click', (e) => { if (e.target.closest('[data-glimpse]')) showG('preview'); });
+let toastTimer = 0;
+function toast(html, open) {
+  const t = $('toast');
+  t.innerHTML = `<span>${html}</span><a id="toastOpen">open</a><a class="muted" id="toastX">✕</a>`;
+  t.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true; }, 15000);
+  $('toastOpen').addEventListener('click', () => { t.hidden = true; open(); });
+  $('toastX').addEventListener('click', () => { t.hidden = true; });
+}
+
+// ---------------------------------------------------------------- export window
+// One file at a time with its own settings, remembered per file type.
+const EX_FIELDS = { exHeight: 'height_mm', exMode: 'mode', exSide: 'shell_side', exShell: 'shell', exWall: 'min_wall',
+                    exStand: 'stand', exBase: 'base', exUp: 'up' };
+let exView = null;
+function exSettingsKey() { return 'mg.export.' + $('exFormat').value; }
+function exLoad() {
+  let saved = {};
+  try { saved = JSON.parse(localStorage.getItem(exSettingsKey()) || '{}'); } catch {}
+  const stl = $('exFormat').value === 'stl';
+  const defaults = { exHeight: stl ? 100 : '', exMode: 'auto', exSide: 'inward', exShell: 3, exWall: 0.8, exStand: 'auto', exBase: 2, exUp: 'auto' };
+  for (const id of Object.keys(EX_FIELDS)) $(id).value = saved[id] ?? defaults[id];
+  $('exPrint').hidden = !stl;
+  $('exHeight').placeholder = stl ? '' : 'as scanned';
+  exShellFields();
+}
+function exShellFields() {
+  const shellish = $('exMode').value !== 'solid';
+  $('exSide').closest('label').hidden = !shellish; $('exShell').closest('label').hidden = !shellish;
+}
+function exSave() {
+  try { localStorage.setItem(exSettingsKey(), JSON.stringify(Object.fromEntries(Object.keys(EX_FIELDS).map((id) => [id, $(id).value])))); } catch {}
+}
+function openExport() {
+  if (!current || !wsState) return;
+  const outs = new Set((wsState.outputs || []).map((o) => o.path)), c = wsState.custom || {};
+  const has = { stl: outs.has('mesh/mesh_clean.ply') || c.mesh, glb_mesh: outs.has('mesh/mesh_clean.ply') || c.mesh,
+                ply: outs.has('mesh/mesh_clean.ply') || c.mesh, glb_textured: outs.has('mesh/textured.ply') || c.texture,
+                obj: outs.has('mesh/textured.ply') || c.texture };
+  [...$('exFormat').options].forEach((o) => { o.disabled = !has[o.value]; });
+  if ($('exFormat').selectedOptions[0]?.disabled) $('exFormat').value = [...$('exFormat').options].find((o) => !o.disabled)?.value || 'stl';
+  $('exSource').querySelector('[value=custom]').disabled = !(c.mesh || c.texture);
+  $('exSource').value = c.mesh || c.texture ? 'custom' : 'pipeline';
+  $('exScan').textContent = '· ' + current;
+  $('exUp').querySelector('[value=auto]').textContent = wsState.orientation?.user ? 'your orientation' : 'auto';
+  $('exStatus').textContent = ''; $('exIssues').innerHTML = ''; $('exDownload').hidden = true;
+  exLoad();
+  $('exportModal').hidden = false;
+}
+$('exportBtn').addEventListener('click', openExport);
+$('exOrient').addEventListener('click', () => { $('exportModal').hidden = true; showG('preview'); showPv('3d'); orientOpen = true; orientHome(); });
+$('exClose').addEventListener('click', () => { $('exportModal').hidden = true; });
+$('exportModal').addEventListener('click', (e) => { if (e.target === $('exportModal')) $('exportModal').hidden = true; });
+addEventListener('keydown', (e) => { if (e.key === 'Escape') $('exportModal').hidden = true; });
+$('exFormat').addEventListener('change', () => { exLoad(); $('exDownload').hidden = true; $('exIssues').innerHTML = ''; $('exStatus').textContent = ''; });
+$('exMode').addEventListener('change', exShellFields);
+$('exBuild').addEventListener('click', async () => {
+  exSave();
+  const fmt = $('exFormat').value, options = {};
+  for (const [id, key] of Object.entries(EX_FIELDS)) {
+    if (fmt !== 'stl' && !['exHeight', 'exUp'].includes(id)) continue;
+    const val = $(id).value;
+    if (val !== '') options[key] = $(id).type === 'number' ? (key === 'base' ? Number(val) / 100 : Number(val)) : val;
+  }
+  $('exBuild').disabled = true; $('exDownload').hidden = true; $('exIssues').innerHTML = '';
+  $('exStatus').textContent = fmt === 'stl' ? 'building the print (rebuilt as a solid: about half a minute)…' : 'building…';
+  const t0 = Date.now();
+  try {
+    const r = await api(`/api/workspaces/${current}/export`, { method: 'POST', body: JSON.stringify({ format: fmt, source: $('exSource').value, options }) });
+    const url = `/api/workspaces/${current}/exports/${encodeURIComponent(r.file)}?t=${Date.now()}`;
+    $('exDownload').href = url; $('exDownload').hidden = false; $('exDownload').textContent = `Download ${r.file}`;
+    const info = r.info || {}, p = info.print || {};
+    $('exStatus').textContent = `${(r.size / 1e6).toFixed(1)} MB · built in ${Math.round((Date.now() - t0) / 1000)} s`
+      + (info.print_size_mm ? ` · ${info.print_size_mm.join(' × ')} mm · ${info.print_watertight ? 'watertight' : 'NOT watertight'}` : '')
+      + (p.mode ? ` · printed as ${p.mode}` : '');
+    $('exIssues').innerHTML = (r.issues || []).map((d) => `<div class="diag ${d.level}">${esc(d.message)}${d.hint ? `<span class="h">→ ${esc(d.hint)}</span>` : ''}</div>`).join('');
+    await exPreview(fmt, url);
+  } catch (e) { $('exStatus').textContent = 'failed: ' + e.message; }
+  $('exBuild').disabled = false;
+});
+async function exPreview(fmt, url) {
+  const box = $('exPreview');
+  if (fmt === 'obj') { $('exEmpty').hidden = false; $('exEmpty').textContent = 'OBJ is a zip (model + material + texture): no preview'; if (exView) exView.mesh.visible = false, exView.draw(); return; }
+  if (!exView) {
+    const r = new THREE.WebGLRenderer({ antialias: true }); r.setPixelRatio(Math.min(devicePixelRatio, 2));
+    r.outputColorSpace = THREE.SRGBColorSpace; box.appendChild(r.domElement);
+    const sc = new THREE.Scene(); sc.background = new THREE.Color(0x0f1115);
+    const cam = new THREE.PerspectiveCamera(40, 1, 0.01, 1e5);
+    sc.add(new THREE.HemisphereLight(0xffffff, 0x404050, 1.5)); const sun = new THREE.DirectionalLight(0xffffff, 1.6);
+    cam.add(sun); sun.position.set(1, 2, 1); sc.add(cam);
+    const ctl = new OrbitControls(cam, r.domElement);
+    exView = { r, sc, cam, ctl, mesh: null, draw: () => { const w = box.clientWidth, h = box.clientHeight; r.setSize(w, h, false); exView.proj.resize(w / h); r.render(sc, exView.proj.camera); } };
+    exView.proj = projection(cam, ctl, sun, () => { exView.draw(); exView.cube?.update(); });
+    ctl.addEventListener('change', exView.draw);
+    new ResizeObserver(exView.draw).observe(box);
+    viewCube(box, { projection: exView.proj, controls: ctl, render: exView.draw, fit: () => exView.frame?.() }).then((c) => { exView.cube = c; });
+  }
+  $('exEmpty').hidden = true;
+  if (exView.mesh) { exView.sc.remove(exView.mesh); exView.mesh = null; }
+  let obj;
+  if (fmt === 'stl' || fmt === 'ply') {
+    const { STLLoader } = await import('three/addons/loaders/STLLoader.js');
+    const { PLYLoader } = await import('three/addons/loaders/PLYLoader.js');
+    const geo = await new (fmt === 'stl' ? STLLoader : PLYLoader)().loadAsync(url);
+    geo.computeVertexNormals();
+    obj = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0xd0d4da, roughness: .8, vertexColors: !!geo.attributes.color }));
+    if (fmt === 'stl') obj.rotation.x = -Math.PI / 2;  // slicers are Z-up, the preview Y-up
+  } else {
+    obj = (await new GLTFLoader().loadAsync(url)).scene;
+    obj.traverse((o) => { if (o.isMesh && o.material?.map) o.material = new THREE.MeshBasicMaterial({ map: o.material.map }); });
+  }
+  exView.sc.add(obj); exView.mesh = obj;
+  exView.frame = () => {
+    const b = new THREE.Box3().setFromObject(obj), size = b.getSize(new THREE.Vector3()).length(), c = b.getCenter(new THREE.Vector3());
+    exView.ctl.target.copy(c); exView.cam.near = size / 200; exView.cam.far = size * 20; exView.cam.updateProjectionMatrix();
+    exView.cam.position.copy(c).add(new THREE.Vector3(0.25, 0.2, 1).normalize().multiplyScalar(size * 1.35)); exView.cam.lookAt(c);
+    exView.proj.framed(); exView.draw();
+  };
+  exView.frame();
+}
+
+// ---------------------------------------------------------------- outputs
+const editorUrl = () => '/edit' + (current ? '#' + encodeURIComponent(current) : '');
+$('toEditor').addEventListener('click', () => { location.href = editorUrl(); });
+
+function renderOutputs() {
+  const outs = wsState?.outputs || [];
+  $('noOutputs').hidden = !!outs.length;
+  $('outCount').textContent = outs.length ? `(${outs.length})` : '';
+  $('editBtn').hidden = !outs.some((o) => o.path === 'mesh/mesh_clean.ply');
+  $('editBtn').href = editorUrl();
+  const dl = (p) => `/api/workspaces/${current}/download?path=${encodeURIComponent(p)}`;
+  const size = (b) => b == null ? 'made on download' : b >= 1e9 ? gb(b) : b >= 1e6 ? (b / 1e6).toFixed(1) + ' MB' : (b / 1e3).toFixed(0) + ' kB';
+  $('outputs').innerHTML = outs.map((o) => `<a href="${dl(o.path)}" download class="${o.stale ? 'stale' : ''}"
+    title="${esc(o.path)}${o.stale ? ' (stale: an earlier stage was re-run)' : ''}">${esc(o.label)}${o.stale ? ' · stale' : ''}<span>${size(o.size)}</span></a>`
+    + (o.issues || []).map((d) => `<div class="diag ${d.level}">${esc(d.message)}${d.hint ? `<span class="h">→ ${esc(d.hint)}</span>` : ''}</div>`).join('')).join('');
+  $('zipBtn').href = dl('mesh.zip');
+  $('zipBtn').hidden = !outs.some((o) => o.path.startsWith('mesh/'));
+  $('outDir').textContent = wsState.root ? 'on disk: ' + wsState.root + '/mesh/' : '';
+}
+
+function stageDetail(s, m) {
+  const x = m[s]; if (!x) return '';
+  const pct = (v) => (100 * v).toFixed(1) + '%';
+  switch (s) {
+    case 'frames': return `${x.keyframes} keyframes from ${x.samples} samples · ${x.fps?.toFixed?.(0)} fps`;
+    case 'mask': return `${x.model} · subject ${pct(x.mean_coverage)} of frame${x.empty_masks ? ` · ${x.empty_masks} empty` : ''}`;
+    case 'sfm': return `${x.registered}/${x.frames} registered · ${x.mean_reproj_error_px?.toFixed(2)} px · ${fmt(x.points3D)} pts · ${x.mapper}`;
+    case 'mvs': return 'dense cloud + mesh';
+    case 'vggt': return `${x.frames} frames on ${x.device} · ${fmt(x.points)} pts`;
+    case 'clean': return `${fmt(x.faces_out)} faces from ${SOURCE_LABEL[wsState.clean_source] || 'the raw mesh'} · carved ${fmt(x.carved_vertices || 0)}${x.holes_filled ? ` · ${x.holes_filled} hole${x.holes_filled === 1 ? '' : 's'} filled` : ''} · ground ${x.support_plane ? 'removed' : 'none'}`;
+    case 'texture': return x.source === 'custom' ? 'textured GLB of your custom (edited) mesh' : 'textured GLB ready';
+  }
+  return '';
+}
+// ---------------------------------------------------------------- stage steps
+// steps:begin (pure: no DOM; tested against real logs with node)
+// Each stage's sub-steps, recognised from its log. A step starts when `start` matches
+// ('stage' = when the stage starts, null = when the previous step ends on `end`).
+// `prog` reads progress from lines while the step is current; `note` keeps a result.
+// `opt` steps may not happen (hidden once skipped); `when` filters by the stage options.
+const OMVS = /(\d+) \((\d+(?:\.\d+)?)%, ([^,)]+)(?:, ETA ([^)]+))?\)/;   // OpenMVS "12 (8.33%, 1m28s, ETA 16m)..."
+const secs = (d) => [...d.matchAll(/(\d+(?:\.\d+)?)(ms|h|m|s)/g)].reduce((a, [, v, u]) => a + v * { ms: 1e-3, s: 1, m: 60, h: 3600 }[u], 0);
+const omvs = (l) => { const m = OMVS.exec(l); if (!m) return null;
+  const f = +m[2] / 100, n = +m[1];
+  return { f, n, total: f > 0 ? Math.round(n / f) : null, eta: m[4] && m[4] !== '0ms' ? m[4] : null, end: !m[4], el: secs(m[3]) }; };
+const frac = (rx) => (l) => { const m = rx.exec(l); return m ? { f: +m[1] / +m[2], n: +m[1], total: +m[2] } : null; };
+const STEPS = {
+  frames: [
+    { label: 'Read video, score sharpness', start: 'stage' },
+    { label: 'Pick & write keyframes', start: /analyzed \d+ samples/,
+      note: [/analyzed (\d+) samples, keeping (\d+) keyframes/, (m) => `${m[2]} of ${m[1]} samples`] },
+  ],
+  mask: [
+    { label: 'Load segmentation model', start: 'stage' },
+    { label: 'Segment frames', start: /segmenting \d+ frames/, prog: frac(/masked (\d+)\/(\d+) frames/),
+      note: [/segmenting \d+ frames with (\S+)/, (m) => m[1]] },
+  ],
+  sfm: [
+    { label: 'Extract SIFT features', start: /extracting SIFT features/, prog: frac(/Processed file \[(\d+)\/(\d+)\]/) },
+    { label: 'Match neighbouring frames', start: /(sequential|exhaustive) matching/,
+      prog: (l) => frac(/Processing image \[(\d+)\/(\d+)\]/)(l) || frac(/Matching block \[(\d+)\/(\d+)/)(l) },
+    { label: 'Loop-closure matching', start: /loop-closure matching/, prog: frac(/Processing block \[(\d+)\/(\d+)\]/),
+      when: (o) => o.matcher !== 'exhaustive', opt: true },
+    { label: 'Load matches, relative poses', start: /Loading rigs|Loading cameras/, opt: true },
+    { label: 'Rotation averaging', start: /Running rotation averaging/, when: (o) => o.mapper !== 'incremental' },
+    { label: 'Track establishment', start: /Running track establishment/, when: (o) => o.mapper !== 'incremental' },
+    { label: 'Global positioning', start: /Running global positioning/, when: (o) => o.mapper !== 'incremental' },
+    { label: 'Bundle adjustment', start: /Running iterative bundle adjustment/, when: (o) => o.mapper !== 'incremental',
+      prog: frac(/bundle adjustment iteration (\d+) \/ (\d+) finished/) },
+    { label: 'Retriangulate & refine', start: /Running iterative retriangulation/, when: (o) => o.mapper !== 'incremental' },
+    { label: 'Incremental mapping', start: /trying incremental too|Initializing with image pair|Registering image #/,
+      optWhen: (o) => o.mapper !== 'incremental', count: 'frames',
+      prog: (l, c) => { const m = /Registering image #\d+ \((\d+)\)/.exec(l); return m && c.frames ? { f: +m[1] / c.frames, n: +m[1], total: c.frames } : null; } },
+    { label: 'Undistort images for MVS', start: /undistorting images/, prog: frac(/Undistorting image \[(\d+)\/(\d+)\]/),
+      note: [/Reconstruction with (\d+) images and (\d+) points/, (m) => `${m[1]} cameras, ${fmt(+m[2])} points`] },
+  ],
+  mvs: [
+    { label: 'Export cameras, select views', start: 'stage' },
+    { label: 'Estimate depth maps', start: /: Estimated depth-maps \d/, prog: omvs, unit: 'images' },
+    { label: 'Geometric consistency pass', start: /Geometric-consistent estimated depth-maps/, prog: omvs, unit: 'images', opt: true },
+    { label: 'Fuse depth maps → dense cloud', start: /Fused depth-maps/, prog: omvs, unit: 'images',
+      note: [/Densifying point-cloud completed: (\d+) points/, (m) => fmt(+m[1]) + ' points'] },
+    { label: 'Mesh: insert points (Delaunay)', start: /\$ ReconstructMesh/, prog: (l) => /Points inserted/.test(l) ? omvs(l) : null },
+    { label: 'Mesh: weight tetrahedra', start: /Points weighted/, prog: omvs, end: /tetrahedras weighting completed/ },
+    { label: 'Mesh: graph-cut surface', start: null, end: /tetrahedras graph-cut completed/ },
+    { label: 'Clean & save raw mesh', start: null,
+      note: [/Mesh reconstruction completed: \d+ vertices, (\d+) faces/, (m) => fmt(+m[1]) + ' faces'] },
+  ],
+  vggt: [
+    { label: 'Load frames', start: 'stage' },
+    { label: 'Load model, predict depth, fuse TSDF', start: /VGGT on \d+ frames/,
+      note: [/VGGT on (\d+) frames at (\S+) \((\w+)\)/, (m) => `${m[1]} frames at ${m[2]} on ${m[3]}`] },
+    { label: 'Write mesh & cameras', start: /TSDF mesh:/,
+      note: [/TSDF mesh: (\d+) faces/, (m) => fmt(+m[1]) + ' faces'] },
+  ],
+  clean: [
+    { label: 'Load mesh & masks, fit support plane', start: 'stage',
+      note: [/(support plane found|plane fit rejected)/, (m) => m[1] === 'support plane found' ? 'plane found' : 'no plane (it cut the subject)'] },
+    { label: 'Silhouette carving', start: /plane fit rejected|support plane found/,
+      note: [[/filled (\d+) carved holes from the raw mesh \((\d+) vertices\)/, (m) => `filled ${m[1]} hole${m[1] === '1' ? '' : 's'} from the raw mesh`],
+             [/silhouette carving removed (\d+)\/(\d+)/, (m) => `removed ${fmt(+m[1])} of ${fmt(+m[2])} vertices`]] },
+    { label: 'Remove ground, keep main piece, write', start: /silhouette carving removed/,
+      note: [/clean mesh: (\d+) faces/, (m) => fmt(+m[1]) + ' faces'] },
+    { label: 'Export GLB & print STL', start: /clean mesh: \d+ faces/,
+      note: [/print STL: (\S+) mm, \d+ faces, (watertight|NOT watertight)/, (m) => `${m[1].replace(/x/g, ' × ')} mm, ${m[2]}`] },
+  ],
+  texture: [
+    { label: 'Load scene & clean mesh', start: 'stage' },
+    { label: 'Initialise views', start: /Initialized views/, prog: omvs, unit: 'views' },
+    { label: 'Pick the best view per face', start: null, end: /Assigning the best view to each face completed/ },
+    { label: 'Build texture atlas', start: null, end: /Generating texture atlas and image completed/,
+      note: [/completed: (\d+) patches, (\d+) image size/, (m) => `${fmt(+m[1])} patches, ${m[2]} px`] },
+    { label: 'Save, orient, export GLB', start: null },
+  ],
+};
+const STAGE_START = /=== (\w+)(?:: mg |  \(log:)/, STAGE_END = /=== (\w+) (OK|FAILED|CANCELLED|cancelled|failed)\b/;
+const lineTime = (l) => {  // seconds of the day from "HH:MM:SS INFO ..." or glog "I20261030 HH:MM:SS.ffffff"
+  const m = /^(?:[IWEF]\d{8} )?(\d\d):(\d\d):(\d\d)/.exec(l);
+  return m ? +m[1] * 3600 + +m[2] * 60 + +m[3] : null;
+};
+const daySpan = (a, b) => (b - a + 86400) % 86400;
+
+// A tracker follows one stage through its log: feed lines in order, read .steps.
+function newTrack(stage) {
+  return { stage, opts: {}, ctx: {}, cur: -1, status: 'pending', t: null, end: null,
+           steps: (STEPS[stage] || []).map((d) => ({ d, st: 'pending', t0: null, t1: null, p: null, note: null })) };
+}
+function plan(tr) {  // the steps that apply with this run's options
+  return tr.steps.filter((s) => !s.d.when || s.d.when(tr.opts));
+}
+function enter(tr, i, t) {
+  const steps = plan(tr);
+  for (let k = 0; k < i; k++) {
+    const s = steps[k];
+    if (s.st === 'pending') s.st = (s.d.opt || s.d.optWhen?.(tr.opts)) ? 'skipped' : 'done';
+    else if (s.st === 'run') { s.st = 'done'; s.t1 = t; }
+  }
+  const s = steps[i];
+  if (s.st === 'pending') { s.st = 'run'; s.t0 = t; }
+  tr.cur = i;
+}
+function feedTrack(tr, line) {
+  const t = lineTime(line);
+  if (t != null) { tr.t = t; for (const s of tr.steps) if (s.st === 'run' && s.t0 == null) s.t0 = t; }
+  if (tr.status === 'pending') { tr.status = 'run'; if (tr.steps[0]?.d.start === 'stage') enter(tr, 0, tr.t); }
+  const o = /options: (.*)$/.exec(line);
+  if (o && /motiongrametry\.pipeline/.test(line)) o[1].split(', ').forEach((kv) => { const [k, v] = kv.split('='); tr.opts[k] = v; });
+  const nf = /(?:extracting SIFT features from|segmenting|VGGT on) (\d+) frames/.exec(line);
+  if (nf) tr.ctx.frames = +nf[1];
+  const steps = plan(tr);
+  for (const s of steps) {  // `note` is one [regex, format] pair or a list of them
+    const notes = !s.d.note ? [] : s.d.note[0] instanceof RegExp ? [s.d.note] : s.d.note;
+    notes.forEach(([rx, f], i) => { const m = rx.exec(line); if (m) { (s.parts ||= [])[i] = f(m); s.note = s.parts.filter(Boolean).join(' · '); } });
+  }
+  const e = STAGE_END.exec(line);
+  if (e && e[1] === tr.stage) {
+    const ok = e[2] === 'OK';
+    for (const s of steps) {
+      if (s.st === 'run') { s.st = ok ? 'done' : 'failed'; s.t1 = tr.t; }
+      else if (s.st === 'pending' && ok) s.st = (s.d.opt || s.d.optWhen?.(tr.opts)) ? 'skipped' : 'done';
+    }
+    tr.status = ok ? 'done' : 'failed'; tr.end = tr.t;
+    return;
+  }
+  // a later step's start line moves the stage on (never backwards)
+  for (let i = steps.length - 1; i > tr.cur; i--) {
+    const st = steps[i].d.start;
+    if (st instanceof RegExp && st.test(line)) { enter(tr, i, tr.t); return; }
+  }
+  const cur = steps[tr.cur];
+  if (!cur) return;
+  let p = null;
+  if (cur.d.prog) { p = cur.d.prog(line, tr.ctx); if (p) { cur.p = p; cur.pt = tr.t; } }
+  const next = steps[tr.cur + 1];
+  if (cur.d.end?.test(line) || (p?.end && cur.d.prog === omvs && next && next.d.start === null)) {
+    // OpenMVS often prints a step's 100% line only once the next step is over: trust its own timer
+    const t = p?.end && cur.t0 != null && p.el < daySpan(cur.t0, tr.t) ? (cur.t0 + Math.round(p.el)) % 86400 : tr.t;
+    if (next && next.d.start === null) enter(tr, tr.cur + 1, t);
+    else { cur.st = 'done'; cur.t1 = t; }
+  }
+}
+// Split a stream holding several stages (a UI run) into one tracker per stage.
+function trackLines(lines, tracks = {}, state = { stage: null }) {
+  for (const l of lines) {
+    const s = STAGE_START.exec(l);
+    if (s && STEPS[s[1]] && (!tracks[s[1]] || tracks[s[1]].status !== 'run')) {
+      tracks[s[1]] = newTrack(s[1]); state.stage = s[1];
+    }
+    if (state.stage && tracks[state.stage]) feedTrack(tracks[state.stage], l);
+  }
+  return tracks;
+}
+// steps:end
+
+const dur = (s) => s == null ? '' : s < 60 ? `${Math.round(s)}s` : s < 3600 ? `${Math.floor(s / 60)}m ${String(Math.round(s % 60)).padStart(2, '0')}s`
+  : `${Math.floor(s / 3600)}h ${String(Math.floor(s % 3600 / 60)).padStart(2, '0')}m`;
+const nowSod = () => { const d = new Date(); return d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds(); };
+const shortEta = (e) => e.replace(/(\d+[hms])\d+ms$/, '$1');
+let liveTracks = {}, trackSince = 0, trackState = { stage: null };
+const fileTracks = {};                 // log path -> tracker (finished runs, parsed on demand)
+const stepsOpen = new Set(), stepsClosed = new Set();
+
+async function fileTrack(path, stage) {
+  if (fileTracks[path]) return fileTracks[path];
+  fileTracks[path] = 'loading';
+  try {
+    const r = await fetch(`/api/workspaces/${current}/log?path=${encodeURIComponent(path)}`);
+    fileTracks[path] = r.ok ? trackLines((await r.text()).split('\n'))[stage] || null : null;
+  } catch { fileTracks[path] = null; }
+  renderStages(); renderLastSteps();
+  return fileTracks[path];
+}
+// The steps as shown now. An OpenMVS step whose own ETA ran out a while ago, with silence since,
+// has really ended (its 100% line comes late) and the step after it is running.
+function viewSteps(tr, live) {
+  const steps = plan(tr).filter((s) => s.st !== 'skipped');
+  const i = steps.findIndex((s) => s.st === 'run'), s = steps[i], nx = steps[i + 1];
+  if (!live || !s || !nx || nx.d.start !== null || s.d.prog !== omvs || !s.p?.eta || s.pt == null) return steps;
+  const eta = secs(s.p.eta), due = Math.round(s.pt + eta) % 86400, late = daySpan(due, nowSod());
+  if (late < 10 + 2 * eta || late > 43200) return steps;
+  const out = steps.slice();
+  out[i] = { ...s, st: 'done', t1: due, p: { ...s.p, f: 1 } };
+  out[i + 1] = { ...nx, st: 'run', t0: due };
+  return out;
+}
+function stepsHtml(tr, live, prev) {
+  if (!tr || tr === 'loading') return tr === 'loading' ? '<div class="steps muted">reading log…</div>' : '';
+  const steps = viewSteps(tr, live);
+  const prevBy = {};
+  if (prev && prev !== 'loading') plan(prev).forEach((s) => { if (s.t0 != null && s.t1 != null) prevBy[s.d.label] = daySpan(s.t0, s.t1); });
+  const rows = steps.map((s) => {
+    const running = s.st === 'run' && live;
+    const st = s.st === 'run' && !live ? 'stopped' : s.st;
+    let el = s.t0 != null ? (s.t1 != null ? daySpan(s.t0, s.t1) : running ? daySpan(s.t0, nowSod()) : null) : null;
+    const bits = [];
+    if (s.p && s.st === 'run') {
+      if (s.p.total) bits.push(`${s.p.n}/${s.p.total}${s.d.unit ? ' ' + s.d.unit : ''}`);
+      bits.push(Math.round(s.p.f * 100) + '%');
+      const eta = s.p.eta ? shortEta(s.p.eta) : el != null && s.p.f > 0.03 && el > 3 ? dur(el * (1 - s.p.f) / s.p.f) : null;
+      if (running && eta) bits.push(`~${eta} left`);
+    }
+    if (s.note && s.st !== 'pending') bits.push(s.note);
+    if (s.st === 'pending' && prevBy[s.d.label] != null) bits.push(`last run ${dur(prevBy[s.d.label])}`);
+    if (s.st === 'pending' && (s.d.opt || s.d.optWhen?.(tr.opts))) bits.push('if needed');
+    const bar = running ? `<div class="bar ${s.p ? '' : 'indet'}"><i style="width:${s.p ? s.p.f * 100 : 30}%"></i></div>` : '';
+    return `<div class="step ${st}"><span class="dot"></span><span class="l">${esc(s.d.label)}</span>
+      <span class="t">${el != null ? dur(el) : ''}</span>${bits.length ? `<div class="n">${esc(bits.join(' · '))}</div>` : ''}${bar}</div>`;
+  }).join('');
+  return `<div class="steps">${rows}</div>`;
+}
+function stepCounter(tr) {
+  if (!tr || tr === 'loading') return '';
+  const steps = viewSteps(tr, true);
+  const i = steps.findIndex((s) => s.st === 'run');
+  return i < 0 ? '' : `step ${i + 1}/${steps.length} · `;
+}
+
+function renderStages() {
+  const m = wsState?.manifest || {}, done = wsState?.done || {}, js = jobSnap?.stages || {};
+  const stale = new Set(wsState?.stale || []);
+  if (!$('stages')) return;  // only on Manual's "All steps" page
+  $('stages').innerHTML = STAGES.map((s) => {
+    const j = js[s];
+    let st = j && j.status !== 'done' ? j.status : done[s] ? 'done' : j ? j.status : '';
+    if (st === 'done' && stale.has(s)) st = 'stale';
+    const t = j?.start ? (((j.end || Date.now() / 1000) - j.start)).toFixed(0) + 's' : '';
+    const prog = j?.status === 'running' ? j.progress : null;
+    const diags = (j?.diagnostics?.length ? j.diagnostics : (m.diagnostics || {})[s]) || [];
+    const logPath = j?.log || lastLog[s];
+    // Sub-steps: open while running (unless closed), or on request for a finished run.
+    // Every stage of the current run shows its steps (queued ones: the plan), unless closed.
+    const inJob = !!j && j.status !== 'skipped';
+    const showSteps = !!STEPS[s] && (inJob ? !stepsClosed.has(s) : stepsOpen.has(s));
+    let tr = null, prev = null;
+    if (showSteps || st === 'running') {
+      const cached = (p) => p in fileTracks ? fileTracks[p] : (fileTrack(p, s), 'loading');
+      tr = inJob && liveTracks[s] ? liveTracks[s] : j?.status === 'queued' ? newTrack(s) : logPath ? cached(logPath) : null;
+      if (st === 'running' && lastLog[s] && lastLog[s] !== logPath) prev = cached(lastLog[s]);
+    }
+    const canSteps = !!STEPS[s] && (inJob || logPath);
+    const diagHtml = diags.filter((d) => d.level !== 'info' || st !== 'running').map((d) =>
+      `<div class="diag ${d.level}">${esc(d.message)}${d.hint ? `<span class="h">→ ${esc(d.hint)}</span>` : ''}</div>`).join('');
+    return `<div class="stage ${st}"><div class="top"><span class="badge"></span><span class="name">${s}</span>
+      <span class="links">${canSteps ? `<a data-steps="${s}">${showSteps ? 'hide steps' : 'steps'}</a> · ` : ''}${logPath ? `<a data-log="${logPath}">log</a> · ` : ''}<a data-rerun="${s}" title="tick this stage and the ones that depend on it">re-run from here</a></span>
+      <span class="time">${st === 'running' && tr ? stepCounter(tr) : st === 'running' && prog != null ? Math.round(prog * 100) + '% · ' : ''}${t}</span></div>
+      <div class="detail">${st === 'skipped' ? (done[s] ? 'skipped in this run (earlier output kept)' : 'skipped: an earlier stage failed') : st === 'stale' ? 'stale: an earlier stage was re-run, run this again'
+        : st === 'running' ? (j.step ? esc(j.step) : 'working…')
+        : stageDetail(s, m) || (st ? st : '<span class="muted">not run</span>')}</div>
+      ${st === 'running' ? '' : diagHtml}
+      ${showSteps && tr ? stepsHtml(tr, st === 'running', prev) : `<div class="bar ${prog == null ? 'indet' : ''}"><i style="width:${prog != null ? prog * 100 : 30}%"></i></div>`}</div>`;
+  }).join('');
+  $('stages').querySelectorAll('[data-steps]').forEach((a) => a.addEventListener('click', () => {
+    const s = a.dataset.steps, open = a.textContent === 'steps';
+    if (open) { stepsOpen.add(s); stepsClosed.delete(s); } else { stepsOpen.delete(s); stepsClosed.add(s); }
+    renderStages();
+  }));
+  $('stages').querySelectorAll('[data-log]').forEach((a) => a.addEventListener('click', () => openLog(a.dataset.log)));
+  $('stages').querySelectorAll('[data-rerun]').forEach((a) => a.addEventListener('click', () => rerunFrom(a.dataset.rerun)));
+  renderBanner();
+}
+
+// MVS and VGGT are alternative paths to a raw mesh: re-running never mixes them.
+const MVS_PATH = ['frames', 'mask', 'sfm', 'mvs', 'clean', 'texture'];
+const VGGT_PATH = ['frames', 'mask', 'vggt', 'clean'];
+function rerunFrom(stage) {
+  const s = wsState;
+  const viaVggt = stage === 'vggt' || (!['sfm', 'mvs', 'texture'].includes(stage) && s.raw_source === 'vggt');
+  const path = viaVggt ? VGGT_PATH : MVS_PATH;
+  const on = new Set([stage]);
+  // MVS needs SfM cameras; after a VGGT run the cameras are VGGT's.
+  if (stage === 'mvs' && s.cameras !== 'sfm') on.add('sfm');
+  for (const t of path) if ((upstream[t] || []).some((u) => on.has(u))) on.add(t);
+  RO.sel = STAGES.filter((t) => on.has(t));
+  RO.from = on.has('clean') && !viaVggt && s.raw_meshes.includes('mvs') ? 'mvs' : viaVggt ? 'vggt' : '';
+  roSave(); renderRail(); renderRunBar();
+  const list = path.filter((t) => on.has(t));
+  $('rerunInfo').innerHTML = `ticked <b>${list.join(' → ')}</b> on the left: press <b>Run selected</b> (or <b>Check</b> first)`;
+}
+
+function renderBanner() {
+  const f = jobSnap?.failure || lastFailure;
+  const b = $('banner');
+  if (!b) return;
+  if (!f || jobSnap?.status === 'running') { b.hidden = true; return; }
+  const what = { 'preflight-failed': 'did not start', 'gate-failed': 'failed a quality check',
+                 cancelled: 'was cancelled', failed: 'failed' }[f.status] || f.status;
+  b.className = 'banner' + (f.status === 'cancelled' ? ' cancel' : '');
+  b.innerHTML = `<b>${f.stage} ${what}</b>${f.exit_code != null ? ` <span class="muted">(exit ${f.exit_code})</span>` : ''}
+    ${(f.diagnostics || []).map((d) => `<div class="diag error">${esc(d.message)}${d.hint ? `<span class="h">→ ${esc(d.hint)}</span>` : ''}</div>`).join('')}
+    ${f.log ? `<div style="margin-top:6px"><a data-log="${f.log}">open the ${f.stage} log</a></div>` : ''}`;
+  b.hidden = false;
+  b.querySelectorAll('[data-log]').forEach((a) => a.addEventListener('click', () => openLog(a.dataset.log)));
+}
+
+let lastLog = {}, lastFailure = null, logMode = 'live';
+async function refreshHistory() {
+  const hist = await api(`/api/workspaces/${current}/history`);
+  lastLog = {}; lastFailure = null; lastDur = {};
+  hist.forEach((h) => { if (h.log) lastLog[h.stage] = h.log; if (['ok', 'warning'].includes(h.status) && h.duration) lastDur[h.stage] = h.duration; });
+  // The latest run attempt decides whether a failure banner is shown after a restart.
+  const real = hist.filter((h) => h.status !== 'skipped');
+  const last = real[real.length - 1];
+  if (last && !['ok', 'warning'].includes(last.status)) {
+    lastFailure = { stage: last.stage, status: last.status, exit_code: last.exit_code, log: last.log,
+                    diagnostics: (last.diagnostics || []).filter((d) => d.level === 'error') };
+  }
+  const tools = await api(`/api/workspaces/${current}/tool-logs`).catch(() => []);
+  $('history').innerHTML = hist.slice().reverse().map((h) => {
+    const when = new Date(h.started * 1000).toLocaleString([], { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+    return `<div ${h.log ? `data-log="${h.log}"` : ''}><span class="muted">${when}</span><span>${h.stage}</span>
+      <span class="st-${h.status}">${h.status}${h.diagnostics?.length ? ` · ${h.diagnostics.length} diag` : ''}</span>
+      <span class="muted">${h.duration ? Math.round(h.duration) + 's' : ''}</span></div>`;
+  }).join('') + tools.map((p) => `<div data-log="${p}"><span class="muted">OpenMVS</span><span></span><span>${p.split('/').pop()}</span><span></span></div>`).join('')
+    || '<div class="muted">no runs yet</div>';
+  $('history').querySelectorAll('[data-log]').forEach((el) => el.addEventListener('click', () => openLog(el.dataset.log)));
+}
+async function openLog(path) {
+  showPane('log');
+  const r = await fetch(`/api/workspaces/${current}/log?path=${encodeURIComponent(path)}`);
+  if (!r.ok) { $('runErr').textContent = 'log not found: ' + path; return; }
+  setLogMode('file');
+  $('logTitle').innerHTML = `${esc(path)} · <a href="/api/workspaces/${current}/log?path=${encodeURIComponent(path)}" target="_blank" style="color:var(--accent)">raw</a> · <a id="backLive" style="color:var(--accent);cursor:pointer">back to live</a>`;
+  $('backLive').addEventListener('click', () => setLogMode('live'));
+  $('log').textContent = '';
+  appendLog((await r.text()).split('\n'), true);
+  $('log').scrollTop = $('log').scrollHeight;
+}
+function setLogMode(mode) {
+  logMode = mode;
+  document.querySelectorAll('.tab').forEach((b) => b.classList.toggle('on', b.dataset.tab === (mode === 'history' ? 'history' : 'live')));
+  $('history').hidden = mode !== 'history';
+  if (mode === 'live') { $('logTitle').textContent = ''; $('log').textContent = ''; jobSince = 0; }
+  if (mode === 'history') { $('logTitle').textContent = 'click a run to open its log'; refreshHistory(); }
+}
+document.querySelectorAll('.tab').forEach((b) => b.addEventListener('click', () => setLogMode(b.dataset.tab)));
+
+let filmKey = '';
+function renderFilm() {
+  const f = wsState.frames, key = current + f.length + wsState.masks.length;
+  $('frameCount').textContent = f.length ? `(${f.length})` : '';
+  if (key === filmKey) return;
+  filmKey = key;
+  const masks = new Set(wsState.masks);
+  $('strip').innerHTML = f.length ? f.map((n, i) => `
+    <div class="thumb" data-frame="${n}" title="${n}">
+      <img loading="lazy" src="/api/workspaces/${current}/thumb/frames/${n}">
+      ${masks.has(n) ? `<img class="mask" loading="lazy" src="/api/workspaces/${current}/thumb/masks/${n}">` : ''}
+      <span>${i}</span></div>`).join('') : '<span class="muted">no keyframes yet</span>';
+  $('strip').querySelectorAll('[data-frame]').forEach((el) => el.addEventListener('click', () => {
+    $('strip').querySelectorAll('.sel').forEach((x) => x.classList.remove('sel'));
+    el.classList.add('sel'); flyToCamera(el.dataset.frame);
+  }));
+  $('strip').querySelectorAll('[data-frame]').forEach((el, i) => el.addEventListener('dblclick', () => { openFrames('all'); fvGo(i); }));
+}
+$('showMasks').addEventListener('change', () => $('film').classList.toggle('masks', $('showMasks').checked));
+
+// ---------------------------------------------------------------- job polling
+const esc = (t) => t.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+function appendLog(lines, force = false) {
+  if (logMode !== 'live' && !force) return;
+  const el = $('log'), hide = $('hideGlog').checked;
+  const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+  const html = lines.filter((l) => !(hide && /^[IW]\d{8} /.test(l))).map((l) => {
+    const cls = l.startsWith('===') ? 'st' : /\bERROR\b|\bfailed\b|\berror:|Traceback/.test(l) ? 'er' : /WARNING/.test(l) ? 'wa' : '';
+    return cls ? `<span class="${cls}">${esc(l)}</span>` : esc(l);
+  }).join('\n');
+  if (html) el.insertAdjacentHTML('beforeend', (el.textContent ? '\n' : '') + html);
+  if (el.childNodes.length > 6000) el.textContent = el.textContent.slice(-200000);
+  if (atBottom) el.scrollTop = el.scrollHeight;
+}
+let lastJobStatus = null, lastStageDone = '';
+async function poll() {
+  if (current) {
+    try {
+      // One request feeds both the live log and the step trackers (which need every line).
+      const since = logMode === 'live' ? Math.min(jobSince, trackSince) : trackSince;
+      const j = await api(`/api/workspaces/${current}/job?since=${since}`);
+      if (j.next < trackSince) {             // a new run (or a server restart): start over
+        liveTracks = {}; trackState = { stage: null }; trackSince = 0; jobSince = 0;
+        setTimeout(poll, 0); return;
+      }
+      trackLines(j.log.slice(trackSince - since), liveTracks, trackState);
+      trackSince = j.next;
+      if (logMode === 'live') { appendLog(j.log.slice(jobSince - since)); jobSince = j.next; }
+      if (j.status === 'running' && j.log.length && !drawerOpen) $('logPip').hidden = false;
+      if (j.status === 'failed' && lastJobStatus === 'running') openDrawer(true);  // a failure: show what happened
+      jobSnap = j.status ? j : null;
+      $('jobStatus').textContent = j.status === 'running' ? `running ${j.current}…` : j.status ? `last run: ${j.status}` : '';
+      const doneKey = Object.entries(j.stages || {}).filter(([, v]) => v.status !== 'running' && v.status !== 'queued').map(([k]) => k).join();
+      if (j.status !== 'running' && lastJobStatus === 'running' && !isShown('run')) {
+        $('runPip').hidden = false; $('runPip').classList.toggle('bad', !['done', 'warning'].includes(j.status));
+      }
+      if (doneKey !== lastStageDone || j.status !== lastJobStatus) {
+        lastStageDone = doneKey; lastJobStatus = j.status;
+        await refreshState(() => asRefresh()); refreshList();
+      } else {
+        renderStages(); asTick();
+        if (wsState?.orientation?.updating) await refreshState();  // until the exports are rebuilt
+      }
+      modeHint();
+    } catch (e) { console.warn(e); }
+  }
+  setTimeout(poll, 1000);
+}
+
+// ---------------------------------------------------------------- actions
+$('createBtn').addEventListener('click', async () => {
+  $('newErr').textContent = '';
+  try {
+    const body = { name: $('newName').value.trim(), video_path: $('newPath').value.trim() || null };
+    await api('/api/workspaces', { method: 'POST', body: JSON.stringify(body) });
+    await select(body.name);
+  } catch (e) { $('newErr').textContent = e.message; }
+});
+$('upload').addEventListener('change', async () => {
+  const file = $('upload').files[0]; if (!file) return;
+  $('newErr').textContent = '';
+  try {
+    let name = $('newName').value.trim() || current;
+    if (!name) { name = file.name.replace(/\.[^.]+$/, '').replace(/[^A-Za-z0-9._-]/g, '-').slice(0, 60); }
+    if (name !== current) {
+      await api('/api/workspaces', { method: 'POST', body: JSON.stringify({ name }) }).catch((e) => {
+        if (!/already exists/.test(e.message)) throw e;
+      });
+    }
+    const prog = $('upProg'); prog.hidden = false;
+    await new Promise((ok, fail) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('PUT', `/api/workspaces/${name}/video?name=${encodeURIComponent(file.name)}`);
+      xhr.upload.onprogress = (e) => { if (e.lengthComputable) prog.value = e.loaded / e.total; };
+      xhr.onload = () => (xhr.status < 300 ? ok() : fail(new Error(JSON.parse(xhr.responseText).error)));
+      xhr.onerror = () => fail(new Error('upload failed'));
+      xhr.send(file);
+    });
+    prog.hidden = true;
+    await select(name);
+  } catch (e) { $('newErr').textContent = e.message; $('upProg').hidden = true; }
+  $('upload').value = '';
+});
+$('dupBtn').addEventListener('click', async () => {
+  $('newErr').textContent = '';
+  const name = $('newName').value.trim() || `${current}-copy`;
+  $('dupBtn').disabled = true; $('dupBtn').textContent = 'Copying…';
+  try {
+    await api(`/api/workspaces/${current}/duplicate`, { method: 'POST', body: JSON.stringify({ name, reconstruction: $('dupRecon').checked }) });
+    $('newName').value = '';
+    await select(name);
+  } catch (e) { $('newErr').textContent = e.message; }
+  $('dupBtn').disabled = false; $('dupBtn').textContent = 'Duplicate scan';
+});
+$('runBtn').addEventListener('click', () => runStages(RO.sel).catch((e) => { $('runErr').textContent = e.message; }));
+$('checkBtn').addEventListener('click', async () => {
+  $('runErr').textContent = ''; $('checkOut').innerHTML = '<div class="muted checkres">checking…</div>';
+  try {
+    const r = await api(`/api/workspaces/${current}/check`, { method: 'POST', body: JSON.stringify({ stages: RO.sel, options: runOptions() }) });
+    $('checkOut').innerHTML = '<div class="checkres">' + Object.entries(r.checks).map(([s, ds]) => {
+      const bad = ds.some((d) => d.level === 'error'), cls = bad ? 'st-failed' : ds.length ? 'st-warning' : 'st-ok';
+      return `<div><b class="${cls}">${bad ? '✖' : ds.length ? '!' : '✓'} ${s}</b>` +
+        ds.map((d) => `<div class="diag ${d.level}">${esc(d.message)}${d.hint ? `<span class="h">→ ${esc(d.hint)}</span>` : ''}</div>`).join('') + '</div>';
+    }).join('') + '</div>';
+  } catch (e) { $('checkOut').innerHTML = ''; $('runErr').textContent = e.message; }
+});
+$('hideGlog').addEventListener('change', () => { if (logMode === 'live') { $('log').textContent = ''; jobSince = 0; } });
+
+renderLayerToggles();
+await loadOptions();
+await refreshList();
+const initial = decodeURIComponent(location.hash.slice(1));
+const params = new URLSearchParams(location.search);
+// deep links (help page, screenshots): ?tab=run|preview &pv=3d|frames &pane=pipeline|log|outputs &open=export|assist
+if (params.get('tab')) gtab = params.get('tab');
+if (params.get('pv')) pvMode = params.get('pv');
+if (params.get('pane') === 'outputs') { gtab = 'preview'; pvMode = '3d'; }
+else if (params.get('pane') === 'log') openDrawer(true);
+layoutG(); showPv(pvMode);
+if (!initial) setMode('assisted', false);
+(initial ? select(initial) : Promise.resolve()).then(async () => {
+  if (params.get('pane') === 'pipeline') { RO.page = 'overview'; setMode('manual', false); }
+  if (params.get('page')) goPage(params.get('page'));
+  if (params.get('open') === 'export') { showG('preview'); showPv('3d'); openExport(); }
+  if (params.get('open') === 'assist') {
+    if (params.get('step')) AS.step = params.get('step');
+    if (params.get('subject')) AS.subject = params.get('subject'); if (params.get('coverage')) AS.coverage = params.get('coverage');
+    runMode = 'assisted'; await loadAdvice(); renderRun();
+  }
+  if (params.get('open') === 'orient') { showG('preview'); showPv('3d'); orientOpen = true; orientHome(); }
+}).catch((e) => console.error(e));
+poll();
+</script>
+</body>
+</html>

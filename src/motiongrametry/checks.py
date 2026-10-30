@@ -1,0 +1,372 @@
+"""Pre-flight checks (before a stage starts) and quality gates (after it finishes).
+
+Pre-flight errors stop a stage before it wastes time or overwrites good results;
+gates turn silent bad results (2/92 frames registered, a mesh carved to nothing)
+into explicit warnings or failures with a hint on what to change.
+"""
+
+from __future__ import annotations
+
+import importlib.util
+import math
+import re
+import shutil
+import subprocess
+from pathlib import Path
+
+from .diagnostics import Diag, error, info, warn
+from .workspace import Workspace
+
+GB = 1e9
+
+
+# ---- environment probes ---------------------------------------------------------------------
+def mem_available() -> int | None:
+    try:
+        for line in Path("/proc/meminfo").read_text().splitlines():
+            if line.startswith("MemAvailable:"):
+                return int(line.split()[1]) * 1024
+    except OSError:
+        pass
+    return None
+
+
+def disk_free(path: Path) -> int:
+    while not path.exists():
+        path = path.parent
+    return shutil.disk_usage(path).free
+
+
+def has_module(name: str) -> bool:
+    return importlib.util.find_spec(name) is not None
+
+
+def openmvs_problem() -> Diag | None:
+    from . import mvs
+
+    if shutil.which("DensifyPointCloud"):
+        return None
+    if not shutil.which("docker"):
+        return error("openmvs-missing", "OpenMVS is not installed and Docker is not available",
+                     "install OpenMVS, or Docker and build docker/openmvs.Dockerfile")
+    try:
+        daemon = subprocess.run(["docker", "info", "--format", "{{.ServerVersion}}"],
+                                capture_output=True, text=True, timeout=15)
+    except subprocess.TimeoutExpired:
+        return error("docker-unresponsive", "the Docker daemon does not answer", "restart Docker")
+    if daemon.returncode != 0:
+        return error("docker-down", "Docker is installed but its daemon is not reachable",
+                     "start it (systemctl start docker) and check your user is in the docker group")
+    image = subprocess.run(["docker", "image", "inspect", mvs.DOCKER_IMAGE], capture_output=True)
+    if image.returncode != 0:
+        return error("openmvs-image-missing", f"Docker image {mvs.DOCKER_IMAGE} not found",
+                     f"docker build -f docker/openmvs.Dockerfile -t {mvs.DOCKER_IMAGE} docker/")
+    return None
+
+
+def ply_counts(path: Path) -> dict[str, int]:
+    """Element counts from a PLY header without loading the file."""
+    counts = {}
+    with open(path, "rb") as f:
+        for _ in range(64):
+            line = f.readline().decode(errors="replace").strip()
+            m = re.match(r"element (\w+) (\d+)", line)
+            if m:
+                counts[m.group(1)] = int(m.group(2))
+            if line == "end_header" or not line:
+                break
+    return counts
+
+
+def _stale_input(ws: Workspace, stage: str, inputs: list[str]) -> list[Diag]:
+    stale = set(ws.stale_stages())
+    out = []
+    for up in inputs:
+        if up in stale:
+            out.append(error("stale-input", f"{up} output is older than what it was computed from, so {stage} "
+                             f"would mix results from different runs",
+                             f"re-run {up} first (or pass --force to use it anyway)"))
+    return out
+
+
+# ---- pre-flight -----------------------------------------------------------------------------
+def preflight(stage: str, ws: Workspace, o: dict, video: str | None = None) -> list[Diag]:
+    return {"frames": _pre_frames, "mask": _pre_mask, "sfm": _pre_sfm, "mvs": _pre_mvs, "vggt": _pre_vggt,
+            "clean": _pre_clean, "texture": _pre_texture}[stage](ws, o, video)
+
+
+def _pre_frames(ws, o, video):
+    import cv2
+
+    if not video:
+        return [error("no-video", "no input video given")]
+    p = Path(video)
+    if not p.is_file():
+        return [error("no-video", f"video not found: {video}")]
+    cap = cv2.VideoCapture(str(p))
+    ok = cap.isOpened() and cap.read()[0]
+    n = cap.get(cv2.CAP_PROP_FRAME_COUNT)
+    fps = cap.get(cv2.CAP_PROP_FPS) or 0
+    w, h = cap.get(cv2.CAP_PROP_FRAME_WIDTH), cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
+    cap.release()
+    if not ok:
+        return [error("video-unreadable", f"OpenCV cannot decode {p.name}",
+                      "convert it: ffmpeg -i in.mov -c:v libx264 -crf 18 out.mp4")]
+    d = []
+    duration = n / fps if fps else 0
+    if 0 < duration < 5:
+        d.append(warn("short-video", f"video is only {duration:.1f} s long",
+                      "a full orbit usually needs 20-60 s; raise sample_fps if you keep it"))
+    if min(w, h) < 720:
+        d.append(warn("low-resolution", f"video is {int(w)}x{int(h)}", "record at 1080p or 4K"))
+    if n and o["num"] > n:
+        d.append(warn("num-exceeds-frames", f"asked for {o['num']} keyframes from a {int(n)}-frame video"))
+    need = o["num"] * 0.8e6
+    if disk_free(ws.root) < 2 * need:
+        d.append(error("disk-low", f"{disk_free(ws.root) / GB:.1f} GB free; keyframes alone need "
+                       f"~{need / GB:.1f} GB and later stages much more", "free space or use another workspace root"))
+    return d
+
+
+def _pre_mask(ws, o, video):
+    if not ws.frame_paths():
+        return [error("no-frames", "no keyframes yet", "run frames first")]
+    if not (has_module("rembg") and has_module("onnxruntime")):
+        return [error("missing-dependency", "rembg/onnxruntime not installed",
+                      "uv pip install 'motiongrametry[mask]'")]
+    d = _stale_input(ws, "mask", [])
+    from .mask import resolve_model
+
+    model = resolve_model(o["mask_model"])
+    mem = mem_available()
+    if "birefnet" in model and mem is not None and mem < 8 * GB:
+        d.append(warn("low-memory", f"{model} needs ~7 GB RAM on CPU, {mem / GB:.1f} GB available",
+                      "use mask_model object/person (IS-Net/U2Net) or close other programs"))
+    return d
+
+
+def _pre_sfm(ws, o, video):
+    n = len(ws.frame_paths())
+    if n < 3:
+        return [error("no-frames", f"{n} keyframes; SfM needs at least 3 (realistically 30+)", "run frames first")]
+    d = []
+    if n < 20:
+        d.append(warn("few-frames", f"only {n} keyframes", "raise num; 80-200 is typical for an orbit"))
+    if o["mask_sfm"]:
+        if not ws.has_masks():
+            d.append(error("no-masks", "mask_sfm needs masks", "run mask first"))
+        d += _stale_input(ws, "sfm", ["mask"])
+    return d
+
+
+def _pre_mvs(ws, o, video):
+    if not (ws.dense / "sparse").exists():
+        return [error("no-sfm", "no undistorted SfM model", "run sfm first")]
+    d = _stale_input(ws, "mvs", ["sfm"])
+    problem = openmvs_problem()
+    if problem:
+        d.append(problem)
+    from .mvs import depth_map_bytes
+
+    need = depth_map_bytes(ws, o["resolution_level"])
+    free = disk_free(ws.mvs)
+    if need * 1.15 > free:
+        d.append(error("disk-low", f"depth maps need ~{need / GB:.1f} GB, {free / GB:.1f} GB free"
+                       + (" (on a RAM-backed /tmp)" if str(ws.root).startswith("/tmp") else ""),
+                       "raise resolution_level (each step needs 4x less), use fewer keyframes, "
+                       "the low-disk preset, or a workspace on a bigger disk"))
+    mem = mem_available()
+    ram = 1.0 * GB + need * 0.6  # empirical: ~4.7 GB peak for 5.3 GB of depth maps
+    if mem is not None and ram > mem:
+        d.append(warn("low-memory", f"densification may need ~{ram / GB:.1f} GB RAM, {mem / GB:.1f} GB available",
+                      "raise resolution_level or close other programs"))
+    return d
+
+
+def _pre_vggt(ws, o, video):
+    if not ws.frame_paths():
+        return [error("no-frames", "no keyframes yet", "run frames first")]
+    d = []
+    if ws.cameras_from() == "sfm":
+        # VGGT writes its own cameras over colmap/ and dense/: the SfM model and the undistorted
+        # images the mvs mesh and texturing rely on would be gone for good.
+        what = "SfM and MVS results" if ws.output_mtime("mvs") else "an SfM result"
+        d.append(error("replaces-cameras", f"this workspace has {what}; VGGT would replace its cameras, "
+                       "so they could no longer be cleaned or textured",
+                       "duplicate the workspace and run VGGT in the copy (UI: Duplicate), or force to replace them"))
+    # vggt is installed with --no-deps (its own deps pin numpy<2), so check its runtime deps too.
+    missing = [m for m in ("torch", "vggt", "huggingface_hub", "einops", "safetensors") if not has_module(m)]
+    if missing:
+        return d + [error("missing-dependency", f"VGGT needs {', '.join(missing)}",
+                          "uv pip install torch torchvision huggingface_hub einops safetensors && "
+                          "uv pip install --no-deps git+https://github.com/facebookresearch/vggt")]
+    import torch
+
+    cuda = torch.cuda.is_available() and o["device"] != "cpu"
+    if not cuda:
+        mem = mem_available()
+        if mem is not None and mem < 10 * GB:
+            d.append(warn("low-memory", f"VGGT-1B on CPU needs ~8-10 GB RAM, {mem / GB:.1f} GB available",
+                          "lower max_frames (e.g. 16) or use a GPU"))
+        if (o["max_frames"] or 24) > 32:
+            d.append(warn("slow", "VGGT on CPU with more than 32 frames is very slow"))
+    return d
+
+
+def _raw_mesh(ws: Workspace, o: dict) -> Path | None:
+    if o.get("mesh"):
+        return Path(o["mesh"])
+    return ws.raw_mesh()
+
+
+def _pre_clean(ws, o, video):
+    mesh = _raw_mesh(ws, o)
+    if mesh is None or not mesh.exists():
+        return [error("no-mesh", "no raw mesh to clean", "run mvs or vggt first, or pass mesh=<path>")]
+    d = []
+    if not (ws.sparse / "images.bin").exists():
+        d.append(error("no-sfm", "no camera model (needed for carving and orientation)", "run sfm first"))
+    producer = ws.mesh_producer(mesh)
+    d += _stale_input(ws, "clean", ["sfm"] + ([producer] if producer else []))
+    if not o["no_masks"]:
+        if not ws.has_masks():
+            d.append(warn("no-masks", "no masks: only the largest connected piece will be kept",
+                          "run mask for proper background removal"))
+        elif "mask" in ws.stale_stages():
+            d.append(error("stale-masks", "masks are older than the keyframes; carving with them would cut "
+                           "the subject at the wrong places", "re-run mask, or set no_masks"))
+        else:
+            missing = [f.name for f in ws.frame_paths() if not ws.mask_for(f.name).exists()]
+            if missing:
+                d.append(warn("masks-incomplete", f"{len(missing)} keyframes have no mask", "re-run mask"))
+    return d
+
+
+def _pre_texture(ws, o, video):
+    if not (ws.mesh / "mesh_clean.ply").exists():
+        return [error("no-clean-mesh", "no clean mesh yet", "run clean first")]
+    if not (ws.mvs / "scene_dense.mvs").exists():
+        return [error("no-mvs-scene", "texturing uses the OpenMVS scene, which the VGGT path does not create",
+                      "use mesh_clean.glb (vertex colours), or run sfm + mvs")]
+    d = _stale_input(ws, "texture", ["clean", "mvs"])
+    from .clean import texture_source
+
+    custom = ws.mesh / "custom" / "mesh_clean.ply"
+    if texture_source(ws)[1] == "custom":
+        d.append(info("custom-mesh", "texturing your custom (edited) mesh: the result is the custom textured model",
+                      "the pipeline's own model.glb is left as it is"))
+    elif custom.exists():
+        d.append(warn("custom-mesh-outdated", "the custom (edited) mesh was made from an older clean mesh, "
+                      "so texture uses the new clean mesh", "edit and save the mesh again to texture your edits"))
+    problem = openmvs_problem()
+    if problem:
+        d.append(problem)
+    return d
+
+
+# ---- quality gates --------------------------------------------------------------------------
+def gate(stage: str, ws: Workspace, result: dict, o: dict) -> list[Diag]:
+    fn = {"frames": _gate_frames, "mask": _gate_mask, "sfm": _gate_sfm, "mvs": _gate_mesh,
+          "vggt": _gate_mesh, "clean": _gate_clean, "texture": _gate_texture}[stage]
+    return fn(ws, result, o)
+
+
+def _gate_frames(ws, r, o):
+    d = []
+    k = r["keyframes"]
+    if k < 8:
+        d.append(error("too-few-frames", f"only {k} usable keyframes", "longer video, higher num or sample_fps"))
+    elif k < 30:
+        d.append(warn("few-frames", f"only {k} keyframes", "raise num or sample_fps"))
+    segs = r.get("segments") or 0
+    if segs and r.get("blur_rejected", 0) / segs > 0.25:
+        d.append(warn("blurry-video", f"{r['blur_rejected']}/{segs} viewpoints had only blurry frames",
+                      "more light / faster shutter, move slower, or the blurry preset"))
+    if r.get("total_motion_widths", 99) < 1.0:
+        d.append(warn("little-motion", "the camera barely moved relative to the scene",
+                      "walk all the way round the subject; for a fixed camera use the turntable preset"))
+    return d
+
+
+def _gate_mask(ws, r, o):
+    d = []
+    n = max(r["frames"], 1)
+    if r["mean_coverage"] < 0.005:
+        d.append(error("subject-not-found", "the masks are (almost) empty",
+                       "try mask_model object-hq / person, or skip masks (no_masks)"))
+    elif r["empty_masks"] / n > 0.2:
+        d.append(warn("masks-empty", f"{r['empty_masks']}/{n} masks are empty", "keep the subject in frame"))
+    if r["mean_coverage"] > 0.6:
+        d.append(warn("mask-too-large", f"masks cover {r['mean_coverage']:.0%} of the frame on average: the "
+                      "model probably took background as subject", "try object-hq, or no_masks for clean"))
+    if r.get("coverage_cv", 0) > 0.6:
+        d.append(warn("masks-unstable", "mask size varies a lot between frames (subject picked inconsistently)",
+                      "carving votes across views, but consider a different mask_model or higher bg_tolerance"))
+    return d
+
+
+def _gate_sfm(ws, r, o):
+    d = []
+    ratio = r["registered"] / max(r["frames"], 1)
+    hints = "try the low-texture preset, matcher exhaustive, mapper incremental, or more keyframes"
+    if ratio < 0.5:
+        d.append(error("poor-registration", f"only {r['registered']}/{r['frames']} frames got a camera pose", hints))
+    elif ratio < 0.9:
+        d.append(warn("partial-registration", f"{r['frames'] - r['registered']} of {r['frames']} frames have no pose "
+                      "(those views won't contribute)", hints))
+    if r["mean_reproj_error_px"] > 2.0:
+        d.append(warn("high-reprojection", f"mean reprojection error {r['mean_reproj_error_px']:.2f} px",
+                      "check for rolling-shutter / motion blur; try camera_model OPENCV only if lenses are wide"))
+    if r["points3D"] < 300:
+        d.append(warn("sparse-model", f"only {r['points3D']} 3D points", "low-texture preset"))
+    cam = r.get("camera") or {}
+    params = cam.get("params") or []
+    if params and r.get("image_width"):
+        f = params[0]
+        fov = math.degrees(2 * math.atan(r["image_width"] / (2 * f)))
+        if not 15 < fov < 120:
+            d.append(warn("implausible-focal", f"estimated horizontal field of view {fov:.0f} deg",
+                          "the reconstruction may be distorted; more frames with varied viewpoints help"))
+    if r.get("fx_fy_ratio") and abs(r["fx_fy_ratio"] - 1) > 0.03:
+        d.append(warn("stretched-model", f"fx/fy = {r['fx_fy_ratio']:.3f}: model likely stretched",
+                      "use camera_model RADIAL (single focal)"))
+    if r.get("models", 1) > 1:
+        d.append(warn("disconnected", f"SfM split into {r['models']} pieces; only the largest is used",
+                      "move more slowly through difficult parts; loop_stride 3"))
+    return d
+
+
+def _gate_mesh(ws, r, o):
+    d = []
+    faces = r.get("mesh_faces")
+    if faces is not None and faces < 1000:
+        d.append(error("mesh-empty", f"raw mesh has only {faces} faces", "check SfM quality; try resolution_level 0"))
+    pts = r.get("dense_points")
+    if pts is not None and pts < 20000:
+        d.append(warn("dense-sparse", f"dense cloud has only {pts} points",
+                      "low texture or too low resolution; try resolution_level 0 or the vggt path"))
+    return d
+
+
+def _gate_clean(ws, r, o):
+    d = []
+    kept = r["faces_out"] / max(r["faces_in"], 1)
+    if r["faces_out"] < 500 or kept < 0.01:
+        d.append(error("clean-removed-everything", f"cleanup kept {r['faces_out']} of {r['faces_in']} faces",
+                       "masks probably don't match the cameras: re-run mask, raise bg_tolerance, or no_masks"))
+    elif r.get("carved_vertices") and r.get("vertices_in") and r["carved_vertices"] / r["vertices_in"] > 0.9:
+        d.append(warn("heavy-carving", "carving removed over 90% of the mesh", "check masks in the keyframe strip"))
+    if not r.get("support_plane") and not o["keep_ground"]:
+        d.append(info("no-support-plane", "no trustworthy desk/floor plane found: none was cut, "
+                      "orientation falls back to the camera up-vector"))
+    level = {"info": info, "warning": warn, "error": error}
+    for i in r.get("print_issues", []):  # from the print STL export (clean.print_report)
+        d.append(level[i["level"]](i["code"], i["message"], i["hint"]))
+    return d
+
+
+def _gate_texture(ws, r, o):
+    glb = Path(r.get("glb") or ws.mesh / "model.glb")
+    if not glb.exists():
+        return [error("no-output", f"texturing produced no {glb.name}")]
+    return []

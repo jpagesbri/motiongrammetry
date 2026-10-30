@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.egg-info/
+work*/
+*.mp4
+!examples/*.mp4
+workspaces/
+.pytest_cache/
+.shots/

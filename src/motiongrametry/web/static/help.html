@@ -1,0 +1,355 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>motiongrametry · how to</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #161a21; --panel2: #1c212a; --line: #262c37; --text: #d8dee9;
+    --muted: #8a93a3; --accent: #5aa9ff; --ok: #4cc38a; --warn: #f0b429; --bad: #ef5d5d;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; scroll-padding-top: 60px; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 12px; height: 48px; padding: 0 18px;
+    background: var(--panel); border-bottom: 1px solid var(--line); }
+  header a { color: var(--muted); text-decoration: none; padding: 4px 10px; border-radius: 5px; }
+  header a:hover { color: var(--text); }
+  header a.on { color: var(--text); background: var(--panel2); }
+  .wrap { display: grid; grid-template-columns: 250px minmax(0, 1fr); max-width: 1320px; margin: 0 auto; }
+  nav.toc { position: sticky; top: 48px; align-self: start; height: calc(100vh - 48px); overflow: auto; padding: 18px 10px 30px 18px;
+    border-right: 1px solid var(--line); font-size: 14px; }
+  nav.toc a { display: block; color: var(--muted); text-decoration: none; padding: 3px 0; }
+  nav.toc a:hover, nav.toc a.on { color: var(--text); }
+  nav.toc a.sub { padding-left: 14px; font-size: 13px; }
+  main { padding: 10px 36px 80px; min-width: 0; }
+  h1 { font-size: 30px; margin: 22px 0 6px; }
+  h2 { font-size: 22px; margin: 44px 0 8px; padding-top: 8px; border-top: 1px solid var(--line); }
+  h3 { font-size: 17px; margin: 26px 0 6px; }
+  p, li { color: #c8cfdb; }
+  a { color: var(--accent); }
+  code, kbd { font: 13px var(--mono); background: var(--panel2); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
+  pre { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; overflow: auto; font: 13px/1.5 var(--mono); }
+  figure { margin: 14px 0 22px; }
+  figure img { width: 100%; border: 1px solid var(--line); border-radius: 8px; display: block; background: var(--panel); }
+  figcaption { color: var(--muted); font-size: 13px; margin-top: 6px; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0 18px; font-size: 14px; }
+  th, td { text-align: left; vertical-align: top; padding: 7px 9px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; }
+  td code { white-space: nowrap; }
+  .tip, .warn { border-left: 3px solid var(--accent); background: var(--panel); padding: 9px 13px; border-radius: 0 7px 7px 0; margin: 12px 0; }
+  .warn { border-left-color: var(--warn); }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .do li::marker { content: "✓  "; color: var(--ok); }
+  .dont li::marker { content: "✗  "; color: var(--bad); }
+  .flow { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 12px 0; }
+  .flow span { background: var(--panel2); border: 1px solid var(--line); border-radius: 7px; padding: 5px 10px; font-size: 13px; }
+  .flow i { color: var(--muted); font-style: normal; }
+  .muted { color: var(--muted); }
+  .try { font-size: 13px; }
+  @media (max-width: 900px) { .wrap { grid-template-columns: 1fr; } nav.toc { display: none; } main { padding: 10px 16px 60px; } .grid2 { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <b>motiongrametry</b>
+  <a href="/" id="toGen">Generate</a><a href="/edit" id="toEdit">Edit &amp; paint</a><a class="on">Help</a><a href="/about">About</a>
+</header>
+<div class="wrap">
+<nav class="toc" id="toc"></nav>
+<main>
+<h1>How to</h1>
+<p>motiongrametry turns a phone video walking around something into a clean, textured 3D model, a 3D-print file and
+more. This page explains every screen, step and option, with what to do when something goes wrong. In a hurry? Choose
+<b>Assisted</b> in the Run tab of the Generate screen: it walks you through all of this for your own capture.</p>
+
+<h2 id="overview">How it works</h2>
+<div class="flow"><span>Video</span><i>→</i><span>Keyframes</span><i>→</i><span>Masks</span><i>→</i><span>Camera positions</span><i>→</i>
+  <span>Raw mesh</span><i>→</i><span>Clean mesh</span><i>→</i><span>Textured model</span><i>→</i><span>Exports, edits, prints</span></div>
+<p>Each arrow is a <b>stage</b>. Every stage reads the previous one's result from disk, so you can re-run any stage with
+other options without starting over. A stage whose input changed after it ran is marked <b>stale</b>.</p>
+<table>
+  <tr><th>Stage</th><th>What it does</th><th>Typical time</th></tr>
+  <tr><td><code>frames</code></td><td>Keeps the sharpest frames of the video, spread evenly along your path.</td><td>&lt; 1 min</td></tr>
+  <tr><td><code>mask</code></td><td>An AI model outlines the subject in every keyframe (subject vs background).</td><td>1–3 min</td></tr>
+  <tr><td><code>sfm</code></td><td>Structure from motion: works out where the camera was for every keyframe.</td><td>1–3 min</td></tr>
+  <tr><td><code>mvs</code></td><td>Multi-view stereo: a depth map per keyframe, fused into a dense cloud and a raw mesh (background included).</td><td>5–30 min</td></tr>
+  <tr><td><code>vggt</code></td><td>Optional AI alternative to sfm + mvs (needs a GPU). Faster, less detailed; replaces the camera positions.</td><td>1–2 min</td></tr>
+  <tr><td><code>clean</code></td><td>Carves away what the masks call background, removes the floor or table, fills holes, keeps the main piece, writes the print file.</td><td>~1 min</td></tr>
+  <tr><td><code>texture</code></td><td>Projects the photos onto the clean mesh: the coloured model.</td><td>1–5 min</td></tr>
+</table>
+
+<h2 id="filming">Filming a good video</h2>
+<p>The video decides the quality more than any option. Two minutes spent filming well save an hour of fixing.</p>
+<div class="grid2">
+<ul class="do">
+  <li>Walk slowly <b>all the way around</b> the subject, at one or two heights.</li>
+  <li>Keep the subject in the middle and <b>fully in the frame</b>, filling a good part of it.</li>
+  <li>Even, bright light; overcast daylight is ideal.</li>
+  <li>The subject stays perfectly still (people: lean against something, look at one point).</li>
+  <li>20–60 seconds of video; landscape or portrait both work.</li>
+  <li>Something with texture around it (a newspaper under a plain object helps).</li>
+</ul>
+<ul class="dont">
+  <li>Fast movement or low light: motion blur ruins frames.</li>
+  <li>Zooming, or switching lenses mid-video.</li>
+  <li>Only filming one side: the other side cannot be reconstructed (you get a shell, not a full object).</li>
+  <li>Shiny, transparent, very dark or perfectly plain surfaces (few details to match).</li>
+  <li>The subject moving (people breathing is fine; turning the head is not).</li>
+  <li>Spinning on the spot instead of walking around.</li>
+</ul>
+</div>
+
+<h2 id="quickstart">Quick start</h2>
+<ol>
+  <li>Start the app: <code>uv run mg ui</code>, then open <a href="/">http://127.0.0.1:8765</a>.</li>
+  <li><b>New scan</b> (left): give it a name, then <b>Upload video…</b> (or paste a path to a video on this computer and press <b>Create</b>).</li>
+  <li>In the <b>Run</b> tab, either follow <b>Assisted</b>, or switch to <b>Manual</b>, tick the stages and press <b>Run selected</b>.</li>
+  <li>Follow the progress there; when <code>texture</code> is done, open the <b>Preview</b> tab: the model, its keyframes and masks, and the files.</li>
+  <li>Check that the model stands the right way (the assisted run asks; otherwise <b>Orient…</b> in the Preview), then <b>Export…</b>.</li>
+</ol>
+
+<h2 id="assisted">Assisted run</h2>
+<p>A guided run for your own capture: choose <b>Assisted</b> at the top of the Run tab (Manual is the same screen, see below). It asks what you filmed and how, picks
+starting options (and tells you why each one), then goes one stage at a time: what the stage does, every option with its
+explanation, the suggested value and the reason. After each stage it reads the results and says whether something should
+change, with an <b>Apply &amp; re-run</b> button. The last step, <b>Place your model</b>, checks that the model stands the right
+way before you export it.</p>
+<p>While a step runs, its page shows the sub-steps (done, running with the time left, still to come), a small picture of
+the latest result, the log on request (<b>Show log</b>) and <b>Stop this step</b> (click twice). Switching to Manual, to the
+Preview tab or to another scan never stops a run: only Stop does. If a step finishes while you are in the Preview, a
+notice tells you, with its suggestions. The assistant remembers where you were for each scan, also after a reload.</p>
+<figure><img src="/help/assist-subject.jpg" alt="Assisted run: choosing what was filmed" loading="lazy">
+  <figcaption>First step: what you filmed and how. The starting options appear with the reason for each.</figcaption></figure>
+<figure><img src="/help/assist-stage.jpg" alt="Assisted run: a stage with its options and the advice after it ran" loading="lazy">
+  <figcaption>A stage: its options explained, and after it ran, the result and advice, with one click to apply and re-run.</figcaption></figure>
+<figure><img src="/help/assist-running.jpg" alt="Assisted run: a step running" loading="lazy">
+  <figcaption>A step running: its sub-steps with the time left, the latest result, the log and Stop.</figcaption></figure>
+<figure><img src="/help/assist-place.jpg" alt="Assisted run: placing the model" loading="lazy">
+  <figcaption>The last step: does it stand the right way, with its front towards you? Fix it here; every export uses it.</figcaption></figure>
+<p>Examples of what it catches: few keyframes or a blurred video; masks that missed the subject in some frames; cameras that
+did not connect (and the mapper / matcher that fixes it); a clean step that carved away parts of the subject where the masks
+were unsure (it measures how sure they were); quarter-resolution depth maps; a scan filmed from one side only.</p>
+<p>For frames, masks and cameras, <b>Show the flagged keyframes</b> opens the frame viewer on the keyframes that look wrong.</p>
+<p class="try"><a href="/?open=assist" target="_blank">Open the assisted run →</a></p>
+
+<h2 id="generate">The Generate screen</h2>
+<p>Your scans on the left; on the right two tabs: <b>Run</b> (doing the work) and <b>Preview</b> (looking at the results).
+On a wide screen, tick <b>side by side</b> to see both at once. A dot on a tab means something new happened there.</p>
+<h3 id="scans">Scans</h3>
+<p>A scan is one video and everything made from it (on disk: a folder under <code>workspaces/</code>). Each shows a
+thumbnail (a snapshot of the 3D model once there is one, a keyframe before), its size and when it last ran; hover for a larger
+card. The dots are the stages that are done. <b>Duplicate scan</b> copies the keyframes and masks (optionally the cameras and
+mesh) so you can try other settings without touching the original. To delete a scan, delete its folder.</p>
+<h3 id="run">Run tab</h3>
+<figure><img src="/help/generate.jpg" alt="The Run tab in Manual, on All steps" loading="lazy">
+  <figcaption>Manual, on <b>All steps</b>: the steps on the left (tick the ones to run), every step's result on the right.</figcaption></figure>
+<p>The same screen in both modes. On the left the <b>steps</b>: they are the pipeline, each with its status (green done, blue
+running with a progress bar, orange out of date, red failed), how long it took and a ⚠ when it has warnings or a suggestion.
+Click one to open its page: what it does, the run in progress, the result with its warnings and advice, and its options
+(a value set for a reason, by what you filmed, a preset or advice, says why; your own changes are outlined).</p>
+<p>The bar on top: <b>Assisted</b> or <b>Manual</b> (remembered per scan), the <b>preset</b>, what is running (click it to open
+that step), <b>Stop</b>, and a small picture of the latest result (click it for the Preview). The options are kept per scan
+and shared by both modes.</p>
+<table>
+  <tr><th></th><th>Assisted</th><th>Manual</th></tr>
+  <tr><td>Moving through</td><td>one step at a time, <b>Continue</b> when it is done</td><td>any step, in any order</td></tr>
+  <tr><td>Options</td><td>the main ones with explanations; the rest under <i>all options of this step</i></td><td>all of them</td></tr>
+  <tr><td>Running</td><td><b>Run this step</b></td><td>tick steps on the left and <b>Run selected</b> (<b>Check</b> runs the pre-flight checks only);
+    <b>Tick this and later steps</b> picks a step and everything that depends on it</td></tr>
+  <tr><td>Overview</td><td>the <b>Done</b> page</td><td><b>All steps</b>: every step's result and warnings, and the general options</td></tr>
+</table>
+<h3 id="pipeline">Progress and the log</h3>
+<figure><img src="/help/pipeline.jpg" alt="A step running" loading="lazy">
+  <figcaption>A step running: its sub-steps with progress and time left; the steps on the left show it too.</figcaption></figure>
+<p>A running step lists its sub-steps: done (with their time), running (with progress and the time left) and still to come.
+<i>how the last run went</i> on a finished step shows the same for its last run. The <b>Log</b> drawer at the bottom has the live
+output and a History of every run; it is closed unless you open it (a dot means new output) and opens by itself when a step
+fails.</p>
+<h3 id="viewer">Preview: 3D model</h3>
+<figure><img src="/help/preview.jpg" alt="The Preview tab" loading="lazy">
+  <figcaption>The model in <b>Solid + wires</b> with its holes in orange; the files on the right.</figcaption></figure>
+<p>Layers: camera positions, sparse points (from sfm), dense cloud and raw mesh (from mvs), clean mesh, textured model and,
+if you edited it, the custom version. Drag to orbit, right-drag or middle-drag to pan, wheel to zoom. Click a keyframe to
+look through its camera, double-click it to open it big. The <b>view cube</b> (bottom left, in every 3D view) shows which
+way you are looking, Z up as in the print files: click a face to look straight at it, near an edge or a corner for the 45°
+view in between; the button next to it frames the model, and <b>Persp / Ortho</b> (or <kbd>5</kbd>) switches between perspective
+and orthographic (no foreshortening: sizes and parallel lines stay true, handy for judging proportions and orientation).
+<b>Display</b> (<kbd>W</kbd> cycles): <b>Colours</b>,
+<b>Solid grey</b> (judge the shape without the photo), <b>Wireframe</b>, or <b>Solid + wires</b> (the shape and how dense the
+mesh is; the wires fade in as you zoom, since on a dense scan they would cover everything). <b>Highlight holes</b> draws every
+opening in orange and counts them: that is what the print report means by lids. <b>Files</b> lists the results with their size
+(stale ones are marked) and <b>Export…</b>.</p>
+<h3 id="orient">Orientation</h3>
+<figure><img src="/help/orient.jpg" alt="Orienting the model" loading="lazy">
+  <figcaption>Orient…: turn it in 90° steps, click the spot that rests on the floor, or use the rotate and move handles.</figcaption></figure>
+<p>The model is stood up automatically (on the table or floor when one is found, else from how the camera moved). When that
+is wrong, <b>Orient…</b> (or the assisted run's last step) fixes it: <b>Click the floor…</b> then click the spot that should rest on
+the floor; <b>Turn 90°</b> about any axis; orbit until you face the model's front and press <b>This view is the front</b>;
+or free <b>Rotate</b> / <b>Move</b> handles. <b>Centre</b> and <b>Drop to floor</b> tidy up; turns do it for you. <b>Save</b> and every
+export uses it: the GLBs, the print STL, the Export window and texture re-runs (the GLB and STL files are rebuilt in the
+background, about a minute). <b>Reset to automatic</b> forgets it. Nothing is re-run and the meshes are not changed. If you
+re-run sfm, the cameras change and your orientation no longer applies: set it again.</p>
+<h3 id="frames">Preview: frames and masks</h3>
+<figure><img src="/help/frames.jpg" alt="The frame viewer" loading="lazy">
+  <figcaption>A keyframe with its mask: the background veiled, the subject tinted. The bar at the bottom is the subject's
+  share of each keyframe; yellow and red ones are flagged.</figcaption></figure>
+<p>Every keyframe big: <b>Photo</b>, <b>Overlay</b> (the background veiled), <b>Compare</b> (drag the line: photo on one side,
+mask on the other), <b>Side by side</b> or <b>Mask</b>. <kbd>←</kbd> <kbd>→</kbd> step through them, the wheel zooms, drag pans,
+double-click fits. Each keyframe says how sharp it is against its neighbours, how much of it the mask covers and whether
+sfm placed its camera. <b>Flagged</b> steps only through the ones worth a look: blurrier than their neighbours, no camera, a
+mask that found nothing or that jumps in size against its neighbours (it caught background or lost part of the
+subject). <b>View from this camera</b> shows the 3D model from that keyframe's position.</p>
+
+<h2 id="stages">The stages and their options</h2>
+<p>Every option, as the app defines it today (this list is read from the app, so it is always current). Options can be set in
+the Run panel, in the assisted run, or on the command line as <code>--option-name value</code>.</p>
+<div id="optionsRef"><p class="muted">loading…</p></div>
+<h3 id="presets">Presets</h3>
+<p>Named sets of options for the capture problems that come up most often; explicit options still win.</p>
+<div id="presetsRef"><p class="muted">loading…</p></div>
+
+<h2 id="outputs">Outputs and Export</h2>
+<table>
+  <tr><th>File</th><th>What it is</th><th>Use it for</th></tr>
+  <tr><td><code>model.glb</code></td><td>Textured model, Y-up</td><td>Viewers, Blender, the web, AR</td></tr>
+  <tr><td><code>mesh_clean.glb</code> / <code>.ply</code></td><td>Clean mesh with vertex colours</td><td>Editing, measuring, when no texture is needed</td></tr>
+  <tr><td><code>print.stl</code></td><td>One closed solid, Z-up, in millimetres, with a printability report</td><td>3D printing (slicers)</td></tr>
+  <tr><td><code>textured.ply</code> + <code>textured0.png</code></td><td>Textured mesh in the reconstruction's frame</td><td>Other photogrammetry tools</td></tr>
+  <tr><td><code>scene_mesh.ply</code>, <code>scene_dense.ply</code></td><td>Raw mesh and dense cloud (with background)</td><td>Inspection, other cleaners</td></tr>
+  <tr><td><code>custom/…</code></td><td>Your edited versions (sculpt, paint)</td><td>Same as above</td></tr>
+</table>
+<h3 id="export">Export…</h3>
+<figure><img src="/help/export.jpg" alt="The Export window" loading="lazy">
+  <figcaption>One file with its own settings: format, pipeline or custom version, orientation, size and, for prints, how the solid is made. The result is shown in 3D with its report.</figcaption></figure>
+<p>Formats: 3D print (STL), textured GLB, vertex-colour GLB, textured OBJ (a zip with the material and image) and PLY. A height
+sets the real size (GLB in metres, the others in millimetres; a scan has no scale of its own). <b>Up</b> is your saved
+orientation when you set one (see <a href="#orient">Orientation</a>), else automatic; the other choices are for one-off files.
+Settings are remembered per file type.</p>
+<h3 id="printing">3D printing</h3>
+<p>A scan is a surface, often with holes and pieces; a printer needs one closed solid that stands. The print file is rebuilt
+on a ~0.3 mm grid, which removes self-intersections and thickens walls thinner than the <b>minimum wall</b>.</p>
+<table>
+  <tr><th>Setting</th><th>Meaning</th></tr>
+  <tr><td>Print as <b>solid</b></td><td>Openings are closed with smooth lids: a full object. Good when you filmed all around.</td></tr>
+  <tr><td>Print as <b>shell</b></td><td>Only the scanned surface, given a thickness: for scans of one side (a face filmed from the front). Nothing is invented.</td></tr>
+  <tr><td>Print as <b>auto</b></td><td>Shell when lids would invent more than a third of the surface, otherwise solid.</td></tr>
+  <tr><td>Shell grows <b>inward</b></td><td>The scanned surface stays exactly where it was measured; material is added behind it. Outward or both ways soften the detail.</td></tr>
+  <tr><td>Stand</td><td>A thin disc is added under the model when it would topple over.</td></tr>
+  <tr><td>Flat base</td><td>The bottom share of the height is flattened so a solid stands without wobbling.</td></tr>
+</table>
+<p>Whatever could still go wrong (invented share, stand, thin walls, separate pieces, overhangs needing supports) is listed
+under the print file and on the clean stage card, each with the option that changes it.</p>
+
+<h2 id="edit">Edit &amp; paint</h2>
+<p>Edits are saved as a <b>custom version</b> (in <code>mesh/custom/</code>); the pipeline's files are never changed and
+<b>Delete custom version</b> goes back to them. Texture uses your edited mesh when it is newer than the clean mesh, so the
+order is: <b>sculpt → re-run texture → paint</b>.</p>
+<h3 id="sculpt">Sculpt</h3>
+<figure><img src="/help/edit-sculpt.jpg" alt="The sculpt editor" loading="lazy">
+  <figcaption>Sculpt tools on the left; left-drag on the mesh to sculpt, off it (or right-drag) to orbit.</figcaption></figure>
+<p><b>Display</b> (<kbd>W</kbd>) and <b>highlight holes</b> work as in the Preview: <b>Solid + wires</b> after <b>Merge</b> shows
+how fine the new mesh is; holes update as you cut and fill.</p>
+<table>
+  <tr><th>Tool</th><th>Key</th><th>What it does</th></tr>
+  <tr><td>Draw / Dig in</td><td><kbd>D</kbd> <kbd>C</kbd></td><td>Raise / push in the surface</td></tr>
+  <tr><td>Inflate / Deflate</td><td><kbd>I</kbd> <kbd>O</kbd></td><td>Swell / shrink along the surface</td></tr>
+  <tr><td>Smooth</td><td><kbd>S</kbd></td><td>Relax bumps and noise (hold <kbd>Shift</kbd> with any tool)</td></tr>
+  <tr><td>Flatten, Pinch, Grab</td><td><kbd>F</kbd> <kbd>P</kbd> <kbd>G</kbd></td><td>Press flat, sharpen creases, drag a region</td></tr>
+  <tr><td>Cut away</td><td><kbd>X</kbd></td><td>Delete surface (tick <b>cap the opening</b> to close the hole it leaves)</td></tr>
+  <tr><td>Fill + Merge</td><td><kbd>B</kbd></td><td>Brush spheres into a hole or gap, then <b>Merge fill</b>: only the area around them is rebuilt
+    (at the mesh's own resolution) and stitched in; the rest keeps every detail. An opening the spheres only partly cover is closed whole.
+    Tick <b>Merge: whole mesh</b> to rebuild everything at <b>Detail</b> instead (merges separate shells, removes inner walls)</td></tr>
+  <tr><td>Restore</td><td><kbd>R</kbd></td><td>Brush over the raw mesh (amber ghost) to bring back what clean carved away</td></tr>
+  <tr><td>Plane cut</td><td><kbd>V</kbd></td><td>Drag a line: cut straight through and close it flat (Enter to apply)</td></tr>
+</table>
+<p>Also: <b>Close all holes</b>, <b>Remove loose pieces</b>, <kbd>[</kbd> <kbd>]</kbd> brush size, <kbd>Ctrl</kbd> inverts,
+<kbd>Ctrl+Z</kbd> / <kbd>Ctrl+Shift+Z</kbd> undo and redo, <kbd>Ctrl+S</kbd> save.</p>
+<h3 id="paint">Paint</h3>
+<figure><img src="/help/edit-paint.jpg" alt="The paint editor" loading="lazy">
+  <figcaption>Paint on the model (left) or on the flat texture (right); both stay in sync.</figcaption></figure>
+<p>Brushes: paint, restore the original photo, blur, smudge, clone (<kbd>Ctrl</kbd>+click sets the source), lighten, darken,
+saturate, desaturate and a colour picker (<kbd>Alt</kbd>+click anywhere). Painting on the model only reaches surface you can see
+and crosses texture seams. Re-running texture replaces the paint.</p>
+
+<h2 id="troubleshooting">Troubleshooting</h2>
+<table>
+  <tr><th>What you see</th><th>Likely cause</th><th>What to do</th></tr>
+  <tr><td>Parts of a person or object are missing after clean</td><td>The masks were unsure there and carving was strict</td><td>Raise <code>bg_tolerance</code> (0.35) and re-run clean; or <b>Restore</b> in the editor. The assisted run detects this.</td></tr>
+  <tr><td>Background (table, wall) stays attached</td><td>The masks included it, or no floor plane was found</td><td>Lower <code>bg_tolerance</code>, use a better <code>mask_model</code>, or <b>Plane cut</b> / <b>Cut away</b> in the editor</td></tr>
+  <tr><td>Holes in the clean mesh</td><td>Some masks missed the subject</td><td><code>fill_holes</code> (on by default) restores small ones; <b>Restore</b> brush for the rest</td></tr>
+  <tr><td>Only some keyframes got a camera (sfm warning)</td><td>Views did not connect: plain or shiny subject, gaps in the video</td><td><code>mapper incremental</code> + <code>matcher exhaustive</code>, or the <code>low-texture</code> preset</td></tr>
+  <tr><td>Blurry, smeared model</td><td>Motion blur or the subject moved</td><td>Film slower and brighter; the <code>blurry</code> preset helps a little</td></tr>
+  <tr><td>A face or one side only</td><td>The back was never filmed</td><td>Film all the way around; meanwhile print as a shell (automatic)</td></tr>
+  <tr><td><code>disk-low</code> before mvs</td><td>Depth maps need several GB</td><td>Raise <code>resolution_level</code> or the <code>low-disk</code> preset</td></tr>
+  <tr><td>TextureMesh crashed</td><td>A damaged mesh (bow-tie vertices)</td><td>Re-run clean; edited meshes are repaired on save</td></tr>
+  <tr><td>VGGT refuses to run</td><td>It would replace the SfM cameras the MVS mesh depends on</td><td><b>Duplicate scan</b> and run VGGT on the copy</td></tr>
+  <tr><td>The model is lying down, tilted or faces away</td><td>No floor was found and the camera path was tilted</td><td><b>Orient…</b> in the Preview (or the assisted run's last step): click the floor, turn it, save</td></tr>
+  <tr><td>Masks look wrong in some frames</td><td>The segmentation caught background or lost part of the subject</td><td>Preview → <b>Frames &amp; masks</b> → <b>Flagged</b>; try another <code>mask_model</code></td></tr>
+  <tr><td>Nothing seems to happen</td><td>A long stage (mvs) is running</td><td>The Pipeline tab shows the current sub-step and time left; the Log tab the raw output</td></tr>
+</table>
+<p>Every warning on a stage card comes with a hint. The <b>Log → History</b> tab keeps the full log of every run.</p>
+
+<h2 id="cli">Command line</h2>
+<pre>uv run mg doctor                       # check the installation
+uv run mg run video.mp4 workspaces/x   # everything, start to finish
+uv run mg check workspaces/x           # pre-flight checks only
+uv run mg clean workspaces/x --bg-tolerance 0.35   # one stage with an option
+uv run mg ui --port 8765               # this web UI</pre>
+<p>Options use the same names as in the UI, with dashes: <code>--print-mode shell</code>.</p>
+
+<h2 id="glossary">Glossary</h2>
+<table>
+  <tr><td><b>Keyframe</b></td><td>A frame kept from the video for reconstruction.</td></tr>
+  <tr><td><b>Mask</b></td><td>The subject's outline in a keyframe (white subject, black background).</td></tr>
+  <tr><td><b>SfM</b></td><td>Structure from motion: camera positions and a sparse point cloud from matched features.</td></tr>
+  <tr><td><b>MVS</b></td><td>Multi-view stereo: dense depth from the positioned cameras, then a mesh.</td></tr>
+  <tr><td><b>Carving</b></td><td>Removing mesh parts that the masks see as background in enough views.</td></tr>
+  <tr><td><b>Stale</b></td><td>A result older than its inputs (an earlier stage ran again since).</td></tr>
+  <tr><td><b>Custom version</b></td><td>Your edited mesh or texture, kept beside the pipeline's.</td></tr>
+  <tr><td><b>Shell</b></td><td>A print of the scanned surface only, given a thickness.</td></tr>
+</table>
+</main>
+</div>
+<script type="module">
+const $ = (id) => document.getElementById(id);
+const esc = (t) => String(t).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+// keep the scan the user came from in the Generate / Edit links
+const scan = new URLSearchParams(location.search).get('scan');
+if (scan) { $('toGen').href = '/#' + encodeURIComponent(scan); $('toEdit').href = '/edit#' + encodeURIComponent(scan); }
+
+// table of contents from the headings, with the section in view highlighted
+let io = null;
+function buildToc() {
+  const heads = [...document.querySelectorAll('main h2, main h3')].filter((h) => h.id);
+  $('toc').innerHTML = heads.map((h) => `<a href="#${h.id}" class="${h.tagName === 'H3' ? 'sub' : ''}">${esc(h.textContent)}</a>`).join('');
+  const links = [...$('toc').querySelectorAll('a')];
+  io?.disconnect();
+  io = new IntersectionObserver((entries) => entries.forEach((e) => {
+    if (e.isIntersecting) links.forEach((a) => a.classList.toggle('on', a.getAttribute('href') === '#' + e.target.id));
+  }), { rootMargin: '-60px 0px -70% 0px' });
+  heads.forEach((h) => io.observe(h));
+}
+buildToc();
+
+// options and presets, read from the app so they are always current
+const STAGE_ORDER = ['frames', 'mask', 'sfm', 'mvs', 'vggt', 'clean', 'texture', '*'];
+const STAGE_NAME = { '*': 'Every stage' };
+try {
+  const r = await (await fetch('/api/options')).json();
+  const by = {};
+  for (const o of r.options) (by[o.stages[0]] ||= []).push(o);
+  $('optionsRef').innerHTML = STAGE_ORDER.filter((s) => by[s]).map((s) => `<h3 id="opt-${s.replace('*', 'all')}">${STAGE_NAME[s] || s}</h3>
+    <table><tr><th>Option</th><th>Default</th><th>Meaning</th></tr>${by[s].map((o) => `<tr><td><code>${o.name}</code>${o.group === 'advanced' ? ' <span class="muted">advanced</span>' : ''}</td>
+      <td>${o.default === null || o.default === '' ? '<span class="muted">—</span>' : `<code>${esc(o.default)}</code>`}${o.choices ? `<br><span class="muted">${o.choices.map(esc).join(' · ')}</span>` : ''}</td>
+      <td>${esc(o.help)}${o.stages.length > 1 && o.stages[0] !== '*' ? ` <span class="muted">(also ${o.stages.slice(1).join(', ')})</span>` : ''}</td></tr>`).join('')}</table>`).join('');
+  $('presetsRef').innerHTML = `<table><tr><th>Preset</th><th>For</th><th>Sets</th></tr>${Object.entries(r.presets).map(([k, p]) =>
+    `<tr><td><code>${k}</code></td><td>${esc(p.description)}</td><td>${Object.entries(p.options).map(([a, b]) => `<code>${a}=${esc(b)}</code>`).join(' ')}</td></tr>`).join('')}</table>`;
+} catch (e) { $('optionsRef').innerHTML = `<p class="muted">could not load the options: ${esc(e.message)}</p>`; }
+buildToc();  // the option tables added headings
+if (location.hash) document.getElementById(location.hash.slice(1))?.scrollIntoView();
+</script>
+</body>
+</html>

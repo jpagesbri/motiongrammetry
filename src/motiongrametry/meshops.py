@@ -1,0 +1,475 @@
+"""Topology edits for the editor: capping openings, plane cuts and voxel remeshing.
+
+Sculpt brushes only move vertices. These change the surface itself, so they run here (numpy /
+Open3D / scikit-image) and hand the editor a new mesh; nothing is written to disk until it saves.
+
+- cap: close boundary loops with smoothed lids (all of them, or the ones a cut just opened).
+- plane_cut: split the triangles along a plane, drop one side, close the cut with a flat cap.
+- restore: bring back raw-mesh triangles inside brushed spheres (what clean carved away).
+- keep_pieces: drop loose pieces, e.g. a part a cut separated from the body.
+- voxel_remesh: rebuild the surface from a signed-distance volume, optionally unioned with
+  spheres the editor's fill brush placed. Separate shells, inner walls and membranes merge
+  into one closed surface with even triangles, ready to be smoothed as a single piece.
+- local_merge: the same, but only around the fill spheres and at the mesh's own resolution; the
+  rest of the mesh is kept exactly and the rebuilt patch is stitched in along a seam.
+
+Meshes travel as (vertices float64 Nx3, faces int Mx3, colours uint8 Nx3).
+"""
+
+from __future__ import annotations
+
+import logging
+import struct
+
+import numpy as np
+
+from .clean import boundary_loops, close_holes
+
+log = logging.getLogger(__name__)
+
+MAX_VOXELS = 40_000_000
+
+
+# ---- wire format shared with the editor ---------------------------------------------------
+def decode_mesh(data: bytes, offset: int = 0) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """uint32 vertex count, uint32 face count, float32 xyz, uint8 rgb, uint32 faces."""
+    nv, nf = struct.unpack_from("<II", data, offset)
+    o = offset + 8
+    want = o + nv * 15 + nf * 12
+    if not nv or not nf or len(data) != want:
+        raise ValueError(f"mesh upload is {len(data) - offset} bytes, expected {want - offset}")
+    v = np.frombuffer(data, "<f4", nv * 3, o).reshape(-1, 3).astype(np.float64)
+    c = np.frombuffer(data, np.uint8, nv * 3, o + nv * 12).reshape(-1, 3).copy()
+    f = np.frombuffer(data, "<u4", nf * 3, o + nv * 15).reshape(-1, 3).astype(np.int64)
+    if f.max() >= nv or not np.isfinite(v).all():
+        raise ValueError("mesh upload is inconsistent")
+    return v, f, c
+
+
+def encode_mesh(v: np.ndarray, f: np.ndarray, c: np.ndarray) -> bytes:
+    return (struct.pack("<II", len(v), len(f)) + v.astype("<f4").tobytes()
+            + c.astype(np.uint8).tobytes() + f.astype("<u4").tobytes())
+
+
+def compact(v, f, c):
+    """Drop degenerate faces and unused vertices."""
+    f = f[(f[:, 0] != f[:, 1]) & (f[:, 1] != f[:, 2]) & (f[:, 2] != f[:, 0])]
+    used = np.zeros(len(v), bool)
+    used[f.ravel()] = True
+    remap = np.cumsum(used) - 1
+    return v[used], remap[f], c[used]
+
+
+def _lid_colours(c, loops, owner):
+    rim = np.array([c[l].mean(0) for l in loops]) if loops else np.zeros((0, 3))
+    return np.round(rim[owner]).astype(np.uint8) if len(owner) else np.zeros((0, 3), np.uint8)
+
+
+# ---- operations ------------------------------------------------------------------------------
+def cap(v, f, c, seeds: np.ndarray | None = None):
+    """Close the boundary loops touching any ``seeds`` vertex (all loops when None)."""
+    v, f, c = compact(v, f, c) if seeds is None else (v, f, c)  # seeds index the mesh as given
+    loops = boundary_loops(f)
+    if seeds is not None:
+        mark = np.zeros(len(v), bool)
+        mark[np.asarray(seeds, np.int64)[np.asarray(seeds) < len(v)]] = True
+        loops = [l for l in loops if mark[l].any()]
+    if not loops:
+        return v, f, c, {"capped": 0}
+    V, F, owner = close_holes(v, f, loops=loops, owners=True)
+    C = np.concatenate([c, _lid_colours(c, loops, owner)])
+    V, F, C = compact(V, F, C)
+    return V, F, C, {"capped": len(loops)}
+
+
+def plane_cut(v, f, c, point, normal, close: bool = True):
+    """Remove everything on the side ``normal`` points to; triangles crossing the plane are split
+    exactly on it, and the openings left on the plane are closed with flat caps."""
+    n = np.asarray(normal, float)
+    n /= np.linalg.norm(n)
+    d = (v - np.asarray(point, float)) @ n
+    keep = d <= 0
+    k = keep[f]
+    cnt = k.sum(1)
+    out_f = [f[cnt == 3]]
+    new_v, new_c, index = [], [], {}
+
+    def on_plane(a, b):  # vertex where edge a-b crosses the plane (shared by both triangles)
+        key = (a, b) if a < b else (b, a)
+        if key not in index:
+            t = d[a] / (d[a] - d[b])
+            index[key] = len(v) + len(new_v)
+            new_v.append(v[a] + t * (v[b] - v[a]))
+            new_c.append(c[a] + t * (c[b].astype(float) - c[a]))
+        return index[key]
+
+    split = []
+    for tri, kk in zip(f[(cnt == 1) | (cnt == 2)], k[(cnt == 1) | (cnt == 2)]):
+        # rotate (keeping the winding) so the odd vertex out comes first
+        odd = int(np.flatnonzero(kk != (kk.sum() == 2))[0])
+        a, b, cc = np.roll(tri, -odd)
+        if kk.sum() == 1:   # a kept
+            split.append((a, on_plane(a, b), on_plane(a, cc)))
+        else:               # a dropped, b and c kept
+            ab, ca = on_plane(a, b), on_plane(cc, a)
+            split += [(ab, b, cc), (ab, cc, ca)]
+    if split:
+        out_f.append(np.array(split, np.int64))
+    V = np.concatenate([v, np.array(new_v).reshape(-1, 3)])
+    C = np.concatenate([c, np.round(np.array(new_c)).reshape(-1, 3).astype(np.uint8)])
+    V, F, C = compact(V, np.concatenate(out_f), C)
+    info = {"removed_faces": int(len(f) - (cnt == 3).sum()), "capped": 0}
+    if close and len(F):
+        dist = np.abs((V - np.asarray(point, float)) @ n)
+        eps = 1e-6 * float(np.linalg.norm(np.ptp(V, 0)))
+        loops = [l for l in boundary_loops(F) if (dist[l] <= eps).all()]
+        if loops:
+            V2, F2, owner = close_holes(V, F, loops=loops, owners=True)
+            C = np.concatenate([C, _lid_colours(C, loops, owner)])
+            V, F = V2, F2
+            info["capped"] = len(loops)
+    return V, F, C, info
+
+
+def voxel_remesh(v, f, c, spheres=None, voxel: float = 0.004, min_piece: float = 0.001):
+    """One closed surface from the mesh unioned with spheres (x, y, z, r), at a voxel size of
+    ``voxel`` times the bounding-box diagonal. Detail finer than a voxel is smoothed away."""
+    import open3d as o3d
+    from scipy.spatial import cKDTree
+    from skimage.measure import marching_cubes
+
+    v, f, c = compact(v, f, c)
+    sph = np.asarray(spheres if spheres is not None else [], float).reshape(-1, 4)
+    lo, hi = v.min(0), v.max(0)
+    if len(sph):
+        lo = np.minimum(lo, (sph[:, :3] - sph[:, 3:]).min(0))
+        hi = np.maximum(hi, (sph[:, :3] + sph[:, 3:]).max(0))
+    h = voxel * float(np.linalg.norm(hi - lo))
+    lo, hi = lo - 3 * h, hi + 3 * h
+    dims = np.ceil((hi - lo) / h).astype(int) + 1
+    if int(np.prod(dims)) > MAX_VOXELS:
+        raise ValueError(f"{int(np.prod(dims)) / 1e6:.0f}M voxels: choose a coarser detail")
+    sdf = _union_sdf(v, f, sph, lo, dims, h)
+
+    verts, faces, _, _ = marching_cubes(sdf, level=0.0, spacing=(h, h, h))
+    verts += lo
+    faces = faces.astype(np.int64)
+    tri = verts[faces]
+    if np.einsum("ij,ij->i", tri[:, 0], np.cross(tri[:, 1], tri[:, 2])).sum() < 0:
+        faces = faces[:, ::-1]  # outward normals
+    # drop specks the volume can produce from noise
+    m = o3d.geometry.TriangleMesh(o3d.utility.Vector3dVector(verts), o3d.utility.Vector3iVector(faces))
+    clusters, _, areas = m.cluster_connected_triangles()
+    areas = np.asarray(areas)
+    if len(areas) > 1:
+        faces = faces[areas[np.asarray(clusters)] >= min_piece * areas.max()]
+    colours = c[cKDTree(v).query(verts)[1]]  # nearest original vertex (fill takes its rim colour)
+    V, F, C = compact(verts, faces, colours)
+    return V, F, C, {"voxel": h, "faces": len(F), "spheres": len(sph)}
+
+
+def _union_sdf(v, f, sph, lo, dims, h):
+    """Signed distance (negative inside) of the mesh unioned with the spheres, sampled on the grid
+    lo + h * index, dims cells per axis (the grid may cover only part of the mesh)."""
+    import open3d as o3d
+
+    # Inside/outside comes from ray parity, so it needs closed shells (cap the openings; several
+    # rays vote) and one shell at a time: inside two overlapping shells a ray crosses four walls
+    # and parity says "outside". Each shell's signed distance is computed over its own box and
+    # the union is the minimum.
+    vc, fc = close_holes(v, f) if boundary_loops(f) else (v, f)
+    shells = o3d.geometry.TriangleMesh(o3d.utility.Vector3dVector(vc), o3d.utility.Vector3iVector(fc))
+    shell_of = np.asarray(shells.cluster_connected_triangles()[0])
+    axes = [lo[i] + h * np.arange(dims[i]) for i in range(3)]
+    sdf = np.full(dims, np.float32(1e9))
+    for s_id in np.unique(shell_of):
+        sf = fc[shell_of == s_id]
+        if len(sf) < 4:
+            continue
+        sv = vc[np.unique(sf)]
+        a = np.maximum(np.floor((sv.min(0) - lo) / h).astype(int) - 2, 0)
+        b = np.minimum(np.ceil((sv.max(0) - lo) / h).astype(int) + 3, dims)
+        if (a >= b).any():
+            continue  # this shell is outside the grid
+        scene = o3d.t.geometry.RaycastingScene()
+        scene.add_triangles(o3d.core.Tensor(vc.astype(np.float32)), o3d.core.Tensor(sf.astype(np.uint32)))
+        yz = np.stack(np.meshgrid(axes[1][a[1]:b[1]], axes[2][a[2]:b[2]], indexing="ij"), -1).reshape(-1, 2)
+        for i in range(a[0], b[0]):  # one slab at a time keeps the query arrays small
+            q = np.column_stack([np.full(len(yz), axes[0][i]), yz]).astype(np.float32)
+            d = scene.compute_signed_distance(o3d.core.Tensor(q), nsamples=3).numpy().reshape(b[1] - a[1], b[2] - a[2])
+            np.minimum(sdf[i, a[1]:b[1], a[2]:b[2]], d, out=sdf[i, a[1]:b[1], a[2]:b[2]])
+    for x, y, z, r in sph:  # union: the nearer surface wins
+        a = np.maximum(np.floor(([x, y, z] - r - lo) / h).astype(int) - 1, 0)
+        b = np.minimum(np.ceil(([x, y, z] + r - lo) / h).astype(int) + 2, dims)
+        if (a >= b).any():
+            continue
+        gx, gy, gz = np.meshgrid(*[axes[k][a[k]:b[k]] for k in range(3)], indexing="ij")
+        ds = np.sqrt((gx - x) ** 2 + (gy - y) ** 2 + (gz - z) ** 2) - r
+        sub = sdf[a[0]:b[0], a[1]:b[1], a[2]:b[2]]
+        np.minimum(sub, ds, out=sub)
+    return sdf
+
+
+def _clip(v, f, c, d):
+    """Keep the side where ``d`` (per vertex) is <= 0; triangles crossing d = 0 are split on it.
+    Returns the mesh and a mask of the vertices made on the cut (the seam)."""
+    k = (d <= 0)[f]
+    cnt = k.sum(1)
+    out_f = [f[cnt == 3]]
+    new_v, new_c, index = [], [], {}
+
+    def cut(a, b):  # where edge a-b crosses d = 0, shared by both triangles of the edge
+        key = (a, b) if a < b else (b, a)
+        if key not in index:
+            t = d[a] / (d[a] - d[b])
+            index[key] = len(v) + len(new_v)
+            new_v.append(v[a] + t * (v[b] - v[a]))
+            new_c.append(c[a] + t * (c[b].astype(float) - c[a]))
+        return index[key]
+
+    split = []
+    for tri, kk in zip(f[(cnt == 1) | (cnt == 2)], k[(cnt == 1) | (cnt == 2)]):
+        odd = int(np.flatnonzero(kk != (kk.sum() == 2))[0])  # rotate (keeping the winding): odd one first
+        a, b, cc = np.roll(tri, -odd)
+        if kk.sum() == 1:
+            split.append((a, cut(a, b), cut(a, cc)))
+        else:
+            ab, ca = cut(a, b), cut(cc, a)
+            split += [(ab, b, cc), (ab, cc, ca)]
+    if split:
+        out_f.append(np.array(split, np.int64))
+    V = np.concatenate([v, np.array(new_v).reshape(-1, 3)])
+    C = np.concatenate([c, np.round(np.array(new_c)).reshape(-1, 3).astype(np.uint8)])
+    seam = np.zeros(len(V), bool)
+    seam[len(v):] = True
+    F = np.concatenate(out_f)
+    used = np.zeros(len(V), bool)
+    used[F.ravel()] = True
+    remap = np.cumsum(used) - 1
+    return V[used], remap[F], C[used], seam[used]
+
+
+def _stitch(VA, loop_a, VB, loop_b):
+    """Triangles joining two nearby closed loops (indices into VA / VB, each in its own mesh's
+    rim winding): walk both together, each step taking the shorter diagonal. Triangles use the
+    rim edges reversed, so they continue both meshes' winding. B's indices are returned negated
+    minus one (-1 - j) so the caller can tell the meshes apart."""
+    A, B = VA[loop_a], VB[loop_b]
+    na, nb = len(A), len(B)
+    j0 = int(np.argmin(np.linalg.norm(B - A[0], axis=1)))
+    # walk B in the direction that runs alongside A (opposite winding when both meshes agree)
+    ta, tb = np.linspace(0, 1, 8, endpoint=False), np.arange(8) / 8
+    ia = (ta * na).astype(int)
+    fwd = np.linalg.norm(A[ia] - B[(j0 + (tb * nb).astype(int)) % nb], axis=1).mean()
+    bwd = np.linalg.norm(A[ia] - B[(j0 - (tb * nb).astype(int)) % nb], axis=1).mean()
+    step = 1 if fwd < bwd else -1
+    tris, i, j = [], 0, 0
+    while i < na or j < nb:
+        a0, a1 = loop_a[i % na], loop_a[(i + 1) % na]
+        jb0, jb1 = (j0 + step * j) % nb, (j0 + step * (j + 1)) % nb
+        b0, b1 = loop_b[jb0], loop_b[jb1]
+        adv_a = j >= nb or (i < na and np.linalg.norm(VA[a1] - VB[b0]) <= np.linalg.norm(VA[a0] - VB[b1]))
+        if adv_a:  # rim edge a0 -> a1 of A, used as a1 -> a0
+            tris.append((a1, a0, -1 - b0))
+            i += 1
+        else:      # rim edge of B, used against its winding
+            p, q = (b0, b1) if step == 1 else (b1, b0)
+            tris.append((-1 - q, -1 - p, a0))
+            j += 1
+    return np.array(tris, np.int64)
+
+
+def local_merge(v, f, c, spheres, margin: float = 0.4, max_voxels: int = 12_000_000):
+    """Merge the fill spheres into the mesh without touching the rest of it: the surface is rebuilt
+    (mesh unioned with the spheres) only inside a region a little larger than the spheres, at the
+    mesh's own edge length, cut along the region's border and stitched to the untouched mesh.
+
+    Raises ValueError when the patch cannot be joined cleanly (an opening that continues past the
+    spheres, a region too big for the voxel budget); Merge whole mesh still works then."""
+    from scipy.spatial import cKDTree
+    from skimage.measure import marching_cubes
+
+    v, f, c = compact(v, f, c)
+    sph = np.asarray(spheres, float).reshape(-1, 4)
+    if not len(sph):
+        raise ValueError("no fill spheres: place some with the Fill brush first")
+    # resolution: the mesh's own edge length where the spheres are
+    near = np.zeros(len(v), bool)
+    for x, y, z, r in sph:
+        near |= np.linalg.norm(v - [x, y, z], axis=1) < 2 * r
+    ef = f[near[f].any(1)] if near.any() else f
+    h = float(np.median(np.linalg.norm(v[ef[:, 0]] - v[ef[:, 1]], axis=1))) if len(ef) else 0.0
+    R = sph[:, 3] * (1 + margin)
+    region = np.column_stack([sph[:, :3], R])
+    lo, hi = (sph[:, :3] - R[:, None]).min(0), (sph[:, :3] + R[:, None]).max(0)
+    h = max(h, float(np.prod(hi - lo) / max_voxels) ** (1 / 3), 1e-9)
+    R = np.maximum(R, sph[:, 3] + 4 * h)  # room for the rebuilt surface to meet the original
+    region[:, 3] = R
+
+    def inside(p):  # signed distance to the region (union of the enlarged spheres): < 0 inside
+        d = np.full(len(p), np.inf)
+        for x, y, z, r in region:
+            np.minimum(d, np.linalg.norm(p - [x, y, z], axis=1) - r, out=d)
+        return d
+
+    # An opening the spheres only partly cover is taken in whole (its lid is part of the rebuilt
+    # surface), as long as it is small next to the fill: the scan's own outer rim is not.
+    closed = 0
+    for _ in range(3):
+        grow = []
+        for loop in boundary_loops(f):
+            d = inside(v[loop])
+            if (d < 0).any() and (d >= 0).any():
+                lv = v[loop]
+                cen = lv.mean(0)
+                rad = float(np.linalg.norm(lv - cen, axis=1).max())
+                if rad > 2.5 * R.max():
+                    raise ValueError("the fill touches a large opening (like the scan's outer edge): keep the spheres "
+                                     "inside the hole, or tick 'whole mesh'")
+                grow.append([*cen, rad * 1.1 + 4 * h])
+        if not grow:
+            break
+        region = np.vstack([region, grow])
+        closed += len(grow)
+    lo, hi = (region[:, :3] - region[:, 3:]).min(0) - 3 * h, (region[:, :3] + region[:, 3:]).max(0) + 3 * h
+    if np.prod((hi - lo) / h) > 2 * max_voxels:
+        h = float(np.prod(hi - lo) / (2 * max_voxels)) ** (1 / 3)
+    dims = np.ceil((hi - lo) / h).astype(int) + 1
+
+    # the patch: the union surface inside the region
+    sdf = _union_sdf(v, f, sph, lo, dims, h)
+    pv, pf, _, _ = marching_cubes(sdf, level=0.0, spacing=(h, h, h))
+    pv += lo
+    pf = pf.astype(np.int64)
+    # outward: the distance grows along the face normals (checked on the volume itself)
+    cen = pv[pf].mean(1)
+    nrm = np.cross(pv[pf[:, 1]] - pv[pf[:, 0]], pv[pf[:, 2]] - pv[pf[:, 0]])
+    nrm /= np.linalg.norm(nrm, axis=1, keepdims=True) + 1e-30
+    probe = lambda q: sdf[tuple(np.clip(np.round((q - lo) / h).astype(int), 0, dims - 1).T)]  # noqa: E731
+    if (probe(cen + nrm * h) - probe(cen - nrm * h)).mean() < 0:
+        pf = pf[:, ::-1]
+    pc = c[cKDTree(v).query(pv)[1]]
+    PV, PF, PC, pseam = _clip(pv, pf, pc, inside(pv))
+    OV, OF, OC, oseam = _clip(v, f, c, -inside(v))
+    if not len(PF):
+        raise ValueError("the fill spheres do not touch the mesh")
+
+    def seam_loops(F, seam):
+        loops = boundary_loops(F)
+        on = [l for l in loops if seam[l].all()]
+        mixed = [l for l in loops if seam[l].any() and not seam[l].all()]
+        return on, mixed
+
+    oloops, omixed = seam_loops(OF, oseam)
+    ploops, pmixed = seam_loops(PF, pseam)
+    if omixed or pmixed:
+        raise ValueError("an opening continues past the fill spheres: cover the whole hole with spheres, "
+                         "or tick 'whole mesh'")
+    if len(oloops) != len(ploops):
+        raise ValueError(f"the rebuilt patch does not line up with the mesh ({len(oloops)} vs {len(ploops)} "
+                         "seams): try bigger spheres, or tick 'whole mesh'")
+    bridges, used = [], set()
+    for la in oloops:
+        ca = OV[la].mean(0)
+        k = min((k for k in range(len(ploops)) if k not in used), key=lambda k: np.linalg.norm(PV[ploops[k]].mean(0) - ca))
+        used.add(k)
+        lb = ploops[k]
+        if np.linalg.norm(PV[lb].mean(0) - ca) > 0.5 * max(np.ptp(OV[la], 0).max(), 4 * h):
+            raise ValueError("the rebuilt patch does not line up with the mesh: try bigger spheres, or tick 'whole mesh'")
+        bridges.append(_stitch(OV, np.asarray(la), PV, np.asarray(lb)))
+    off = len(OV)
+    V = np.concatenate([OV, PV])
+    C = np.concatenate([OC, PC])
+    parts = [OF, PF + off]
+    for t in bridges:
+        parts.append(np.where(t < 0, off + (-1 - t), t))
+    V, F, C = compact(V, np.concatenate(parts), C)
+    return V, F, C, {"voxel": h, "faces": len(F), "spheres": len(sph), "local": True,
+                     "rebuilt_faces": int(len(PF)), "kept_faces": int(len(OF)), "seams": len(oloops),
+                     "openings_closed": closed}
+
+
+def restore(v, f, c, raw_v, raw_f, spheres):
+    """Bring back the raw mesh's triangles inside the spheres (x, y, z, r) that the mesh lacks.
+
+    Clean only deletes raw vertices, so the clean mesh's vertices sit exactly on raw ones: the
+    restored triangles share them and weld in seamlessly. Where the mesh was sculpted they no
+    longer coincide; Merge (voxel_remesh) then joins the pieces."""
+    from scipy.spatial import cKDTree
+    import open3d as o3d
+
+    v, f, c = compact(v, f, c)
+    sph = np.asarray(spheres, float).reshape(-1, 4)
+    if not len(sph):
+        return v, f, c, {"restored_faces": 0}
+    cen = raw_v[raw_f].mean(1)
+    tree = cKDTree(cen)
+    hit = np.zeros(len(raw_f), bool)
+    for x, y, z, r in sph:
+        hit[tree.query_ball_point([x, y, z], r)] = True
+    cand = raw_f[hit]
+    if not len(cand):
+        return v, f, c, {"restored_faces": 0}
+    # already there: the centroid lies on the current surface
+    scene = o3d.t.geometry.RaycastingScene()
+    scene.add_triangles(o3d.core.Tensor(v.astype(np.float32)), o3d.core.Tensor(f.astype(np.uint32)))
+    tol = 1e-4 * float(np.linalg.norm(np.ptp(v, 0)))
+    present = scene.compute_distance(o3d.core.Tensor(cen[hit].astype(np.float32))).numpy() < tol
+    new = cand[~present]
+    if not len(new):
+        return v, f, c, {"restored_faces": 0}
+    used = np.unique(new)
+    remap = np.full(len(raw_v), -1, np.int64)
+    remap[used] = len(v) + np.arange(len(used))
+    V = np.concatenate([v, raw_v[used]])
+    C = np.concatenate([c, c[cKDTree(v).query(raw_v[used])[1]]])  # colour of the nearest kept vertex
+    F = np.concatenate([f, remap[new]])
+    # weld: raw vertices that are also in the mesh (bit-identical positions) become one vertex
+    _, first, inv = np.unique(V, axis=0, return_index=True, return_inverse=True)
+    V, C, F = V[first], C[first], inv.ravel()[F]
+    V, F, C = compact(V, F, C)
+    return V, F, C, {"restored_faces": int(len(new))}
+
+
+def keep_pieces(v, f, c, keep: float = 0.1):
+    """Drop pieces smaller than ``keep`` times the largest one's area (e.g. a limb cut off)."""
+    import open3d as o3d
+
+    v, f, c = compact(v, f, c)
+    m = o3d.geometry.TriangleMesh(o3d.utility.Vector3dVector(v), o3d.utility.Vector3iVector(f))
+    clusters, _, areas = m.cluster_connected_triangles()
+    areas = np.asarray(areas)
+    small = areas[np.asarray(clusters)] < keep * areas.max()
+    V, F, C = compact(v, f[~small], c)
+    return V, F, C, {"removed_pieces": int((areas < keep * areas.max()).sum()), "removed_faces": int(small.sum())}
+
+
+def run(kind: str, data: bytes, raw_mesh=None) -> tuple[bytes, dict]:
+    """Editor request: uint32 JSON length, JSON parameters, then the mesh (see decode_mesh)."""
+    import json
+
+    (n,) = struct.unpack_from("<I", data)
+    params = json.loads(data[4:4 + n] or b"{}")
+    v, f, c = decode_mesh(data, 4 + n)
+    if kind == "cap":
+        V, F, C, info = cap(v, f, c, params.get("seeds"))
+    elif kind == "plane":
+        V, F, C, info = plane_cut(v, f, c, params["point"], params["normal"], params.get("close", True))
+    elif kind == "restore":
+        import open3d as o3d
+
+        if raw_mesh is None or not raw_mesh.exists():
+            raise FileNotFoundError("raw mesh")
+        raw = o3d.io.read_triangle_mesh(str(raw_mesh))
+        V, F, C, info = restore(v, f, c, np.asarray(raw.vertices), np.asarray(raw.triangles).astype(np.int64),
+                                params.get("spheres", []))
+    elif kind == "pieces":
+        V, F, C, info = keep_pieces(v, f, c, float(params.get("keep", 0.1)))
+    elif kind == "remesh":
+        V, F, C, info = voxel_remesh(v, f, c, params.get("spheres"), float(params.get("voxel", 0.004)))
+    elif kind == "merge_local":
+        V, F, C, info = local_merge(v, f, c, params.get("spheres") or [])
+    else:
+        raise KeyError(kind)
+    log.info("mesh %s: %d -> %d faces %s", kind, len(f), len(F), info)
+    return encode_mesh(V, F, C), info

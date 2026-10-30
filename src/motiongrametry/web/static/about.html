@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>About motiongrametry</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #161a21; --panel2: #1c212a; --line: #262c37; --text: #d8dee9;
+    --muted: #8a93a3; --accent: #5aa9ff; --ok: #4cc38a; --warn: #f0b429; --bad: #ef5d5d;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 12px; height: 48px; padding: 0 18px;
+    background: var(--panel); border-bottom: 1px solid var(--line); }
+  header a { color: var(--muted); text-decoration: none; padding: 4px 10px; border-radius: 5px; }
+  header a:hover { color: var(--text); }
+  header a.on { color: var(--text); background: var(--panel2); }
+  main { max-width: 1040px; margin: 0 auto; padding: 24px 22px 80px; }
+  h1 { margin: 6px 0 4px; font-size: 28px; }
+  h2 { margin: 34px 0 8px; font-size: 19px; padding-top: 6px; border-top: 1px solid var(--line); }
+  p { margin: 8px 0; }
+  a { color: var(--accent); }
+  .muted { color: var(--muted); }
+  .note { border: 1px solid var(--line); border-left: 3px solid var(--warn); background: rgba(240,180,41,.06); border-radius: 8px;
+    padding: 10px 14px; margin: 10px 0; }
+  .note.ok { border-left-color: var(--ok); background: rgba(76,195,138,.05); }
+  .note b { display: block; }
+  table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 14px; }
+  th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; }
+  td.v { font-family: var(--mono); font-size: 12px; color: var(--muted); white-space: nowrap; }
+  td.l { white-space: nowrap; }
+  .lic { font-family: var(--mono); font-size: 12px; }
+  button.show { background: none; border: 1px solid var(--line); color: var(--accent); border-radius: 5px; padding: 1px 8px; cursor: pointer; font-size: 12px; }
+  button.show:hover { border-color: var(--accent); }
+  tr.text td { padding: 0 8px 10px; }
+  pre { margin: 0; max-height: 360px; overflow: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+    padding: 10px 12px; font: 12px/1.45 var(--mono); white-space: pre-wrap; color: #b9c2d0; }
+  .btn { display: inline-block; background: var(--accent); color: #061222; font-weight: 600; border-radius: 6px; padding: 7px 14px; text-decoration: none; }
+  .bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 10px 0; }
+  input[type=search] { background: var(--panel); border: 1px solid var(--line); color: var(--text); border-radius: 6px; padding: 6px 10px; min-width: 240px; font: inherit; }
+  .grp { color: var(--muted); font-size: 12px; white-space: nowrap; }
+  @media (max-width: 700px) { td.v, .grp { white-space: normal; } }
+</style>
+</head>
+<body>
+<header>
+  <b>motiongrametry</b>
+  <a href="/">Generate</a><a href="/edit">Edit &amp; paint</a><a href="/help">Help</a><a class="on">About</a>
+</header>
+<main>
+<h1>About motiongrametry</h1>
+<p class="muted" id="version"></p>
+<p>motiongrametry turns a phone video walking around something into a clean, textured 3D model, a 3D-print file and more.
+It is built on the work of many open-source projects and research groups, listed below with their licenses. Each is the
+work of its authors and is used under its own license; the full texts are one click away here, and all of them are in
+one file for redistribution:</p>
+<div class="bar"><a class="btn" href="/api/about/notices.txt" download="THIRD_PARTY_NOTICES.txt">Download all notices (THIRD_PARTY_NOTICES.txt)</a>
+  <span class="muted">or on the command line: <code>mg notices -o THIRD_PARTY_NOTICES.txt</code></span></div>
+
+<h2 id="terms">What the licenses ask of you</h2>
+<div class="note"><b>VGGT weights: non-commercial only</b>The optional <code>vggt</code> stage downloads <code>facebook/VGGT-1B</code>,
+licensed CC BY-NC 4.0: no commercial use. For commercial use, Meta publishes <code>facebook/VGGT-1B-Commercial</code> (gated, under the
+VGGT License and its acceptable use policy). The VGGT code is under the VGGT License: anyone you pass it on to must get a copy of
+that license, and publications using it should acknowledge it. The rest of the app does not need VGGT.</div>
+<div class="note"><b>OpenMVS is AGPL-3.0</b>It runs as separate, unmodified programs in their own container, built from the
+public v2.3.0 source by <code>docker/openmvs.Dockerfile</code>. If you distribute that image, or let others use it over a
+network, offer them its source: the <a href="https://github.com/cdcseacave/openMVS/tree/v2.3.0">v2.3.0 tag</a> (and
+<a href="https://github.com/cdcseacave/VCG">VCGLib</a>, GPL-3.0, compiled into it). Changing OpenMVS itself would mean
+publishing those changes under the AGPL too.</div>
+<div class="note"><b>NVIDIA libraries</b>The CUDA libraries that come with PyTorch (installed only for the VGGT stage) are NVIDIA
+proprietary software, used under NVIDIA's license terms; they may be redistributed only as those terms allow.</div>
+<div class="note ok"><b>Everything else is permissive</b>BSD, MIT, Apache-2.0 and similar: keep the copyright notices and license
+texts with any copy you distribute (the notices file above does that). Some packages bundle further components (for example
+OpenCV's wheel includes FFmpeg under the LGPL); their own license files, included below, list them.</div>
+
+<h2 id="external">Programs and libraries the pipeline runs</h2>
+<table id="externalT"><tr><th>Component</th><th>Version</th><th>License</th><th>Used for</th><th></th></tr></table>
+
+<h2 id="models">AI models (downloaded on first use)</h2>
+<table id="modelsT"><tr><th>Model</th><th>License</th><th>Used for</th><th></th></tr></table>
+
+<h2 id="python">Python packages</h2>
+<p class="muted">Read from what is installed, so this follows your environment. <i>Required</i>: needed by the app;
+<i>optional</i>: only for subject masks, the VGGT stage or the tests.</p>
+<div class="bar"><input type="search" id="filter" placeholder="filter by name or license"><span class="muted" id="count"></span></div>
+<table id="pythonT"><tr><th>Package</th><th>Version</th><th>License</th><th>Why it is installed</th><th></th></tr></table>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (t) => String(t ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const link = (u, t) => (u ? `<a href="${esc(u)}" target="_blank" rel="noopener">${esc(t)}</a>` : esc(t));
+function rows(table, items, kind, cols) {
+  table.insertAdjacentHTML('beforeend', items.map((it) => `<tr data-q="${esc((it.name + ' ' + it.license).toLowerCase())}">${cols(it)}
+    <td><button class="show" data-kind="${kind}" data-id="${esc(it.id)}">license</button></td></tr>`).join(''));
+}
+document.addEventListener('click', async (e) => {
+  const b = e.target.closest('button.show'); if (!b) return;
+  const tr = b.closest('tr'), next = tr.nextElementSibling;
+  if (next?.classList.contains('text')) { next.remove(); b.textContent = 'license'; return; }
+  b.textContent = 'loading…';
+  const r = await fetch(`/api/about/license?kind=${b.dataset.kind}&id=${encodeURIComponent(b.dataset.id)}`);
+  const text = r.ok ? await r.text() : 'not available';
+  tr.insertAdjacentHTML('afterend', `<tr class="text"><td colspan="${tr.children.length}"><pre>${esc(text)}</pre></td></tr>`);
+  b.textContent = 'hide';
+});
+fetch('/api/about').then((r) => r.json()).then((a) => {
+  $('version').textContent = `version ${a.version}`;
+  rows($('externalT'), a.external, 'external', (it) => `<td>${link(it.source || it.url, it.name)}<div class="muted" style="font-size:12px">${esc(it.copyright || '')}</div></td>
+    <td class="v">${esc(it.version)}</td><td class="l lic">${esc(it.license)}</td><td>${esc(it.role)}${it.note ? `<div class="muted" style="font-size:12px">${esc(it.note)}</div>` : ''}</td>`);
+  rows($('modelsT'), a.models, 'model', (it) => `<td>${link(it.url, it.name)}<div class="muted" style="font-size:12px">${esc(it.copyright || '')}</div></td>
+    <td class="l lic">${esc(it.license)}</td><td>${esc(it.role)}${it.note ? `<div class="muted" style="font-size:12px">${esc(it.note)}</div>` : ''}</td>`);
+  const order = (g) => (g === 'required' ? 0 : g.startsWith('optional') ? 1 : 2);
+  const py = a.python.slice().sort((x, y) => order(x.group) - order(y.group) || x.name.localeCompare(y.name));
+  rows($('pythonT'), py, 'python', (it) => `<td>${link(it.url, it.name)}</td><td class="v">${esc(it.version)}</td>
+    <td class="lic">${esc(it.license)}</td><td class="grp">${esc(it.group)}</td>`);
+  $('count').textContent = `${py.length} packages`;
+}).catch(() => { $('version').textContent = 'could not read the component list (restart mg ui)'; });
+$('filter').addEventListener('input', () => {
+  const q = $('filter').value.toLowerCase().trim();
+  let n = 0;
+  document.querySelectorAll('#pythonT tr[data-q]').forEach((tr) => {
+    const on = !q || tr.dataset.q.includes(q); tr.hidden = !on; n += on;
+    if (!on && tr.nextElementSibling?.classList.contains('text')) tr.nextElementSibling.remove();
+  });
+  $('count').textContent = `${n} packages`;
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,1878 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>motiongrametry · edit</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #161a21; --panel2: #1c212a; --line: #262c37; --text: #d8dee9;
+    --muted: #8a93a3; --accent: #5aa9ff; --ok: #4cc38a; --warn: #f0b429; --bad: #ef5d5d;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  button, input, select { font: inherit; color: inherit; }
+  .app { display: grid; height: 100vh; grid-template-columns: 290px 1fr; grid-template-rows: 44px 1fr;
+    grid-template-areas: "top top" "side view"; }
+  header { grid-area: top; display: flex; align-items: center; gap: 12px; padding: 0 14px;
+    border-bottom: 1px solid var(--line); background: var(--panel); }
+  .screens { display: inline-flex; gap: 2px; margin-left: 18px; }
+  .screens a { padding: 4px 10px; border-radius: 5px; color: var(--muted); cursor: pointer; text-decoration: none; }
+  .screens a:hover { color: var(--text); }
+  .screens a.on { color: var(--text); background: var(--panel2); }
+  aside { grid-area: side; background: var(--panel); border-right: 1px solid var(--line); overflow: auto; }
+  section { padding: 12px 14px; border-bottom: 1px solid var(--line); }
+  h2 { margin: 0 0 8px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; }
+  select, input[type=color] { background: var(--bg); border: 1px solid var(--line); border-radius: 5px; padding: 4px 6px; }
+  select { width: 100%; }
+  .modes { display: flex; gap: 0; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
+  .modes button { flex: 1; background: none; border: 0; padding: 8px 6px; cursor: pointer; color: var(--muted); font-weight: 600; }
+  .modes button.on { background: var(--panel2); color: var(--text); box-shadow: inset 0 -2px 0 var(--accent); }
+  .modes button:disabled { opacity: .4; cursor: default; }
+  .tools { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
+  .tool { background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 6px 4px 5px; cursor: pointer;
+    text-align: center; font-size: 12px; position: relative; }
+  .tool:hover { border-color: var(--muted); }
+  .tool.on { border-color: var(--accent); background: rgba(90,169,255,.12); }
+  .tool kbd { position: absolute; right: 4px; top: 2px; font: 9px var(--mono); color: var(--muted); }
+  .tool svg { display: block; margin: 0 auto 2px; width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 1.6; }
+  .slider { display: grid; grid-template-columns: 70px 1fr 42px; align-items: center; gap: 8px; margin: 6px 0; }
+  .slider span:last-child { text-align: right; font: 11px var(--mono); color: var(--muted); }
+  input[type=range] { width: 100%; }
+  label.check { display: flex; align-items: center; gap: 6px; margin: 5px 0; cursor: pointer; }
+  .btn { background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 6px 12px; cursor: pointer; }
+  .btn:hover { border-color: var(--accent); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #061222; font-weight: 600; }
+  .btn:disabled { opacity: .45; cursor: default; }
+  .btns { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  .muted { color: var(--muted); }
+  .note { font-size: 12px; color: var(--muted); margin-top: 6px; }
+  .warn { border: 1px solid var(--warn); background: rgba(240,180,41,.08); border-radius: 7px; padding: 7px 9px; font-size: 12px; margin-top: 8px; }
+  .err { color: var(--bad); white-space: pre-wrap; font-size: 12px; min-height: 1em; margin-top: 6px; }
+  .okmsg { color: var(--ok); font-size: 12px; margin-top: 6px; }
+  .swatches { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 6px; }
+  .swatches i { width: 18px; height: 18px; border-radius: 4px; border: 1px solid var(--line); cursor: pointer; }
+  .help { font-size: 12px; color: var(--muted); line-height: 1.6; }
+  .help b { color: var(--text); font-weight: 500; }
+  .view { grid-area: view; position: relative; min-width: 0; min-height: 0; overflow: hidden; }
+  .view canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+  .bar { position: absolute; top: 10px; right: 10px; display: flex; gap: 6px; }
+  .seg { display: inline-flex; background: rgba(22,26,33,.9); border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
+  .seg button { background: none; border: 0; padding: 5px 10px; cursor: pointer; color: var(--muted); font-size: 12px; }
+  .seg button.on { color: var(--text); background: var(--panel2); }
+  .status { position: absolute; left: 10px; bottom: 8px; font: 11px var(--mono); color: var(--muted);
+    background: rgba(22,26,33,.85); padding: 4px 8px; border-radius: 6px; }
+  .label2d { position: absolute; top: 10px; font: 11px var(--mono); color: var(--muted); background: rgba(22,26,33,.85);
+    padding: 3px 7px; border-radius: 5px; pointer-events: none; }
+  .lines { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+  .planebar { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); display: flex; gap: 8px; align-items: center;
+    background: rgba(22,26,33,.94); border: 1px solid var(--warn); border-radius: 8px; padding: 6px 10px; }
+  .center.busy { background: rgba(15,17,21,.55); pointer-events: auto; color: var(--text); font-size: 14px; }
+  .scanpick { display: flex; align-items: center; gap: 8px; width: 100%; background: var(--panel2); border: 1px solid var(--line);
+    border-radius: 7px; padding: 5px 8px; cursor: pointer; text-align: left; }
+  .scanpick:hover { border-color: var(--accent); }
+  .scanpick img { width: 44px; height: 33px; object-fit: cover; border-radius: 4px; background: var(--bg); }
+  .scanpick span:nth-of-type(1) { flex: 1; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .scanpanel { position: fixed; z-index: 30; left: 12px; top: 96px; width: 300px; max-height: 70vh; overflow: auto;
+    background: rgba(22,26,33,.97); border: 1px solid var(--line); border-radius: 10px; padding: 6px;
+    box-shadow: 0 10px 30px rgba(0,0,0,.5); }
+  .scanpanel .item { display: flex; gap: 9px; align-items: center; padding: 6px; border-radius: 7px; cursor: pointer; }
+  .scanpanel .item:hover { background: var(--panel2); }
+  .scanpanel .item.on { outline: 1px solid var(--accent); }
+  .scanpanel img, .scanpanel .noimg { width: 72px; height: 54px; object-fit: cover; border-radius: 5px; background: var(--bg); flex: none; }
+  .scanpanel .noimg { border: 1px dashed var(--line); }
+  .scanpanel small { display: block; color: var(--muted); font-size: 11px; }
+  .center { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); pointer-events: none; text-align: center; }
+</style>
+<script type="importmap">
+{ "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
+    "three-mesh-bvh": "https://cdn.jsdelivr.net/npm/three-mesh-bvh@0.8.3/build/index.module.js"
+} }
+</script>
+</head>
+<body>
+<div class="scanpanel" id="scanPanel" hidden></div>
+<div class="app">
+  <header>
+    <b>motiongrametry</b><span class="muted" id="wsTitle"></span>
+    <nav class="screens"><a id="toGenerate">Generate</a><a class="on">Edit &amp; paint</a><a href="/help#edit" target="_blank">Help</a><a href="/about" target="_blank">About</a></nav>
+    <span style="margin-left:auto" class="muted" id="dirtyInfo"></span>
+  </header>
+
+  <aside>
+    <section>
+      <h2>Scan</h2>
+      <button class="scanpick" id="scanPick" title="switch scan"><img id="scanThumb" alt=""><span id="scanName">…</span><span class="muted">▾</span></button>
+      <div class="modes" style="margin-top:10px">
+        <button data-mode="sculpt" title="reshape the clean mesh (before texturing)">Sculpt mesh</button>
+        <button data-mode="paint" title="paint the texture of the textured model">Paint texture</button>
+      </div>
+      <div id="modeNote" class="note"></div>
+      <div id="modeWarn" class="warn" hidden></div>
+    </section>
+    <section>
+      <h2>Tools</h2>
+      <div class="tools" id="tools"></div>
+      <div class="note" id="toolHelp"></div>
+    </section>
+    <section>
+      <h2>Brush</h2>
+      <div class="slider"><span>Radius</span><input type="range" id="radius" min="4" max="300" value="40"><span id="radiusV"></span></div>
+      <div class="slider"><span>Strength</span><input type="range" id="strength" min="1" max="100" value="50"><span id="strengthV"></span></div>
+      <div class="slider"><span>Hardness</span><input type="range" id="hardness" min="0" max="95" value="30"><span id="hardnessV"></span></div>
+      <div id="paintOpts">
+        <label class="check">Colour <input type="color" id="color" value="#c8a07a"> <span class="muted" id="cloneInfo"></span></label>
+        <div class="swatches" id="swatches"></div>
+        <label class="check"><input type="checkbox" id="unlit" checked> show texture unlit (true colours)</label>
+      </div>
+      <div id="sculptOpts">
+        <label class="check" title="ignore surface facing away from you, e.g. the back of a thin part"><input type="checkbox" id="frontOnly" checked> front-facing surface only</label>
+        <label class="check" title="W cycles through them">Display <select id="dispMode"><option value="colours">Colours</option><option value="solid">Solid grey</option>
+          <option value="wire">Wireframe</option><option value="solidwire">Solid + wires</option></select></label>
+        <label class="check" title="edges that border a single triangle: holes, openings, cuts left open"><input type="checkbox" id="holesChk"> highlight holes</label>
+        <div class="note" id="holesInfo" style="margin:0"></div>
+        <label class="check" title="close the opening a Cut stroke leaves; leave off to remove junk (walls, floaters)"><input type="checkbox" id="capCut"> Cut: cap the opening</label>
+      </div>
+    </section>
+    <section id="meshOps">
+      <h2>Mesh</h2>
+      <div class="note" id="fillInfo" style="margin:0 0 6px"></div>
+      <label class="check" title="rebuild the whole mesh at the Detail below (merges separate shells, removes inner walls, closes every opening) instead of only the area around the fill spheres"><input type="checkbox" id="wholeMerge"> Merge: whole mesh</label>
+      <div class="slider" id="detailRow" title="voxel size for a whole-mesh Merge, as a share of the model's size: smaller keeps more detail but takes longer"><span>Detail</span><input type="range" id="detail" min="15" max="100" value="25"><span id="detailV"></span></div>
+      <div class="btns" style="margin-top:0">
+        <button class="btn" id="mergeBtn" title="rebuild the surface as one closed piece, including the Fill volume: merges shells, removes inner walls, closes openings">Merge</button>
+        <button class="btn" id="clearFill" hidden>Clear fill</button>
+      </div>
+      <div class="btns">
+        <button class="btn" id="closeBtn" title="cap every opening with a smoothed lid">Close all holes</button>
+        <button class="btn" id="piecesBtn" title="delete pieces smaller than a tenth of the main one, e.g. a part a cut separated">Remove loose pieces</button>
+      </div>
+    </section>
+    <section>
+      <div class="btns" style="margin-top:0">
+        <button class="btn" id="undoBtn" title="Ctrl+Z">Undo</button>
+        <button class="btn" id="redoBtn" title="Ctrl+Shift+Z">Redo</button>
+        <button class="btn primary" id="saveBtn" title="Ctrl+S">Save</button>
+      </div>
+      <div class="btns">
+        <button class="btn" id="discardBtn" title="reload the last saved version">Discard changes</button>
+        <button class="btn" id="restoreBtn" hidden title="drop the custom version: the pipeline's version is what remains">Delete custom version</button>
+      </div>
+      <div class="err" id="err"></div>
+      <div class="okmsg" id="okmsg"></div>
+    </section>
+    <section class="help" id="help"></section>
+  </aside>
+
+  <main class="view" id="view">
+    <div class="bar"><span class="seg" id="layoutSeg">
+      <button data-layout="3d">3D</button><button data-layout="split">3D + texture</button><button data-layout="uv">Texture</button></span>
+      <span class="seg"><button id="fitBtn">Fit</button></span></div>
+    <div class="label2d" id="label2d" hidden>texture</div>
+    <svg class="lines" id="lines"><line id="planeLine" stroke="#f0b429" stroke-width="2" stroke-dasharray="6 4" visibility="hidden"/></svg>
+    <div class="planebar" id="planeBar" hidden>Plane cut
+      <button class="btn primary" id="planeApply" title="Enter">Cut</button>
+      <button class="btn" id="planeFlip" title="keep the other side">Flip side</button>
+      <button class="btn" id="planeCancel" title="Esc">Cancel</button>
+      <label class="check" style="margin:0"><input type="checkbox" id="planeClose" checked> close the cut flat</label></div>
+    <div class="center" id="center">loading…</div>
+    <div class="status" id="status"></div>
+  </main>
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { MeshBVH, acceleratedRaycast } from 'three-mesh-bvh';
+
+const $ = (id) => document.getElementById(id);
+async function api(url, opts = {}) {
+  const r = await fetch(url, opts);
+  const text = await r.text();
+  let j; try { j = JSON.parse(text); } catch { j = { error: text }; }
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  return j;
+}
+const flash = (msg) => { $('okmsg').textContent = msg; $('err').textContent = ''; };
+const fail = (e) => { $('err').textContent = e.message || String(e); $('okmsg').textContent = ''; console.error(e); };
+
+// ---------------------------------------------------------------- tools
+const I = {  // tiny stroke icons
+  draw: 'M4 16c3-8 5-8 8 0s5 8 8 0', dig: 'M4 8c3 8 5 8 8 0s5-8 8 0', inflate: 'M12 4a8 8 0 1 0 .01 0M12 8v8M8 12h8',
+  deflate: 'M12 4a8 8 0 1 0 .01 0M8 12h8', smooth: 'M3 12c2-3 4 3 6 0s4 3 6 0 4 3 6 0', flatten: 'M3 15h18M6 11l2-3 3 3 3-4 4 4',
+  pinch: 'M4 6l7 6-7 6M20 6l-7 6 7 6', grab: 'M8 11V5a1.5 1.5 0 0 1 3 0v6m0-1V4a1.5 1.5 0 0 1 3 0v7m0-5a1.5 1.5 0 0 1 3 0v8a6 6 0 0 1-12 0v-3a1.5 1.5 0 0 1 3 0',
+  cut: 'M6 6l12 12M18 6L6 18', fill: 'M5 12a7 7 0 0 0 14 0M5 12h14M9 8l3-4 3 4', plane: 'M3 21L21 3M7 9l2 2M13 15l2 2', paint: 'M14 4l6 6-9 9H5v-6zM12 6l6 6', restore: 'M4 12a8 8 0 1 0 3-6.3M4 4v4h4',
+  blur: 'M12 3s6 7 6 11a6 6 0 0 1-12 0c0-4 6-11 6-11z', smudge: 'M5 19c4-1 6-5 6-9a3 3 0 0 1 6 0c0 5-6 8-12 9z',
+  clone: 'M8 8h11v11H8zM5 16V5h11', lighten: 'M12 4v2M12 18v2M4 12h2M18 12h2M12 8a4 4 0 1 0 .01 0',
+  darken: 'M20 14A8 8 0 1 1 10 4a6 6 0 0 0 10 10z', saturate: 'M12 4a8 8 0 1 0 .01 0M12 4v16', desaturate: 'M12 4a8 8 0 1 0 .01 0M5 9h14M5 15h14',
+  picker: 'M14 4l6 6-2 2-6-6zM12 8l-7 7v4h4l7-7',
+};
+const TOOLS = {
+  sculpt: [
+    ['draw', 'Draw', 'D', 'raise the surface (Ctrl: dig in)'],
+    ['dig', 'Dig in', 'C', 'carve into the surface (Ctrl: raise)'],
+    ['inflate', 'Inflate', 'I', 'swell along each vertex normal (Ctrl: deflate)'],
+    ['deflate', 'Deflate', 'O', 'shrink along each vertex normal (Ctrl: inflate)'],
+    ['smooth', 'Smooth', 'S', 'relax bumps and noise; hold Shift with any tool to smooth'],
+    ['flatten', 'Flatten', 'F', 'press the surface onto its average plane'],
+    ['pinch', 'Pinch', 'P', 'pull towards the brush centre: sharpens creases'],
+    ['grab', 'Grab', 'G', 'drag a region of the surface'],
+    ['cut', 'Cut away', 'X', 'delete the surface under the brush (background bits, floaters); tick "cap the opening" to close it'],
+    ['fill', 'Fill', 'B', 'add volume: brush over a hole or gap, then press Merge to make it part of the mesh'],
+    ['restore', 'Restore', 'R', 'bring back raw-mesh surface that clean carved away (the raw mesh shows as an amber ghost)'],
+    ['plane', 'Plane cut', 'V', 'drag a line across the model: cuts straight through it and closes the cut flat'],
+  ],
+  paint: [
+    ['paint', 'Brush', 'B', 'paint with the colour (Alt+click anywhere: pick a colour)'],
+    ['restore', 'Restore', 'E', 'paint back the original photo texture'],
+    ['blur', 'Blur', 'U', 'soften the texture'],
+    ['smudge', 'Smudge', 'M', 'drag colour along the stroke'],
+    ['clone', 'Clone', 'K', 'Ctrl+click to set the source, then paint a copy of it'],
+    ['lighten', 'Lighten', 'L', 'brighten'],
+    ['darken', 'Darken', 'N', 'darken'],
+    ['saturate', 'Saturate', 'T', 'more colourful'],
+    ['desaturate', 'Desaturate', 'Y', 'towards grey'],
+    ['picker', 'Pick colour', 'A', 'click to take the colour under the cursor'],
+  ],
+};
+const HELP = {
+  sculpt: `<b>Left-drag on the mesh</b>: sculpt · <b>left-drag off it / right-drag</b>: orbit ·
+    <b>middle-drag</b>: pan · <b>wheel</b>: zoom · <b>[ ]</b>: radius · <b>Shift</b>: smooth · <b>Ctrl</b>: invert ·
+    <b>Ctrl+Z / Ctrl+Shift+Z</b>: undo / redo · <b>Ctrl+S</b>: save.<br>
+    <b>Fill</b> places spheres at the depth of the surface around the brush (so it fills a hole you look through);
+    <b>Merge</b> turns mesh + fill into one closed surface you can then smooth as a single piece.
+    <b>Plane cut</b>: drag a line, check the preview, Enter to cut.
+    <b>Restore</b>: brush over the amber ghost (the raw mesh) to bring back what clean carved away.<br>
+    Saving replaces the clean mesh: the print STL and clean GLB are rebuilt, and <b>texture</b> becomes stale:
+    re-run it on the Generate screen to project the photos onto the new shape, then paint.`,
+  paint: `<b>Left-drag</b> on the model or on the flat texture: paint · <b>Alt+click</b>: pick colour ·
+    <b>Ctrl+click</b>: clone source · 3D: <b>right-drag</b> orbit, <b>middle</b> pan · texture: <b>right / middle-drag</b> pan,
+    <b>wheel</b> zoom · <b>[ ]</b>: radius · <b>Ctrl+Z / Ctrl+Shift+Z</b>: undo / redo · <b>Ctrl+S</b>: save.<br>
+    Painting on the model reaches only surface you can see; seams are painted on both sides.
+    Re-running texture replaces the paint (Restore pipeline version brings back the photo texture).`,
+};
+
+let ws = decodeURIComponent(location.hash.slice(1)) || null;
+let mode = new URLSearchParams(location.search).get('mode') === 'paint' ? 'paint' : 'sculpt', layout = 'split', wsState = null;
+const tool = { sculpt: 'draw', paint: 'paint' };
+const brush = { radius: 40, strength: 0.5, hardness: 0.3 };
+
+function renderTools() {
+  $('tools').innerHTML = TOOLS[mode].map(([id, label, key, help]) =>
+    `<button class="tool ${tool[mode] === id ? 'on' : ''}" data-tool="${id}" title="${help}"><kbd>${key}</kbd>
+      <svg viewBox="0 0 24 24"><path d="${I[id]}"/></svg>${label}</button>`).join('');
+  $('tools').querySelectorAll('[data-tool]').forEach((b) => b.addEventListener('click', () => setTool(b.dataset.tool)));
+  const t = TOOLS[mode].find((x) => x[0] === tool[mode]);
+  $('toolHelp').textContent = t ? t[3] : '';
+  $('help').innerHTML = HELP[mode];
+}
+function setTool(id) {
+  tool[mode] = id; if (plane.n && id !== 'plane') endPlane();
+  if (mode === 'sculpt' && id === 'restore') showGhost(true).catch(fail); else showGhost(false);
+  renderTools(); requestRender();
+}
+function bindSlider(id, key, scale, fmt) {
+  const el = $(id), out = $(id + 'V');
+  const set = () => { brush[key] = el.value * scale; out.textContent = fmt(brush[key]); updateCursor(); };
+  el.addEventListener('input', set); set();
+  return (v) => { el.value = v / scale; set(); };
+}
+let setRadius;
+
+// ---------------------------------------------------------------- renderer, cameras, layout
+const view = $('view');
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.autoClear = false;
+view.prepend(renderer.domElement);
+const canvas = renderer.domElement;
+
+const scene = new THREE.Scene();
+const persp = new THREE.PerspectiveCamera(40, 1, 0.01, 1000);
+persp.position.set(2, 1.5, 2);
+let camera = persp;                       // persp, or proj's orthographic camera (key 5, view cube button)
+scene.add(new THREE.HemisphereLight(0xffffff, 0x3a3f4a, 1.5));
+const sun = new THREE.DirectionalLight(0xffffff, 1.7);
+persp.add(sun); sun.position.set(0.6, 1, 0.8);
+scene.add(persp);
+const root = new THREE.Group();           // SfM frame; matrix = scene transform (Y-up)
+root.matrixAutoUpdate = false;
+scene.add(root);
+const rootInv = new THREE.Matrix4();
+
+// Our pointer handlers are registered before OrbitControls' so a stroke can claim the event.
+canvas.addEventListener('pointerdown', onPointerDown, { capture: true });
+canvas.addEventListener('wheel', onWheel, { capture: true, passive: false });
+canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+const controls = new OrbitControls(persp, canvas);
+controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.PAN, RIGHT: THREE.MOUSE.ROTATE };
+controls.addEventListener('change', () => { requestRender(); P.depthStale = true; });
+
+// Perspective or orthographic view of the same orbit: the orthographic camera frames what the
+// perspective one sees at the orbit target and zooms instead of moving. Code that places the
+// camera (fit, fly to a keyframe) moves the perspective one, then framed() brings the other along.
+function projection(persp, controls, light, onSwitch) {
+  const rad = THREE.MathUtils.degToRad, ortho = new THREE.OrthographicCamera(-1, 1, 1, -1, persp.near, persp.far);
+  persp.parent?.add(ortho);
+  const P = {
+    camera: persp, aspect: persp.aspect,
+    set(on) {
+      if (on === !!P.camera.isOrthographicCamera) return;
+      const t = controls.target;
+      if (on) {
+        const half = persp.position.distanceTo(t) * Math.tan(rad(persp.fov / 2));
+        Object.assign(ortho, { top: half, bottom: -half, left: -half * P.aspect, right: half * P.aspect, zoom: 1, near: persp.near, far: persp.far });
+        ortho.position.copy(persp.position); ortho.quaternion.copy(persp.quaternion); ortho.up.copy(persp.up);
+        ortho.updateProjectionMatrix(); P.camera = ortho;
+      } else {
+        const d = ortho.top / ortho.zoom / Math.tan(rad(persp.fov / 2)), dir = ortho.position.clone().sub(t).normalize();
+        persp.position.copy(t).addScaledVector(dir, d); persp.quaternion.copy(ortho.quaternion); persp.up.copy(ortho.up);
+        persp.updateProjectionMatrix(); P.camera = persp;
+      }
+      if (light) P.camera.add(light);
+      controls.object = P.camera; controls.update();
+      onSwitch?.(P.camera);
+    },
+    resize(aspect) {
+      P.aspect = aspect; persp.aspect = aspect; persp.updateProjectionMatrix();
+      ortho.left = -ortho.top * aspect; ortho.right = ortho.top * aspect; ortho.updateProjectionMatrix();
+    },
+    framed() { if (P.camera === ortho) { P.camera = persp; P.set(true); } else controls.update(); },
+    pxPerUnit(h, dist) {  // screen pixels per scene unit at the orbit target
+      return P.camera === ortho ? h * ortho.zoom / (ortho.top - ortho.bottom) : h / (2 * dist * Math.tan(rad(persp.fov / 2)));
+    },
+  };
+  return P;
+}
+const proj = projection(persp, controls, sun, (c) => { camera = c; P.depthStale = true; requestRender(); vcube?.update(); });
+
+// 2D texture view: display x = u * aspect, display y = 1 - v (image upright)
+const uvScene = new THREE.Scene();
+const uvCam = new THREE.OrthographicCamera(-1, 1, 1, -1, -10, 10);
+const uv2d = { cx: 0.5, cy: 0.5, scale: 0.002, aspect: 1 };
+const uvPlane = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ toneMapped: false }));
+{ const a = uvPlane.geometry.attributes.uv; for (let i = 0; i < a.count; i++) a.setY(i, 1 - a.getY(i)); }
+uvPlane.geometry.translate(0.5, 0.5, 0);
+uvScene.add(uvPlane);
+const frame2d = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(
+  [new THREE.Vector3(0, 0, 0), new THREE.Vector3(1, 0, 0), new THREE.Vector3(1, 1, 0), new THREE.Vector3(0, 1, 0)]),
+  new THREE.LineBasicMaterial({ color: 0x3a4250 }));
+uvScene.add(frame2d);
+const circleGeo = new THREE.BufferGeometry().setFromPoints(
+  Array.from({ length: 65 }, (_, i) => new THREE.Vector3(Math.cos(i / 32 * Math.PI), Math.sin(i / 32 * Math.PI), 0)));
+const cursor2d = new THREE.Line(circleGeo, new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: .8 }));
+cursor2d.visible = false; cursor2d.position.z = 1; uvScene.add(cursor2d);
+const hover2d = new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints([
+  new THREE.Vector3(-1, 0, 0), new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, -1, 0), new THREE.Vector3(0, 1, 0)]),
+  new THREE.LineBasicMaterial({ color: 0x5aa9ff }));
+hover2d.visible = false; hover2d.position.z = 1; uvScene.add(hover2d);
+const cloneMark = new THREE.Line(circleGeo, new THREE.LineBasicMaterial({ color: 0xf0b429 }));
+cloneMark.visible = false; cloneMark.position.z = 1; uvScene.add(cloneMark);
+
+// 3D brush cursor
+const cursor3d = new THREE.Mesh(new THREE.RingGeometry(0.93, 1, 48),
+  new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: .75, depthTest: false, depthWrite: false, side: THREE.DoubleSide }));
+cursor3d.renderOrder = 10; cursor3d.visible = false; scene.add(cursor3d);
+
+function rects() {
+  const w = view.clientWidth, h = view.clientHeight;
+  if (mode !== 'paint' || !P.ready || layout === '3d') return { v3: { x: 0, y: 0, w, h }, uv: null };
+  if (layout === 'uv') return { v3: null, uv: { x: 0, y: 0, w, h } };
+  const half = Math.floor(w / 2);
+  return { v3: { x: 0, y: 0, w: half, h }, uv: { x: half, y: 0, w: w - half, h } };
+}
+function which(e) {  // viewport under the pointer, with coordinates relative to it (CSS px, y down)
+  const b = canvas.getBoundingClientRect(), x = e.clientX - b.left, y = e.clientY - b.top;
+  const { v3, uv } = rects();
+  for (const [name, r] of [['3d', v3], ['uv', uv]]) {
+    if (r && x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h) return { name, r, x: x - r.x, y: y - r.y };
+  }
+  return null;
+}
+function resize() {
+  renderer.setSize(view.clientWidth, view.clientHeight, false);
+  const { uv } = rects();
+  $('label2d').hidden = !uv;
+  if (uv) $('label2d').style.left = uv.x + 10 + 'px';
+  requestRender(); P.depthStale = true;
+}
+new ResizeObserver(resize).observe(view);
+
+let pending = false;
+function requestRender() { if (!pending) { pending = true; requestAnimationFrame(draw); } }
+function draw() {
+  pending = false;
+  const { v3, uv } = rects();
+  renderer.setRenderTarget(null);
+  renderer.setScissorTest(true);
+  controls.enabled = !!v3;
+  if (vcube) vcube.el.hidden = !v3;
+  if (v3) {
+    renderer.setViewport(v3.x, 0, v3.w, v3.h); renderer.setScissor(v3.x, 0, v3.w, v3.h);
+    renderer.setClearColor(0x0f1115); renderer.clear();
+    proj.resize(v3.w / v3.h);
+    syncOverlays(v3.h);
+    renderer.render(scene, camera);
+  }
+  if (uv) {
+    renderer.setViewport(uv.x, 0, uv.w, uv.h); renderer.setScissor(uv.x, 0, uv.w, uv.h);
+    renderer.setClearColor(0x090b0e); renderer.clear();
+    const hw = uv.w * uv2d.scale / 2, hh = uv.h * uv2d.scale / 2;
+    Object.assign(uvCam, { left: uv2d.cx - hw, right: uv2d.cx + hw, top: uv2d.cy + hh, bottom: uv2d.cy - hh });
+    uvCam.updateProjectionMatrix();
+    renderer.render(uvScene, uvCam);
+  }
+  renderer.setScissorTest(false);
+}
+
+function fitView(obj) {
+  const box = new THREE.Box3().setFromObject(obj);
+  if (box.isEmpty()) return;
+  const size = box.getSize(new THREE.Vector3()).length(), c = box.getCenter(new THREE.Vector3());
+  controls.target.copy(c);
+  persp.position.copy(c).add(new THREE.Vector3(0, size * 0.15, size * 1.15));
+  persp.near = size / 500; persp.far = size * 20; persp.updateProjectionMatrix(); persp.lookAt(c);
+  proj.framed(); requestRender();
+}
+function fit2d() {
+  const { uv } = rects(); if (!uv) return;
+  uv2d.cx = uv2d.aspect / 2; uv2d.cy = 0.5;
+  uv2d.scale = 1.08 * Math.max(uv2d.aspect / uv.w, 1 / uv.h);
+  requestRender();
+}
+
+// ---------------------------------------------------------------- loading
+const gltf = new GLTFLoader();
+const loadGLB = (url) => new Promise((ok, bad) => gltf.load(url, ok, undefined, bad));
+
+let scans = [];
+const thumbUrl = (w) => `/api/workspaces/${encodeURIComponent(w.name)}/preview.jpg?v=${w.preview || 'k'}`;
+async function loadWorkspaces() {
+  scans = await api('/api/workspaces');
+  if (!ws && scans.length) ws = scans[0].name;
+  const w = scans.find((x) => x.name === ws);
+  $('scanName').textContent = ws || 'no scans';
+  $('scanThumb').hidden = !(w && w.preview != null);
+  if (w && w.preview != null) $('scanThumb').src = thumbUrl(w);
+}
+function renderScanPanel() {
+  const fmtN = (n) => n >= 1e6 ? (n / 1e6).toFixed(2) + 'M' : n >= 1e3 ? (n / 1e3).toFixed(0) + 'k' : String(n);
+  $('scanPanel').innerHTML = scans.map((w) => `<div class="item ${w.name === ws ? 'on' : ''}" data-scan="${w.name}">
+      ${w.preview != null ? `<img src="${thumbUrl(w)}" alt="" loading="lazy">` : '<span class="noimg"></span>'}
+      <div><b>${w.name}</b><small>${[w.faces && fmtN(w.faces) + ' faces', w.textured && 'textured', w.custom && 'edited']
+        .filter(Boolean).join(' · ') || 'no mesh yet'}</small></div></div>`).join('') || '<div class="muted">no scans</div>';
+  $('scanPanel').querySelectorAll('[data-scan]').forEach((el) => el.addEventListener('click', () => {
+    $('scanPanel').hidden = true;
+    if (el.dataset.scan !== ws) location.hash = '#' + encodeURIComponent(el.dataset.scan);  // hashchange reloads
+  }));
+}
+$('scanPick').addEventListener('click', (e) => {
+  e.stopPropagation();
+  if ($('scanPanel').hidden) { renderScanPanel(); $('scanPanel').hidden = false; } else $('scanPanel').hidden = true;
+});
+addEventListener('click', (e) => { if (!$('scanPanel').hidden && !$('scanPanel').contains(e.target)) $('scanPanel').hidden = true; });
+// The URL names the scan being edited: follow it if it changes.
+addEventListener('hashchange', () => {
+  const next = decodeURIComponent(location.hash.slice(1));
+  if (next === ws) return;
+  if (anyDirty() && !confirm('Discard unsaved edits?')) { history.replaceState(null, '', '#' + encodeURIComponent(ws)); return; }
+  S.dirty = P.dirty = false; location.reload();
+});
+$('toGenerate').addEventListener('click', () => { location.href = '/' + (ws ? '#' + encodeURIComponent(ws) : ''); });
+
+async function openWorkspace() {
+  $('wsTitle').textContent = ws ? '· ' + ws : '';
+  wsState = await api(`/api/workspaces/${ws}/state`);
+  const sc = await api(`/api/workspaces/${ws}/scene`).catch(() => null);
+  if (sc) root.matrix.set(...sc.transform[0], ...sc.transform[1], ...sc.transform[2], ...sc.transform[3]);
+  else root.matrix.identity();
+  root.updateMatrixWorld(true); rootInv.copy(root.matrixWorld).invert();
+  const outs = new Set((wsState.outputs || []).map((o) => o.path));
+  const canSculpt = outs.has('mesh/mesh_clean.ply'), canPaint = outs.has('mesh/textured.ply');
+  document.querySelector('[data-mode=sculpt]').disabled = !canSculpt;
+  document.querySelector('[data-mode=paint]').disabled = !canPaint;
+  if (!canSculpt && !canPaint) { $('center').textContent = 'No clean mesh in this scan yet: run the pipeline up to clean.'; return; }
+  await setMode(mode === 'paint' && canPaint ? 'paint' : canSculpt ? 'sculpt' : 'paint');
+}
+
+document.querySelectorAll('[data-mode]').forEach((b) => b.addEventListener('click', () => setMode(b.dataset.mode)));
+async function setMode(m) {
+  mode = m;
+  document.querySelectorAll('[data-mode]').forEach((b) => b.classList.toggle('on', b.dataset.mode === m));
+  $('paintOpts').hidden = m !== 'paint'; $('sculptOpts').hidden = m !== 'sculpt'; $('meshOps').hidden = m !== 'sculpt';
+  if (plane.n) endPlane();
+  $('layoutSeg').hidden = m !== 'paint';
+  renderTools();
+  renderModeInfo();
+  $('center').textContent = 'loading…'; $('center').hidden = false;
+  try {
+    if (m === 'sculpt') { if (!S.mesh) await loadSculpt(); }
+    else if (!P.ready) await loadPaint();
+  } catch (e) { fail(e); $('center').textContent = 'could not load: ' + e.message; return; }
+  $('center').hidden = true;
+  if (S.mesh) { S.mesh.visible = m === 'sculpt'; updateSpheres(); }
+  if (ghost.mesh) showGhost(m === 'sculpt' && tool.sculpt === 'restore').catch(() => {});
+  P.group.visible = m === 'paint';
+  scene.updateMatrixWorld(true);
+  resize();
+  fitView(m === 'sculpt' ? S.mesh : P.group);
+  if (m === 'paint') fit2d();
+  updateStatus(); updateButtons();
+}
+// Edits are a custom version in mesh/custom/: the pipeline's files are never changed.
+function renderModeInfo() {
+  const c = wsState.custom || {}, m = mode;
+  const has = m === 'sculpt' ? c.mesh : c.texture;
+  $('restoreBtn').hidden = !has;
+  $('modeNote').textContent = m === 'sculpt'
+    ? (c.mesh ? 'editing your custom mesh (the pipeline clean mesh is kept as it is)' : 'the pipeline clean mesh: saving creates a custom version, the original stays')
+    : (c.texture ? 'painting your custom textured model' : 'the pipeline textured model: saving creates a custom version, the original stays');
+  let warn = '';
+  if (m === 'sculpt' && c.mesh_outdated)
+    warn = 'This custom mesh was made from an older clean mesh (clean ran again since), so texture will not use it. Save it again to use it, or delete it.';
+  else if (m === 'paint' && c.mesh && !c.mesh_outdated && (!c.texture || c.texture_from !== 'custom' || c.texture_stale))
+    warn = 'This textured model is of the pipeline mesh, not your edited one: re-run texture on the Generate screen to project the photos onto your edit, then paint (paint saved now would be replaced).';
+  else if (m === 'paint' && !c.texture && (wsState.stale || []).includes('texture'))
+    warn = 'The textured model is older than the clean mesh: re-run texture first.';
+  $('modeWarn').hidden = !warn; $('modeWarn').textContent = warn;
+}
+document.querySelectorAll('[data-layout]').forEach((b) => b.addEventListener('click', () => {
+  layout = b.dataset.layout;
+  document.querySelectorAll('[data-layout]').forEach((x) => x.classList.toggle('on', x === b));
+  resize(); fit2d();
+}));
+document.querySelector(`[data-layout=${layout}]`).classList.add('on');
+$('fitBtn').addEventListener('click', () => { fitView(mode === 'sculpt' ? S.mesh : P.group); fit2d(); });
+// view cube (static/viewcube.js), above the status line; only while the 3D view is shown
+let vcube = null;
+import('/viewcube.js').then(({ addViewCube }) => {
+  vcube = addViewCube(view, { projection: proj, controls, render: requestRender, fit: () => fitView(mode === 'sculpt' ? S.mesh : P.group) });
+  vcube.el.style.bottom = '44px'; requestRender();
+}).catch(() => {});
+
+// ================================================================ SCULPT
+const S = { spheres: [], mesh: null, geom: null, pos: null, nor: null, idx: null, col8: null, nv: 0, nf: 0, bvh: null,
+  adjStart: null, adj: null, vfStart: null, vf: null, mark: null, stamp: 0, fmark: null, fstamp: 0,
+  undo: [], redo: [], dirty: false, stroke: null, bvhDirty: false, lastRefit: 0 };
+
+async function loadSculpt() {
+  const g = await loadGLB(`/api/workspaces/${ws}/mesh/${wsState.custom?.mesh ? 'custom_clean' : 'clean'}.glb?t=${Date.now()}`);
+  g.scene.updateMatrixWorld(true);
+  const parts = [];
+  g.scene.traverse((o) => {
+    if (!o.isMesh) return;
+    const geo = o.geometry.clone();
+    geo.applyMatrix4(o.matrixWorld);
+    for (const k of Object.keys(geo.attributes)) if (!['position', 'color'].includes(k)) geo.deleteAttribute(k);
+    if (!geo.index) geo.setIndex([...Array(geo.attributes.position.count).keys()]);
+    parts.push(geo);
+  });
+  if (!parts.length) throw new Error('the clean mesh has no triangles');
+  const geo = parts.length === 1 ? parts[0] : mergeGeometries(parts);
+  const nv = geo.attributes.position.count;
+  // Colours stay as bytes for saving; the display uses the same attribute.
+  const c = geo.attributes.color, col8 = new Uint8Array(nv * 3).fill(255);  // no colours: white, as before
+  if (c) for (let i = 0; i < nv; i++) for (let k = 0; k < 3; k++) {
+    const v = c.getComponent(i, k); col8[i * 3 + k] = c.normalized || c.array instanceof Float32Array ? Math.round(v * 255) : v;
+  }
+  const st = buildSculptState(new Float32Array(geo.attributes.position.array), col8, new Uint32Array(geo.index.array));
+  // Both sides drawn, the back darkened: a folded triangle or an open cut shows as a dark patch,
+  // not as a hole you see through.
+  const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, metalness: 0, side: THREE.DoubleSide });
+  mat.onBeforeCompile = (sh) => {
+    sh.fragmentShader = sh.fragmentShader.replace('#include <color_fragment>',
+      '#include <color_fragment>\n  if (!gl_FrontFacing) diffuseColor.rgb *= 0.3;');
+  };
+  S.mesh = new THREE.Mesh(st.geom, mat);
+  S.mesh.raycast = acceleratedRaycast;
+  root.add(S.mesh);
+  setDisplay(display);
+  Object.assign(S, st);
+  S.undo = []; S.redo = []; S.dirty = false; S.spheres = []; updateSpheres();
+}
+// Everything that describes the current mesh. Topology edits (cap, plane cut, merge) build a new
+// state; undo swaps whole states back, BVH and all, so earlier stroke steps stay valid.
+const STATE_KEYS = ['geom', 'bvh', 'pos', 'nor', 'idx', 'col8', 'nv', 'nf', 'adjStart', 'adj', 'vfStart', 'vf', 'mark', 'fmark', 'touch'];
+function buildSculptState(pos, col8, index) {
+  const geom = new THREE.BufferGeometry();
+  geom.setAttribute('position', new THREE.BufferAttribute(pos, 3).setUsage(THREE.DynamicDrawUsage));
+  geom.setAttribute('color', new THREE.BufferAttribute(col8, 3, true));
+  geom.setIndex(new THREE.BufferAttribute(index, 1).setUsage(THREE.DynamicDrawUsage));
+  geom.computeVertexNormals();
+  geom.attributes.normal.setUsage(THREE.DynamicDrawUsage);
+  const bvh = new MeshBVH(geom, { maxLeafTris: 8 });  // reorders the index buffer: read it afterwards
+  geom.boundsTree = bvh;
+  const nv = pos.length / 3, idx = geom.index.array;
+  return { geom, bvh, pos, nor: geom.attributes.normal.array, idx, col8, nv, nf: idx.length / 3, ...adjacency(idx, nv),
+    mark: new Uint32Array(nv), fmark: new Uint32Array(idx.length / 3), touch: new Uint32Array(nv) };
+}
+const captureState = () => Object.fromEntries(STATE_KEYS.map((k) => [k, S[k]]));
+function applyState(st) {
+  const old = S.geom;
+  Object.assign(S, st);
+  S.mesh.geometry = S.geom;
+  if (old && old !== S.geom) old.dispose();  // GPU copy only: it re-uploads if undo brings it back
+  requestRender();
+}
+function adjacency(idx, nv) {
+  const nf = idx.length / 3;
+  const deg = new Uint32Array(nv + 1), fdeg = new Uint32Array(nv + 1);
+  for (let i = 0; i < idx.length; i++) { deg[idx[i] + 1] += 2; fdeg[idx[i] + 1] += 1; }
+  for (let i = 0; i < nv; i++) { deg[i + 1] += deg[i]; fdeg[i + 1] += fdeg[i]; }
+  const adj = new Uint32Array(deg[nv]), vf = new Uint32Array(fdeg[nv]);
+  const fa = deg.slice(0, nv), ff = fdeg.slice(0, nv);
+  for (let t = 0; t < nf; t++) {
+    const a = idx[t * 3], b = idx[t * 3 + 1], c = idx[t * 3 + 2];
+    adj[fa[a]++] = b; adj[fa[a]++] = c; adj[fa[b]++] = a; adj[fa[b]++] = c; adj[fa[c]++] = a; adj[fa[c]++] = b;
+    vf[ff[a]++] = t; vf[ff[b]++] = t; vf[ff[c]++] = t;
+  }
+  return { adjStart: deg, adj, vfStart: fdeg, vf };
+}
+
+const raycaster = new THREE.Raycaster();
+raycaster.firstHitOnly = true;
+const ndc = new THREE.Vector2();
+function pick(hit3d, objs) {  // hit3d: result of which() in the 3D viewport
+  ndc.set(hit3d.x / hit3d.r.w * 2 - 1, -(hit3d.y / hit3d.r.h) * 2 + 1);
+  raycaster.setFromCamera(ndc, camera);
+  const hits = raycaster.intersectObjects(objs, false);
+  return hits[0] || null;
+}
+function worldRadius(px, point, r) {
+  return px / proj.pxPerUnit(r.h, camera.position.distanceTo(point));
+}
+
+const _sph = new THREE.Sphere(), _v = new THREE.Vector3();
+let region = [];  // vertex ids under the brush
+function gather(c, r, frontOnly, camLocal) {
+  const { pos, nor, idx, mark } = S, r2 = r * r;
+  const stamp = ++S.stamp; region = [];
+  _sph.set(c, r);
+  S.bvh.shapecast({
+    intersectsBounds: (box) => box.intersectsSphere(_sph),
+    intersectsRange: (off, count) => {
+      for (let t = off; t < off + count; t++) for (let k = 0; k < 3; k++) {
+        const v = idx[t * 3 + k];
+        if (mark[v] === stamp) continue;
+        mark[v] = stamp;
+        const dx = pos[v * 3] - c.x, dy = pos[v * 3 + 1] - c.y, dz = pos[v * 3 + 2] - c.z;
+        if (dx * dx + dy * dy + dz * dz > r2) continue;
+        if (frontOnly && nor[v * 3] * (camLocal.x - pos[v * 3]) + nor[v * 3 + 1] * (camLocal.y - pos[v * 3 + 1])
+            + nor[v * 3 + 2] * (camLocal.z - pos[v * 3 + 2]) < 0) continue;
+        region.push(v);
+      }
+      return false;
+    },
+  });
+  return region;
+}
+const falloff = (t) => {
+  const h = brush.hardness;
+  if (t <= h) return 1;
+  const x = Math.min(1, (t - h) / (1 - h + 1e-6));
+  return 1 - x * x * (3 - 2 * x);
+};
+function remember(v) {  // first change of a vertex in this stroke: keep its old position for undo
+  const st = S.stroke;
+  if (S.touch[v] === st.id) return;
+  S.touch[v] = st.id;
+  st.verts.push(v); st.old.push(S.pos[v * 3], S.pos[v * 3 + 1], S.pos[v * 3 + 2]);
+}
+let dirtyLo = Infinity, dirtyHi = -1;
+const touchRange = (v) => { if (v < dirtyLo) dirtyLo = v; if (v > dirtyHi) dirtyHi = v; };
+function updateNormals(verts) {
+  const { pos, nor, idx, vfStart, vf, fmark } = S;
+  const stamp = ++S.fstamp, around = [];
+  for (const v of verts) for (let j = vfStart[v]; j < vfStart[v + 1]; j++) {
+    const f = vf[j];
+    if (fmark[f] !== stamp) { fmark[f] = stamp; for (let k = 0; k < 3; k++) around.push(idx[f * 3 + k]); }
+  }
+  const seen = ++S.stamp;
+  for (const v of around) {
+    if (S.mark[v] === seen) continue;
+    S.mark[v] = seen;
+    let nx = 0, ny = 0, nz = 0;
+    for (let j = vfStart[v]; j < vfStart[v + 1]; j++) {
+      const f = vf[j], a = idx[f * 3] * 3, b = idx[f * 3 + 1] * 3, c = idx[f * 3 + 2] * 3;
+      const ux = pos[b] - pos[a], uy = pos[b + 1] - pos[a + 1], uz = pos[b + 2] - pos[a + 2];
+      const wx = pos[c] - pos[a], wy = pos[c + 1] - pos[a + 1], wz = pos[c + 2] - pos[a + 2];
+      nx += uy * wz - uz * wy; ny += uz * wx - ux * wz; nz += ux * wy - uy * wx;
+    }
+    const l = Math.hypot(nx, ny, nz) || 1;
+    nor[v * 3] = nx / l; nor[v * 3 + 1] = ny / l; nor[v * 3 + 2] = nz / l;
+    touchRange(v);
+  }
+}
+function flushGeometry() {
+  if (dirtyHi < 0) return;
+  for (const a of [S.geom.attributes.position, S.geom.attributes.normal]) {
+    a.clearUpdateRanges(); a.addUpdateRange(dirtyLo * 3, (dirtyHi - dirtyLo + 1) * 3); a.needsUpdate = true;
+  }
+  dirtyLo = Infinity; dirtyHi = -1;
+  S.bvhDirty = true;
+  const now = performance.now();
+  if (now - S.lastRefit > 300) { S.bvh.refit(); S.bvhDirty = false; S.lastRefit = now; }
+  holes.moved = true;
+}
+
+const camLocal = new THREE.Vector3(), _n = new THREE.Vector3(), _c = new THREE.Vector3();
+function sculptDab(p, r, t) {
+  const { pos, nor, adjStart, adj } = S;
+  const s = brush.strength;
+  if (t === 'cut') return cutDab(p, r);
+  const vs = gather(p, r, $('frontOnly').checked, camLocal);
+  if (!vs.length) return;
+  const w = new Float32Array(vs.length);
+  _n.set(0, 0, 0); _c.set(0, 0, 0); let ws_ = 0;
+  for (let i = 0; i < vs.length; i++) {
+    const v = vs[i];
+    const d = Math.hypot(pos[v * 3] - p.x, pos[v * 3 + 1] - p.y, pos[v * 3 + 2] - p.z) / r;
+    w[i] = falloff(d) * s; ws_ += w[i];
+    _n.x += nor[v * 3] * w[i]; _n.y += nor[v * 3 + 1] * w[i]; _n.z += nor[v * 3 + 2] * w[i];
+    _c.x += pos[v * 3] * w[i]; _c.y += pos[v * 3 + 1] * w[i]; _c.z += pos[v * 3 + 2] * w[i];
+  }
+  if (ws_ <= 0) return;
+  _n.normalize(); _c.multiplyScalar(1 / ws_);
+  const step = r * 0.06;
+  if (t === 'inflate' || t === 'deflate') return swellDab(vs, w, step, t === 'inflate' ? 1 : -1);
+  let target = null;
+  if (t === 'smooth') {  // targets from the current positions, then move: order independent
+    target = new Float32Array(vs.length * 3);
+    for (let i = 0; i < vs.length; i++) {
+      const v = vs[i]; let x = 0, y = 0, z = 0; const n = adjStart[v + 1] - adjStart[v];
+      for (let j = adjStart[v]; j < adjStart[v + 1]; j++) { const u = adj[j] * 3; x += pos[u]; y += pos[u + 1]; z += pos[u + 2]; }
+      target[i * 3] = n ? x / n : pos[v * 3]; target[i * 3 + 1] = n ? y / n : pos[v * 3 + 1]; target[i * 3 + 2] = n ? z / n : pos[v * 3 + 2];
+    }
+  }
+  for (let i = 0; i < vs.length; i++) {
+    const v = vs[i], k = v * 3, wi = w[i];
+    remember(v);
+    switch (t) {
+      case 'draw': case 'dig': {
+        const sg = t === 'draw' ? 1 : -1;
+        pos[k] += _n.x * step * wi * sg; pos[k + 1] += _n.y * step * wi * sg; pos[k + 2] += _n.z * step * wi * sg; break;
+      }
+      case 'smooth': {
+        const a = Math.min(1, wi * 1.6);
+        pos[k] += (target[i * 3] - pos[k]) * a; pos[k + 1] += (target[i * 3 + 1] - pos[k + 1]) * a;
+        pos[k + 2] += (target[i * 3 + 2] - pos[k + 2]) * a; break;
+      }
+      case 'flatten': {
+        const d = (pos[k] - _c.x) * _n.x + (pos[k + 1] - _c.y) * _n.y + (pos[k + 2] - _c.z) * _n.z;
+        const a = Math.min(1, wi * 0.5);
+        pos[k] -= _n.x * d * a; pos[k + 1] -= _n.y * d * a; pos[k + 2] -= _n.z * d * a; break;
+      }
+      case 'pinch': {
+        const dx = p.x - pos[k], dy = p.y - pos[k + 1], dz = p.z - pos[k + 2];
+        const along = dx * _n.x + dy * _n.y + dz * _n.z, a = wi * 0.15;  // tangential pull only
+        pos[k] += (dx - _n.x * along) * a; pos[k + 1] += (dy - _n.y * along) * a; pos[k + 2] += (dz - _n.z * along) * a; break;
+      }
+    }
+    touchRange(v);
+  }
+  updateNormals(vs);
+}
+// Inflate / deflate move each vertex along its normal. Scan normals are noisy, and moving
+// inwards makes neighbours converge and cross: 10-14% of the triangles under a deflate stroke
+// folded over (they render as holes). Moving along normals smoothed over ~8 rings, then relaxing
+// the region, brings that to under 1% (measured on a real clean mesh). Deflate relaxes fully
+// (shrinking is its point); inflate only sideways, so it keeps growing.
+function swellDab(vs, w, step, sign) {
+  const { pos, nor, adjStart, adj } = S, n = vs.length;
+  const at = new Map(); vs.forEach((v, i) => at.set(v, i));
+  let ns = new Float32Array(n * 3), tmp = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) ns.set(nor.subarray(vs[i] * 3, vs[i] * 3 + 3), i * 3);
+  for (let it = 0; it < 8; it++) {
+    for (let i = 0; i < n; i++) {
+      const v = vs[i]; let x = ns[i * 3], y = ns[i * 3 + 1], z = ns[i * 3 + 2];
+      for (let j = adjStart[v]; j < adjStart[v + 1]; j++) {
+        const u = adj[j], q = at.get(u);
+        if (q === undefined) { x += nor[u * 3]; y += nor[u * 3 + 1]; z += nor[u * 3 + 2]; }
+        else { x += ns[q * 3]; y += ns[q * 3 + 1]; z += ns[q * 3 + 2]; }
+      }
+      const l = Math.hypot(x, y, z) || 1;
+      tmp[i * 3] = x / l; tmp[i * 3 + 1] = y / l; tmp[i * 3 + 2] = z / l;
+    }
+    [ns, tmp] = [tmp, ns];
+  }
+  for (let i = 0; i < n; i++) {
+    const v = vs[i], k = v * 3, d = step * w[i] * sign;
+    remember(v);
+    pos[k] += ns[i * 3] * d; pos[k + 1] += ns[i * 3 + 1] * d; pos[k + 2] += ns[i * 3 + 2] * d;
+    touchRange(v);
+  }
+  const avg = tmp;  // reuse: neighbour means from the moved positions, then relax towards them
+  for (let i = 0; i < n; i++) {
+    const v = vs[i], c = adjStart[v + 1] - adjStart[v]; let x = 0, y = 0, z = 0;
+    for (let j = adjStart[v]; j < adjStart[v + 1]; j++) { const u = adj[j] * 3; x += pos[u]; y += pos[u + 1]; z += pos[u + 2]; }
+    avg[i * 3] = c ? x / c : pos[v * 3]; avg[i * 3 + 1] = c ? y / c : pos[v * 3 + 1]; avg[i * 3 + 2] = c ? z / c : pos[v * 3 + 2];
+  }
+  for (let i = 0; i < n; i++) {
+    const k = vs[i] * 3;
+    let dx = avg[i * 3] - pos[k], dy = avg[i * 3 + 1] - pos[k + 1], dz = avg[i * 3 + 2] - pos[k + 2];
+    let a;
+    if (sign < 0) a = Math.min(1, w[i] * 1.5);
+    else {  // sideways only
+      const along = dx * ns[i * 3] + dy * ns[i * 3 + 1] + dz * ns[i * 3 + 2];
+      dx -= ns[i * 3] * along; dy -= ns[i * 3 + 1] * along; dz -= ns[i * 3 + 2] * along;
+      a = Math.min(1, w[i]);
+    }
+    pos[k] += dx * a; pos[k + 1] += dy * a; pos[k + 2] += dz * a;
+  }
+  updateNormals(vs);
+}
+function cutDab(p, r) {
+  const { pos, idx, nor } = S, r2 = r * r, st = S.stroke, front = $('frontOnly').checked;
+  _sph.set(p, r);
+  let lo = Infinity, hi = -1;
+  S.bvh.shapecast({
+    intersectsBounds: (box) => box.intersectsSphere(_sph),
+    intersectsRange: (off, count) => {
+      for (let t = off; t < off + count; t++) {
+        const a = idx[t * 3], b = idx[t * 3 + 1], c = idx[t * 3 + 2];
+        if (a === b && b === c) continue;  // already cut
+        let inside = false;
+        for (const v of [a, b, c]) {
+          const dx = pos[v * 3] - p.x, dy = pos[v * 3 + 1] - p.y, dz = pos[v * 3 + 2] - p.z;
+          if (dx * dx + dy * dy + dz * dz <= r2 && (!front || nor[v * 3] * (camLocal.x - pos[v * 3])
+              + nor[v * 3 + 1] * (camLocal.y - pos[v * 3 + 1]) + nor[v * 3 + 2] * (camLocal.z - pos[v * 3 + 2]) >= 0)) { inside = true; break; }
+        }
+        if (!inside) continue;
+        st.tris.push(t, a, b, c);
+        idx[t * 3 + 1] = a; idx[t * 3 + 2] = a;  // degenerate: invisible, dropped on save
+        if (t < lo) lo = t; if (t > hi) hi = t;
+      }
+      return false;
+    },
+  });
+  if (hi >= 0) { const ia = S.geom.index; ia.clearUpdateRanges(); ia.addUpdateRange(lo * 3, (hi - lo + 1) * 3); ia.needsUpdate = true; S.bvhDirty = true; }
+}
+function grabMove(delta) {
+  const { pos } = S, g = S.stroke.grab;
+  for (let i = 0; i < g.verts.length; i++) {
+    const v = g.verts[i], k = v * 3, w = g.w[i];
+    pos[k] = g.start[i * 3] + delta.x * w; pos[k + 1] = g.start[i * 3 + 1] + delta.y * w; pos[k + 2] = g.start[i * 3 + 2] + delta.z * w;
+    touchRange(v);
+  }
+  updateNormals(g.verts);
+}
+
+function sculptStart(e, at) {
+  let t = tool.sculpt;
+  if (e.shiftKey) t = 'smooth';
+  else if (e.ctrlKey || e.metaKey) t = { draw: 'dig', dig: 'draw', inflate: 'deflate', deflate: 'inflate' }[t] || t;
+  if (t === 'restore') {
+    if (!ghost.mesh || !pick(at, [ghost.mesh])) return false;
+    S.stroke = { id: (S.stroke?.id || 0) + 1, t, verts: [], old: [], tris: [], dabs: [], lastXY: { x: at.x, y: at.y } };
+    restoreDab(at);
+    return true;
+  }
+  if (t === 'fill') {  // claims the drag even off the mesh: the hole itself has no surface to hit
+    S.stroke = { id: (S.stroke?.id || 0) + 1, t, verts: [], old: [], tris: [], added: 0, lastXY: { x: at.x, y: at.y } };
+    fillDab(at);
+    return true;
+  }
+  const hit = pick(at, [S.mesh]);
+  if (!hit) return false;
+  camLocal.copy(camera.position).applyMatrix4(rootInv);
+  const st = S.stroke = { id: (S.stroke?.id || 0) + 1, t, verts: [], old: [], tris: [], last: null };
+  const pLocal = hit.point.clone().applyMatrix4(rootInv);
+  const r = worldRadius(brush.radius, hit.point, at.r);
+  if (t === 'grab') {
+    const vs = gather(pLocal, r, $('frontOnly').checked, camLocal).slice();
+    const w = new Float32Array(vs.length), start = new Float32Array(vs.length * 3);
+    vs.forEach((v, i) => {
+      w[i] = falloff(Math.hypot(S.pos[v * 3] - pLocal.x, S.pos[v * 3 + 1] - pLocal.y, S.pos[v * 3 + 2] - pLocal.z) / r);
+      start.set(S.pos.subarray(v * 3, v * 3 + 3), i * 3); remember(v);
+    });
+    const n = camera.getWorldDirection(new THREE.Vector3());
+    st.grab = { verts: vs, w, start, plane: new THREE.Plane().setFromNormalAndCoplanarPoint(n, hit.point), from: hit.point.clone() };
+  } else {
+    sculptDab(pLocal, r, t); flushGeometry();
+    st.last = hit.point.clone();
+  }
+  requestRender();
+  return true;
+}
+const _ray = new THREE.Vector3(), _q = new THREE.Vector3();
+function sculptMove(e, at) {
+  const st = S.stroke;
+  if (st.t === 'restore') {
+    const sp = Math.max(3, brush.radius * 0.4), d = Math.hypot(at.x - st.lastXY.x, at.y - st.lastXY.y);
+    if (d < sp) return;
+    const n = Math.min(40, Math.floor(d / sp));
+    for (let i = 1; i <= n; i++) restoreDab({ ...at, x: st.lastXY.x + (at.x - st.lastXY.x) * i / n, y: st.lastXY.y + (at.y - st.lastXY.y) * i / n });
+    st.lastXY = { x: at.x, y: at.y };
+    return;
+  }
+  if (st.t === 'fill') {  // a sphere every half radius along the path
+    const sp = Math.max(3, brush.radius * 0.5), d = Math.hypot(at.x - st.lastXY.x, at.y - st.lastXY.y);
+    if (d < sp) return;
+    const n = Math.min(40, Math.floor(d / sp));
+    for (let i = 1; i <= n; i++) fillDab({ ...at, x: st.lastXY.x + (at.x - st.lastXY.x) * i / n, y: st.lastXY.y + (at.y - st.lastXY.y) * i / n });
+    st.lastXY = { x: at.x, y: at.y };
+    return;
+  }
+  if (st.t === 'grab') {
+    ndc.set(at.x / at.r.w * 2 - 1, -(at.y / at.r.h) * 2 + 1);
+    raycaster.setFromCamera(ndc, camera);
+    if (raycaster.ray.intersectPlane(st.grab.plane, _ray)) {
+      const d = _ray.clone().sub(st.grab.from).applyMatrix3(new THREE.Matrix3().setFromMatrix4(rootInv));
+      grabMove(d); flushGeometry(); requestRender();
+    }
+    return;
+  }
+  const hit = pick(at, [S.mesh]);
+  if (!hit) return;
+  const r = worldRadius(brush.radius, hit.point, at.r);
+  // Dabs every quarter radius along the path, so fast strokes stay continuous.
+  const spacing = r * 0.25, from = st.last || hit.point, dist = from.distanceTo(hit.point);
+  if (dist < spacing) return;
+  const n = Math.min(20, Math.floor(dist / spacing));
+  for (let i = 1; i <= n; i++) {
+    _q.lerpVectors(from, hit.point, i / n).applyMatrix4(rootInv);
+    sculptDab(_q, r, st.t);
+  }
+  st.last = hit.point.clone();
+  flushGeometry(); requestRender();
+}
+function pushUndo(entry) {
+  S.undo.push(entry);
+  // whole-mesh steps hold a full copy: keep at most 6 of them, and 40 steps in all
+  let fulls = S.undo.filter((u) => u.type === 'full').length;
+  while (S.undo.length > 40 || fulls > 6) if (S.undo.shift().type === 'full') fulls--;
+  S.redo = [];
+}
+function sculptEnd() {
+  const st = S.stroke; if (!st) return;
+  S.stroke = { id: st.id };
+  if (st.t === 'fill') {
+    if (st.added) { pushUndo({ type: 'spheres', n: st.added }); S.dirty = true; }
+    updateStatus(); updateButtons();
+    return;
+  }
+  if (st.t === 'restore') {
+    const dabs = st.dabs;
+    if (dabs.length) meshOp('restore', { spheres: dabs }, 'restoring from the raw mesh…')
+      .then((info) => info && flash(info.restored_faces ? `restored ${info.restored_faces.toLocaleString()} faces from the raw mesh`
+        : 'nothing to restore there: the mesh already has that surface'))
+      .catch(fail).finally(() => { ghost.dabs = []; updateGhostDabs(); });
+    return;
+  }
+  if (S.bvhDirty) { S.bvh.refit(); S.bvhDirty = false; }
+  if (st.verts.length || st.tris.length) {
+    pushUndo({ type: 'stroke', verts: Uint32Array.from(st.verts), old: Float32Array.from(st.old), tris: Uint32Array.from(st.tris) });
+    S.dirty = true;
+  }
+  if (st.t === 'cut' && st.tris.length && $('capCut').checked) {
+    const seeds = new Set();
+    for (let i = 0; i < st.tris.length; i += 4) seeds.add(st.tris[i + 1]).add(st.tris[i + 2]).add(st.tris[i + 3]);
+    meshOp('cap', { seeds: [...seeds] }, 'capping the cut…')
+      .then((info) => info && flash(info.capped ? `capped the cut (${info.capped} opening${info.capped > 1 ? 's' : ''})` : 'the cut left no opening to cap'))
+      .catch(fail);
+  }
+  updateStatus(); updateButtons();
+}
+function sculptSwap(entry) {  // apply an undo entry and return its inverse
+  if (entry.type === 'full') {
+    const inv = { type: 'full', state: captureState(), spheres: S.spheres.slice() };
+    applyState(entry.state); S.spheres = entry.spheres.slice(); updateSpheres();
+    return inv;
+  }
+  if (entry.type === 'spheres') {  // {n}: remove the last n; {list}: put them back
+    if (entry.list) { S.spheres.push(...entry.list); updateSpheres(); return { type: 'spheres', n: entry.list.length }; }
+    const list = S.spheres.splice(S.spheres.length - entry.n, entry.n); updateSpheres();
+    return { type: 'spheres', list };
+  }
+  const { pos, idx } = S;
+  const old = new Float32Array(entry.old.length);
+  for (let i = 0; i < entry.verts.length; i++) {
+    const v = entry.verts[i];
+    for (let k = 0; k < 3; k++) { old[i * 3 + k] = pos[v * 3 + k]; pos[v * 3 + k] = entry.old[i * 3 + k]; }
+    touchRange(v);
+  }
+  const tris = new Uint32Array(entry.tris.length);
+  for (let i = 0; i < entry.tris.length; i += 4) {
+    const t = entry.tris[i];
+    tris[i] = t; tris[i + 1] = idx[t * 3]; tris[i + 2] = idx[t * 3 + 1]; tris[i + 3] = idx[t * 3 + 2];
+    idx[t * 3] = entry.tris[i + 1]; idx[t * 3 + 1] = entry.tris[i + 2]; idx[t * 3 + 2] = entry.tris[i + 3];
+  }
+  if (entry.tris.length) { S.geom.index.clearUpdateRanges(); S.geom.index.needsUpdate = true; }
+  updateNormals(entry.verts);
+  flushGeometry(); S.bvh.refit(); S.bvhDirty = false;
+  requestRender();
+  return { type: 'stroke', verts: entry.verts, old, tris };
+}
+function encodeMesh() {  // current mesh without the cut (degenerate) faces; vertex ids unchanged
+  const { idx, nv, pos, col8 } = S;
+  let nf = 0;
+  for (let t = 0; t < idx.length / 3; t++) if (!(idx[t * 3] === idx[t * 3 + 1] && idx[t * 3 + 1] === idx[t * 3 + 2])) nf++;
+  const faces = new Uint32Array(nf * 3);
+  for (let t = 0, o = 0; t < idx.length / 3; t++) {
+    const a = idx[t * 3], b = idx[t * 3 + 1], c = idx[t * 3 + 2];
+    if (a === b && b === c) continue;
+    faces[o++] = a; faces[o++] = b; faces[o++] = c;
+  }
+  const body = new Uint8Array(8 + nv * 15 + nf * 12);
+  new DataView(body.buffer).setUint32(0, nv, true); new DataView(body.buffer).setUint32(4, nf, true);
+  body.set(new Uint8Array(pos.buffer, pos.byteOffset, nv * 12), 8);
+  body.set(col8, 8 + nv * 12);
+  body.set(new Uint8Array(faces.buffer), 8 + nv * 15);
+  return body;
+}
+function decodeMesh(buf) {
+  const dv = new DataView(buf), nv = dv.getUint32(0, true), nf = dv.getUint32(4, true);
+  return { pos: new Float32Array(buf.slice(8, 8 + nv * 12)), col8: new Uint8Array(buf.slice(8 + nv * 12, 8 + nv * 15)),
+           idx: new Uint32Array(buf.slice(8 + nv * 15, 8 + nv * 15 + nf * 12)) };
+}
+async function saveSculpt() {
+  const body = encodeMesh();
+  const r = await api(`/api/workspaces/${ws}/edit/mesh`, { method: 'POST', body, headers: { 'Content-Type': 'application/octet-stream' } });
+  S.dirty = !!S.spheres.length;
+  flash(`saved as your custom mesh: ${r.faces.toLocaleString()} faces · custom print STL ${r.print_size_mm.join(' × ')} mm${r.print_watertight ? '' : ' (not watertight)'} · the pipeline mesh is unchanged · re-run texture to texture your edit`
+    + (S.spheres.length ? ` · the Fill (${S.spheres.length} spheres) is not merged yet, so it was not saved` : ''));
+}
+
+// Topology edits run on the server (meshops.py): mesh in, mesh out, nothing saved until Save.
+let busy = false;
+function setBusy(label) {
+  busy = !!label;
+  $('center').classList.toggle('busy', busy); $('center').hidden = !busy;
+  if (busy) $('center').textContent = label;
+  for (const id of ['mergeBtn', 'closeBtn', 'piecesBtn', 'saveBtn', 'undoBtn', 'redoBtn']) $(id).disabled = busy;
+}
+async function meshOp(kind, params, label) {
+  if (busy) return null;
+  setBusy(label);
+  try {
+    const mesh = encodeMesh(), pj = new TextEncoder().encode(JSON.stringify(params));
+    const body = new Uint8Array(4 + pj.length + mesh.length);
+    new DataView(body.buffer).setUint32(0, pj.length, true); body.set(pj, 4); body.set(mesh, 4 + pj.length);
+    const r = await fetch(`/api/workspaces/${ws}/edit/op?kind=${kind}`, { method: 'POST', body, headers: { 'Content-Type': 'application/octet-stream' } });
+    if (!r.ok) { let m = r.statusText; try { m = (await r.json()).error; } catch {} throw new Error(m); }
+    const info = JSON.parse(r.headers.get('X-Op-Info') || '{}');
+    if ((kind === 'cap' && !info.capped) || (kind === 'pieces' && !info.removed_pieces)) return info;  // nothing changed: no undo step
+    const m = decodeMesh(await r.arrayBuffer());
+    pushUndo({ type: 'full', state: captureState(), spheres: S.spheres.slice() });
+    applyState(buildSculptState(m.pos, m.col8, m.idx));
+    S.dirty = true;
+    return info;
+  } finally { setBusy(null); updateStatus(); updateButtons(); }
+}
+
+// Restore: the raw mesh (what clean carved) as an amber ghost; brushing it brings its triangles back.
+const ghost = { mesh: null, loading: null, dabs: [], dabMesh: null };
+async function showGhost(on) {
+  if (on && !ghost.mesh) {
+    ghost.loading ||= loadGLB(`/api/workspaces/${ws}/mesh/raw.glb?t=${Date.now()}`).then((g) => {
+      g.scene.updateMatrixWorld(true);
+      const parts = [];
+      g.scene.traverse((o) => { if (o.isMesh) { const geo = o.geometry.clone(); geo.applyMatrix4(o.matrixWorld); parts.push(geo); } });
+      const geo = parts.length === 1 ? parts[0] : mergeGeometries(parts.map((p) => { for (const k of Object.keys(p.attributes)) if (k !== 'position') p.deleteAttribute(k); return p; }));
+      geo.boundsTree = new MeshBVH(geo);
+      ghost.mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: 0xf0a030, transparent: true, opacity: 0.22, depthWrite: false, side: THREE.DoubleSide }));
+      ghost.mesh.raycast = acceleratedRaycast; ghost.mesh.renderOrder = 2;
+      root.add(ghost.mesh);
+    });
+    try { await ghost.loading; } catch (e) { ghost.loading = null; throw new Error('no raw mesh to restore from'); }
+  }
+  if (ghost.mesh) { ghost.mesh.visible = on && mode === 'sculpt'; requestRender(); }
+}
+function restoreDab(at) {
+  const hit = pick(at, [ghost.mesh]);
+  if (!hit) return;
+  const r = worldRadius(brush.radius, hit.point, at.r);
+  const p = hit.point.clone().applyMatrix4(rootInv);
+  S.stroke.dabs.push([p.x, p.y, p.z, r]);
+  ghost.dabs = S.stroke.dabs; updateGhostDabs();
+}
+function updateGhostDabs() {
+  const n = ghost.dabs.length;
+  if (!ghost.dabMesh || ghost.dabMesh.instanceMatrix.count < n) {
+    if (ghost.dabMesh) { root.remove(ghost.dabMesh); ghost.dabMesh.dispose(); }
+    ghost.dabMesh = new THREE.InstancedMesh(sphereGeo, new THREE.MeshBasicMaterial({ color: 0xf0a030, transparent: true, opacity: 0.35, depthWrite: false }), Math.max(256, n * 2));
+    ghost.dabMesh.frustumCulled = false; root.add(ghost.dabMesh);
+  }
+  const m = new THREE.Matrix4();
+  ghost.dabs.forEach(([x, y, z, r], i) => ghost.dabMesh.setMatrixAt(i, m.makeScale(r, r, r).setPosition(x, y, z)));
+  ghost.dabMesh.count = n; ghost.dabMesh.instanceMatrix.needsUpdate = true;
+  requestRender();
+}
+
+// Fill: spheres at the depth of the surface around the brush (a hole you look through has none
+// of its own), half a radius behind it so they sit inside the hole rather than in front of it.
+const sphereGeo = new THREE.SphereGeometry(1, 20, 14);  // fill spheres and restore dabs
+const sphereMat = new THREE.MeshStandardMaterial({ color: 0x5aa9ff, transparent: true, opacity: 0.45, roughness: 0.6, depthWrite: false });
+let sphereMesh = null;
+function updateSpheres() {
+  const n = S.spheres.length;
+  if (!sphereMesh || sphereMesh.instanceMatrix.count < n) {
+    if (sphereMesh) { root.remove(sphereMesh); sphereMesh.dispose(); }
+    sphereMesh = new THREE.InstancedMesh(sphereGeo, sphereMat, Math.max(256, n * 2));
+    sphereMesh.frustumCulled = false; root.add(sphereMesh);
+  }
+  const m = new THREE.Matrix4();
+  S.spheres.forEach(([x, y, z, r], i) => sphereMesh.setMatrixAt(i, m.makeScale(r, r, r).setPosition(x, y, z)));
+  sphereMesh.count = n; sphereMesh.instanceMatrix.needsUpdate = true;
+  sphereMesh.visible = mode === 'sculpt';
+  $('fillInfo').textContent = n ? `${n} fill sphere${n > 1 ? 's' : ''}: press Merge fill to make them part of the mesh${$('wholeMerge').checked ? '' : ' (only the area around them is rebuilt; the rest keeps its detail)'}` : '';
+  $('clearFill').hidden = !n;
+  $('detailRow').style.opacity = $('wholeMerge').checked || !n ? 1 : 0.45;  // Detail is for whole-mesh merges
+  $('mergeBtn').textContent = n ? 'Merge fill' : 'Merge';
+  requestRender();
+}
+function fillDab(at) {
+  const hit = pick(at, [S.mesh]);
+  const origin = raycaster.ray.origin.clone(), dir = raycaster.ray.direction.clone();
+  let dist = hit?.distance;
+  if (dist == null) {
+    const ds = [];
+    for (let k = 0; k < 12; k++) {
+      const a = k / 12 * 2 * Math.PI;
+      const h = pick({ ...at, x: at.x + brush.radius * Math.cos(a), y: at.y + brush.radius * Math.sin(a) }, [S.mesh]);
+      if (h) ds.push(h.distance);
+    }
+    if (ds.length < 3) return;  // nothing around the brush to take a depth from
+    ds.sort((a, b) => a - b); dist = ds[ds.length >> 1];
+  }
+  const p = origin.addScaledVector(dir, dist);
+  const r = worldRadius(brush.radius, p, at.r);
+  p.addScaledVector(dir, r * 0.5).applyMatrix4(rootInv);
+  S.spheres.push([p.x, p.y, p.z, r]);
+  S.stroke.added++;
+  updateSpheres();
+}
+
+// Plane cut: the drag line and the camera define the plane; preview by clipping, then apply.
+const plane = { n: null, at: null };
+function planeFromDrag(d, at) {
+  const ray = (x, y) => { ndc.set(x / at.r.w * 2 - 1, -(y / at.r.h) * 2 + 1); raycaster.setFromCamera(ndc, camera); return raycaster.ray.direction.clone(); };
+  if (Math.hypot(at.x - d.x0, at.y - d.y0) < 8) return false;
+  const n = ray(d.x0, d.y0).cross(ray(at.x, at.y)).normalize();
+  if (!Number.isFinite(n.x)) return false;
+  plane.n = n; plane.at = camera.position.clone();
+  showPlane();
+  return true;
+}
+function showPlane() {
+  const m = S.mesh.material;
+  m.clippingPlanes = [new THREE.Plane(plane.n.clone().negate(), plane.n.dot(plane.at))];  // shows the part that stays
+  m.needsUpdate = true;
+  renderer.localClippingEnabled = true;
+  $('planeBar').hidden = false;
+  requestRender();
+}
+function endPlane() {
+  plane.n = null;
+  const m = S.mesh.material; m.clippingPlanes = []; m.needsUpdate = true;
+  $('planeBar').hidden = true; $('planeLine').setAttribute('visibility', 'hidden');
+  requestRender();
+}
+async function applyPlane() {
+  if (!plane.n) return;
+  const point = plane.at.clone().applyMatrix4(rootInv), normal = plane.n.clone().transformDirection(rootInv);
+  const close = $('planeClose').checked;
+  endPlane();
+  try {
+    const info = await meshOp('plane', { point: point.toArray(), normal: normal.toArray(), close }, 'cutting…');
+    if (info) flash(`cut away ${info.removed_faces.toLocaleString()} faces${info.capped ? `, closed with ${info.capped} flat cap${info.capped > 1 ? 's' : ''}` : ''}`);
+  } catch (e) { fail(e); }
+}
+$('planeApply').addEventListener('click', applyPlane);
+$('planeFlip').addEventListener('click', () => { if (plane.n) { plane.n.negate(); showPlane(); } });
+$('planeCancel').addEventListener('click', endPlane);
+
+$('detail').addEventListener('input', () => { $('detailV').textContent = ($('detail').value / 100).toFixed(2) + '%'; });
+$('detailV').textContent = ($('detail').value / 100).toFixed(2) + '%';
+// Merge with fill spheres rebuilds only around them (meshops.local_merge), stitched into the
+// untouched mesh; "whole mesh" (or no spheres) rebuilds everything at the Detail voxel size.
+const wholeMerge = () => $('wholeMerge').checked || !S.spheres.length;
+$('wholeMerge').addEventListener('change', updateSpheres);
+$('mergeBtn').addEventListener('click', async () => {
+  const n = S.spheres.length, whole = wholeMerge();
+  try {
+    const info = whole
+      ? await meshOp('remesh', { spheres: S.spheres, voxel: $('detail').value / 10000 },
+        n ? `merging the fill into one surface… (${n} spheres)` : 'remeshing into one closed surface…')
+      : await meshOp('merge_local', { spheres: S.spheres }, `merging the fill… (${n} sphere${n > 1 ? 's' : ''}, the rest of the mesh stays as it is)`);
+    if (!info) return;
+    S.spheres = []; updateSpheres();
+    flash(info.local ? `merged the fill: ${info.rebuilt_faces.toLocaleString()} faces rebuilt around it, the rest untouched`
+      + (info.openings_closed ? ` (closed ${info.openings_closed} opening${info.openings_closed > 1 ? 's' : ''} it only partly covered)` : '')
+      : `merged: one closed surface, ${info.faces.toLocaleString()} faces`);
+  } catch (e) { fail(e); }
+});
+$('clearFill').addEventListener('click', () => {
+  if (!S.spheres.length) return;
+  pushUndo({ type: 'spheres', list: S.spheres.splice(0) }); updateSpheres(); updateButtons();
+});
+$('closeBtn').addEventListener('click', () => meshOp('cap', {}, 'closing holes…')
+  .then((info) => info && flash(info.capped ? `closed ${info.capped} hole${info.capped > 1 ? 's' : ''}` : 'no open holes')).catch(fail));
+$('piecesBtn').addEventListener('click', () => meshOp('pieces', { keep: 0.1 }, 'removing loose pieces…')
+  .then((info) => info && flash(info.removed_pieces ? `removed ${info.removed_pieces} piece${info.removed_pieces > 1 ? 's' : ''} (${info.removed_faces.toLocaleString()} faces)` : 'no loose pieces')).catch(fail));
+
+// ================================================================ PAINT
+const P = { ready: false, group: new THREE.Group(), meshes: [], layers: [], depthRT: null, depthStale: true,
+  undo: [], redo: [], pool: [], stroke: null, clone: null, unlit: true };
+P.group.visible = false; root.add(P.group);
+
+const quadGeo = new THREE.PlaneGeometry(2, 2);
+const orthoCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+const blitMat = new THREE.ShaderMaterial({
+  uniforms: { src: { value: null } }, depthTest: false, depthWrite: false,
+  vertexShader: 'varying vec2 vUv; void main(){ vUv = position.xy * .5 + .5; gl_Position = vec4(position.xy, 0., 1.); }',
+  fragmentShader: 'uniform sampler2D src; varying vec2 vUv; void main(){ gl_FragColor = texture2D(src, vUv); }',
+});
+const blitScene = new THREE.Scene(); blitScene.add(new THREE.Mesh(quadGeo, blitMat));
+function blit(srcTex, dstRT, mat = blitMat) {
+  mat.uniforms.src.value = srcTex;
+  blitScene.children[0].material = mat;
+  renderer.setRenderTarget(dstRT); renderer.render(blitScene, orthoCam);
+}
+function newRT(w, h) {
+  const rt = new THREE.WebGLRenderTarget(w, h, { depthBuffer: false, generateMipmaps: false,
+    minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter });
+  rt.texture.colorSpace = THREE.SRGBColorSpace;  // stored as sRGB bytes, blended in linear
+  return rt;
+}
+
+// One shader does every paint tool, in 3D (texels of visible surface under the screen-space brush)
+// or in texture space (texels under the brush on the flat texture).
+const PAINT_IDS = { paint: 0, restore: 1, blur: 2, smudge: 3, clone: 4, lighten: 5, darken: 6, saturate: 7, desaturate: 8 };
+const paintMat = new THREE.ShaderMaterial({
+  side: THREE.DoubleSide, depthTest: false, depthWrite: false,
+  uniforms: {
+    uPrev: { value: null }, uOrig: { value: null }, uDepth: { value: null }, uTool: { value: 0 }, uSpace: { value: 0 },
+    uColor: { value: new THREE.Color() }, uCenter: { value: new THREE.Vector2() }, uRadius: { value: 10 },
+    uHard: { value: .3 }, uStrength: { value: .5 }, uView: { value: new THREE.Vector2(1, 1) },
+    uViewProj: { value: new THREE.Matrix4() }, uCamPos: { value: new THREE.Vector3() }, uTexel: { value: new THREE.Vector2() },
+    uOffset: { value: new THREE.Vector2() }, uBlur: { value: 2 }, uNear: { value: .01 }, uFar: { value: 100 },
+    uOrtho: { value: 0 }, uDir: { value: new THREE.Vector3() },
+  },
+  vertexShader: `
+    uniform int uSpace; uniform mat4 uViewProj;
+    varying vec4 vClip; varying vec3 vWorld; varying vec3 vN; varying vec2 vUv;
+    void main() {
+      if (uSpace == 1) { vUv = position.xy * .5 + .5; gl_Position = vec4(position.xy, 0., 1.); return; }
+      vec4 w = modelMatrix * vec4(position, 1.);
+      vWorld = w.xyz; vClip = uViewProj * w; vN = normalize(mat3(modelMatrix) * normal); vUv = uv;
+      gl_Position = vec4(uv * 2. - 1., 0., 1.);
+    }`,
+  fragmentShader: `
+    uniform sampler2D uPrev, uOrig, uDepth; uniform int uTool, uSpace; uniform vec3 uColor, uCamPos;
+    uniform vec2 uCenter, uView, uTexel, uOffset; uniform float uRadius, uHard, uStrength, uBlur, uNear, uFar, uOrtho; uniform vec3 uDir;
+    varying vec4 vClip; varying vec3 vWorld; varying vec3 vN; varying vec2 vUv;
+    float lin(float d) { if (uOrtho > .5) return uNear + d * (uFar - uNear);
+      float z = d * 2. - 1.; return 2. * uNear * uFar / (uFar + uNear - z * (uFar - uNear)); }
+    float luma(vec3 c) { return dot(c, vec3(.2126, .7152, .0722)); }
+    void main() {
+      float dist;
+      if (uSpace == 0) {
+        if (vClip.w <= 0.) discard;
+        vec3 n = vClip.xyz / vClip.w;
+        if (abs(n.x) > 1. || abs(n.y) > 1.) discard;
+        dist = length((n.xy * .5 + .5) * uView - uCenter) / uRadius;
+        if (dist > 1.) discard;
+        if (dot(normalize(vN), uOrtho > .5 ? -uDir : normalize(uCamPos - vWorld)) <= 0.) discard;  // back-facing
+        float scene = texture2D(uDepth, n.xy * .5 + .5).r;
+        float me = lin(n.z * .5 + .5), there = lin(scene);
+        if (me > there * 1.004 + uNear) discard;                                  // hidden behind something
+      } else {
+        dist = length((vUv - uCenter) / uTexel) / uRadius;
+        if (dist > 1.) discard;
+      }
+      float a = uStrength * (1. - smoothstep(uHard, 1., dist));
+      vec3 prev = texture2D(uPrev, vUv).rgb, target = prev;
+      if (uTool == 0) target = uColor;
+      else if (uTool == 1) target = texture2D(uOrig, vUv).rgb;
+      else if (uTool == 2) {
+        vec3 s = vec3(0.); float k = 0.;
+        for (int i = -2; i <= 2; i++) for (int j = -2; j <= 2; j++) {
+          float wgt = exp(-float(i * i + j * j) / 4.);
+          s += texture2D(uPrev, vUv + vec2(i, j) * uTexel * uBlur).rgb * wgt; k += wgt;
+        }
+        target = s / k;
+      }
+      else if (uTool == 3 || uTool == 4) target = texture2D(uPrev, vUv + uOffset).rgb;
+      else if (uTool == 5) target = mix(prev, vec3(1.), .35);
+      else if (uTool == 6) target = prev * .65;
+      else if (uTool == 7) target = clamp(mix(vec3(luma(prev)), prev, 1.6), 0., 1.);
+      else if (uTool == 8) target = vec3(luma(prev));
+      gl_FragColor = vec4(mix(prev, target, a), 1.);
+    }`,
+});
+// After a stroke, texels just outside the UV charts that border texels the stroke changed take
+// their neighbours' colour, so bilinear filtering at chart edges does not show the old texture as
+// a seam. Everything else is left byte for byte as it was.
+const dilateMat = new THREE.ShaderMaterial({
+  uniforms: { src: { value: null }, before: { value: null }, mask: { value: null }, texel: { value: new THREE.Vector2() } },
+  depthTest: false, depthWrite: false,
+  vertexShader: 'varying vec2 vUv; void main(){ vUv = position.xy * .5 + .5; gl_Position = vec4(position.xy, 0., 1.); }',
+  fragmentShader: `uniform sampler2D src, before, mask; uniform vec2 texel; varying vec2 vUv;
+    void main() {
+      vec4 here = texture2D(src, vUv);
+      if (texture2D(mask, vUv).r > .5) { gl_FragColor = here; return; }
+      vec3 s = vec3(0.); float k = 0.; bool touched = false;
+      for (int i = -2; i <= 2; i++) for (int j = -2; j <= 2; j++) {
+        vec2 q = vUv + vec2(i, j) * texel;
+        if (texture2D(mask, q).r > .5) {
+          vec3 c = texture2D(src, q).rgb;
+          s += c; k += 1.;
+          if (any(greaterThan(abs(c - texture2D(before, q).rgb), vec3(1e-4)))) touched = true;
+        }
+      }
+      gl_FragColor = touched ? vec4(s / k, 1.) : here;
+    }`,
+});
+const maskMat = new THREE.ShaderMaterial({ side: THREE.DoubleSide, depthTest: false, depthWrite: false,
+  vertexShader: 'void main(){ gl_Position = vec4(uv * 2. - 1., 0., 1.); }',
+  fragmentShader: 'void main(){ gl_FragColor = vec4(1.); }' });
+
+async function loadPaint() {
+  P.from = wsState.custom?.texture ? 'custom' : 'pipeline';
+  const g = await loadGLB(`/api/workspaces/${ws}/mesh/${P.from === 'custom' ? 'custom_textured' : 'textured'}.glb?t=${Date.now()}`);
+  g.scene.updateMatrixWorld(true);
+  const byMap = new Map();
+  g.scene.traverse((o) => {
+    if (!o.isMesh || !o.material?.map) return;
+    const map = o.material.map;
+    if (!byMap.has(map.uuid)) byMap.set(map.uuid, { map, meshes: [] });
+    byMap.get(map.uuid).meshes.push(o);
+  });
+  if (!byMap.size) throw new Error('the textured model has no texture to paint');
+  for (const [, { map, meshes }] of byMap) {
+    const img = map.image, W = img.width, H = img.height;
+    map.colorSpace = THREE.SRGBColorSpace; map.flipY = false; map.needsUpdate = true;
+    const layer = { index: P.layers.length, W, H, orig: map, a: newRT(W, H), b: newRT(W, H), mask: newRT(W, H),
+      scene: new THREE.Scene(), maskScene: new THREE.Scene(), mats: [], dirty: false };
+    layer.cur = layer.a; layer.other = layer.b;
+    blit(map, layer.cur);
+    for (const m of meshes) {
+      const geo = m.geometry;
+      if (!geo.attributes.normal) geo.computeVertexNormals();
+      const disp = new THREE.Mesh(geo, null);
+      disp.matrixAutoUpdate = false; disp.matrix.copy(m.matrixWorld);
+      geo.boundsTree = new MeshBVH(geo); disp.raycast = acceleratedRaycast;
+      disp.userData.layer = layer;
+      P.group.add(disp); P.meshes.push(disp);
+      for (const [sc, mat] of [[layer.scene, paintMat], [layer.maskScene, maskMat]]) {
+        const proxy = new THREE.Mesh(geo, mat);
+        proxy.matrixAutoUpdate = false; proxy.matrix.copy(root.matrixWorld).multiply(m.matrixWorld);
+        proxy.matrixWorld.copy(proxy.matrix); proxy.frustumCulled = false;
+        sc.add(proxy);
+      }
+      layer.mats.push(disp);
+    }
+    renderer.setRenderTarget(layer.mask); renderer.setClearColor(0x000000); renderer.clear(); renderer.render(layer.maskScene, orthoCam);
+    P.layers.push(layer);
+  }
+  applyPaintMaterials();
+  // 4K RGBA is 64 MB per undo step: keep as many as fit in ~768 MB of VRAM.
+  const bytes = P.layers.reduce((s, l) => s + l.W * l.H * 4, 0);
+  P.maxUndo = Math.max(2, Math.min(12, Math.floor(768e6 / bytes)));
+  setLayer2d(P.layers[0]);
+  P.ready = true; P.dirty = false;
+  renderer.setRenderTarget(null);
+}
+function applyPaintMaterials() {
+  for (const disp of P.meshes) {
+    const map = disp.userData.layer.cur.texture;
+    disp.material?.dispose?.();
+    disp.material = P.unlit ? new THREE.MeshBasicMaterial({ map }) : new THREE.MeshStandardMaterial({ map, roughness: 0.9, metalness: 0 });
+  }
+  if (P.layer2d) uvPlane.material.map = P.layer2d.cur.texture, uvPlane.material.needsUpdate = true;
+  requestRender();
+}
+function setLayer2d(layer) {
+  P.layer2d = layer;
+  uv2d.aspect = layer.W / layer.H;
+  uvPlane.scale.set(uv2d.aspect, 1, 1); frame2d.scale.set(uv2d.aspect, 1, 1);
+  uvPlane.material.map = layer.cur.texture; uvPlane.material.needsUpdate = true;
+  $('label2d').textContent = `texture ${layer.index} · ${layer.W}×${layer.H}`;
+}
+$('unlit').addEventListener('change', () => { P.unlit = $('unlit').checked; if (P.ready) applyPaintMaterials(); });
+
+function refreshDepth(r) {
+  const pr = renderer.getPixelRatio(), w = Math.round(r.w * pr), h = Math.round(r.h * pr);
+  if (!P.depthRT || P.depthRT.width !== w || P.depthRT.height !== h) {
+    P.depthRT?.dispose();
+    P.depthRT = new THREE.WebGLRenderTarget(w, h, { depthTexture: new THREE.DepthTexture(w, h) });
+  }
+  const vis = cursor3d.visible; cursor3d.visible = false;
+  proj.resize(r.w / r.h);
+  renderer.setRenderTarget(P.depthRT); renderer.setClearColor(0x000000); renderer.clear(); renderer.render(scene, camera);
+  cursor3d.visible = vis; P.depthStale = false;
+}
+function swapLayer(layer) {
+  [layer.cur, layer.other] = [layer.other, layer.cur];
+  for (const d of layer.mats) d.material.map = layer.cur.texture;
+  if (P.layer2d === layer) uvPlane.material.map = layer.cur.texture;
+}
+const toolColor = new THREE.Color();
+function paintDab(layer, space, center, radius, offset) {
+  const u = paintMat.uniforms;
+  blit(layer.cur.texture, layer.other);
+  u.uPrev.value = layer.cur.texture; u.uOrig.value = layer.orig; u.uDepth.value = P.depthRT?.depthTexture || null;
+  u.uTool.value = PAINT_IDS[P.stroke.t]; u.uSpace.value = space;
+  u.uColor.value.copy(toolColor); u.uCenter.value.copy(center); u.uRadius.value = radius;
+  u.uHard.value = brush.hardness; u.uStrength.value = P.stroke.t === 'clone' || P.stroke.t === 'restore' ? Math.min(1, brush.strength * 1.5) : brush.strength;
+  u.uTexel.value.set(1 / layer.W, 1 / layer.H); u.uOffset.value.copy(offset || new THREE.Vector2());
+  u.uBlur.value = Math.max(1, P.stroke.radiusTex * 0.12);
+  if (space === 0) {
+    u.uView.value.copy(P.stroke.view);
+    u.uViewProj.value.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+    u.uCamPos.value.copy(camera.position); u.uNear.value = camera.near; u.uFar.value = camera.far;
+    u.uOrtho.value = camera.isOrthographicCamera ? 1 : 0; camera.getWorldDirection(u.uDir.value);
+  }
+  renderer.setRenderTarget(layer.other);
+  if (space === 0) renderer.render(layer.scene, orthoCam);
+  else { blitScene.children[0].material = paintMat; renderer.render(blitScene, orthoCam); }
+  swapLayer(layer);
+  layer.dirty = true;
+}
+
+function hitUV(hit) {  // texture coordinate and texels-per-world-unit at a raycast hit
+  const geo = hit.object.geometry, uv = geo.attributes.uv, f = hit.face;
+  const a = new THREE.Vector2().fromBufferAttribute(uv, f.a), b = new THREE.Vector2().fromBufferAttribute(uv, f.b), c = new THREE.Vector2().fromBufferAttribute(uv, f.c);
+  const p = geo.attributes.position, A = new THREE.Vector3().fromBufferAttribute(p, f.a), B = new THREE.Vector3().fromBufferAttribute(p, f.b), C = new THREE.Vector3().fromBufferAttribute(p, f.c);
+  const local = hit.point.clone().applyMatrix4(new THREE.Matrix4().copy(hit.object.matrixWorld).invert());
+  const bc = THREE.Triangle.getBarycoord(local, A, B, C, new THREE.Vector3());
+  const out = bc ? a.clone().multiplyScalar(bc.x).addScaledVector(b, bc.y).addScaledVector(c, bc.z) : a.clone();
+  const L = hit.object.userData.layer;
+  const uvArea = Math.abs((b.x - a.x) * (c.y - a.y) - (c.x - a.x) * (b.y - a.y)) / 2 * L.W * L.H;
+  const wArea = B.clone().sub(A).cross(C.clone().sub(A)).length() / 2;
+  return { uv: out, layer: L, density: wArea > 0 ? Math.sqrt(uvArea / wArea) : 0 };
+}
+function display2dToUV(at) {
+  const x = uv2d.cx + (at.x - at.r.w / 2) * uv2d.scale, y = uv2d.cy - (at.y - at.r.h / 2) * uv2d.scale;
+  return new THREE.Vector2(x / uv2d.aspect, 1 - y);
+}
+function pickColor(layer, uvp) {
+  const px = new Uint8Array(4);
+  const x = Math.min(layer.W - 1, Math.max(0, Math.floor(uvp.x * layer.W))), y = Math.min(layer.H - 1, Math.max(0, Math.floor(uvp.y * layer.H)));
+  renderer.readRenderTargetPixels(layer.cur, x, y, 1, 1, px);
+  const hex = '#' + [px[0], px[1], px[2]].map((v) => v.toString(16).padStart(2, '0')).join('');
+  $('color').value = hex; colorChanged();
+}
+function snapshot(layer) {
+  const rt = P.pool.pop() || newRT(layer.W, layer.H);
+  if (rt.width !== layer.W || rt.height !== layer.H) rt.setSize(layer.W, layer.H);
+  blit(layer.cur.texture, rt);
+  return rt;
+}
+
+// Pointer events arrive sparsely: stamp dabs every fifth of the radius along the path.
+function paintAt(at, first) {
+  const st = P.stroke, spacing = Math.max(1.5, brush.radius * 0.2);
+  const last = st.lastXY;
+  if (first || !last || last.name !== at.name) { st.lastXY = { name: at.name, x: at.x, y: at.y }; paintDabAt(at); return; }
+  const d = Math.hypot(at.x - last.x, at.y - last.y);
+  if (d < spacing) return;
+  const n = Math.min(200, Math.floor(d / spacing));
+  for (let i = 1; i <= n; i++) {
+    const f = i / n;
+    paintDabAt({ ...at, x: last.x + (at.x - last.x) * f, y: last.y + (at.y - last.y) * f });
+  }
+  st.lastXY = { name: at.name, x: at.x, y: at.y };
+}
+function paintDabAt(at) {
+  const st = P.stroke;
+  let layer, space, center, radius, uvp;
+  if (at.name === '3d') {
+    const hit = pick(at, P.meshes);
+    if (!hit) { st.lastUV = null; return; }
+    const h = hitUV(hit); layer = h.layer; uvp = h.uv;
+    const pr = renderer.getPixelRatio();
+    space = 0; center = new THREE.Vector2(at.x * pr, (at.r.h - at.y) * pr); radius = brush.radius * pr;
+    st.view = new THREE.Vector2(at.r.w * pr, at.r.h * pr);
+    st.radiusTex = worldRadius(brush.radius, hit.point, at.r) * h.density;
+  } else {
+    layer = P.layer2d; space = 1; uvp = display2dToUV(at);
+    radius = brush.radius * uv2d.scale * layer.H; center = uvp; st.radiusTex = radius;
+  }
+  if (!st.snap.has(layer)) st.snap.set(layer, snapshot(layer));
+  let offset = null;
+  if (st.t === 'clone') {
+    if (!P.clone) { fail(new Error('Ctrl+click to set the clone source first')); return; }
+    if (!st.cloneOffset) st.cloneOffset = P.clone.uv.clone().sub(uvp);
+    offset = st.cloneOffset;
+  } else if (st.t === 'smudge') {
+    offset = st.lastUV ? st.lastUV.clone().sub(uvp) : null;
+    if (!offset) { st.lastUV = uvp; return; }
+  }
+  paintDab(layer, space, center, radius, offset);
+  st.lastUV = uvp;
+  requestRender();
+}
+function paintStart(e, at) {
+  if (e.altKey || tool.paint === 'picker') {  // colour picker
+    const h = at.name === '3d' ? pick(at, P.meshes) : null;
+    if (at.name === '3d' && !h) return false;
+    const L = h ? h.object.userData.layer : P.layer2d, uvp = h ? hitUV(h).uv : display2dToUV(at);
+    pickColor(L, uvp); requestRender();
+    return 'click';
+  }
+  if (e.ctrlKey || e.metaKey) {  // clone source
+    const h = at.name === '3d' ? pick(at, P.meshes) : null;
+    if (at.name === '3d' && !h) return false;
+    const uvp = h ? hitUV(h).uv : display2dToUV(at);
+    P.clone = { uv: uvp };
+    cloneMark.visible = true; cloneMark.position.set(uvp.x * uv2d.aspect, 1 - uvp.y, 1);
+    cloneMark.scale.setScalar(0.01);
+    $('cloneInfo').textContent = `clone source ${uvp.x.toFixed(3)}, ${uvp.y.toFixed(3)}`;
+    if (tool.paint !== 'clone') setTool('clone');
+    requestRender();
+    return 'click';
+  }
+  if (at.name === '3d') {
+    if (!pick(at, P.meshes)) return false;
+    if (P.depthStale) refreshDepth(at.r);
+  }
+  P.stroke = { t: tool.paint, snap: new Map(), lastUV: null, lastPx: null, radiusTex: 10 };
+  paintAt(at, true);
+  return true;
+}
+function paintEnd() {
+  const st = P.stroke; if (!st) return;
+  for (const [layer, rt] of st.snap) {
+    dilateMat.uniforms.mask.value = layer.mask.texture; dilateMat.uniforms.before.value = rt.texture;
+    dilateMat.uniforms.texel.value.set(1 / layer.W, 1 / layer.H);
+    blit(layer.cur.texture, layer.other, dilateMat);
+    swapLayer(layer);
+    P.undo.push({ layer, rt });
+    while (P.undo.length > P.maxUndo) P.pool.push(P.undo.shift().rt);
+  }
+  if (st.snap.size) { P.redo.forEach((r) => P.pool.push(r.rt)); P.redo = []; P.dirty = true; }
+  P.stroke = null;
+  renderer.setRenderTarget(null);
+  requestRender(); updateStatus(); updateButtons();
+}
+function paintSwap(entry) {  // put the snapshot back, keep the current state for the inverse step
+  const now = snapshot(entry.layer);
+  blit(entry.rt.texture, entry.layer.other); swapLayer(entry.layer);
+  P.pool.push(entry.rt);
+  entry.layer.dirty = true;
+  renderer.setRenderTarget(null); requestRender();
+  return { layer: entry.layer, rt: now };
+}
+async function savePaint() {
+  for (const layer of P.layers) {
+    if (!layer.dirty) continue;
+    const px = new Uint8Array(layer.W * layer.H * 4);
+    renderer.readRenderTargetPixels(layer.cur, 0, 0, layer.W, layer.H, px);
+    const cv = document.createElement('canvas'); cv.width = layer.W; cv.height = layer.H;
+    // GL row 0 is the image's first row (glTF textures are not flipped), so no flip is needed.
+    cv.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(px.buffer), layer.W, layer.H), 0, 0);
+    const blob = await new Promise((ok) => cv.toBlob(ok, 'image/png'));
+    await api(`/api/workspaces/${ws}/edit/texture?i=${layer.index}&from=${P.from}`, { method: 'POST', body: blob, headers: { 'Content-Type': 'image/png' } });
+    layer.dirty = false;
+    P.from = 'custom';  // the first save copied the model into the custom version
+  }
+  renderer.setRenderTarget(null);
+  P.dirty = false;
+  flash('saved as your custom textured model (the pipeline texture is unchanged): see Outputs → Custom');
+}
+
+// ---------------------------------------------------------------- pointer, wheel, keys
+let drag = null;  // { kind: 'sculpt'|'paint'|'pan2d', at0 }
+function onPointerDown(e) {
+  const at = which(e); if (!at) return;
+  if (busy) { e.stopImmediatePropagation(); e.preventDefault(); return; }
+  if (mode === 'sculpt' && tool.sculpt === 'plane' && at.name === '3d' && e.button === 0 && !spaceDown && S.mesh) {
+    e.stopImmediatePropagation(); e.preventDefault();
+    canvas.setPointerCapture(e.pointerId);
+    if (plane.n) endPlane();
+    drag = { kind: 'plane', x0: at.x, y0: at.y };
+    const l = $('planeLine'); l.setAttribute('x1', at.x); l.setAttribute('y1', at.y); l.setAttribute('x2', at.x); l.setAttribute('y2', at.y);
+    l.setAttribute('visibility', 'visible');
+    return;
+  }
+  if (at.name === 'uv') {
+    e.stopImmediatePropagation(); e.preventDefault();
+    canvas.setPointerCapture(e.pointerId);
+    const panning = e.button === 1 || e.button === 2 || spaceDown;
+    if (panning) { drag = { kind: 'pan2d', x: e.clientX, y: e.clientY }; return; }
+    if (e.button !== 0) return;
+    const r = paintStart(e, at);
+    if (r === true) drag = { kind: 'paint' };
+    return;
+  }
+  if (e.button !== 0 || spaceDown) return;          // orbit / pan: OrbitControls
+  const started = mode === 'sculpt' ? (S.mesh && sculptStart(e, at)) : (P.ready && paintStart(e, at));
+  if (!started) return;                              // off the model: let OrbitControls orbit
+  e.stopImmediatePropagation(); e.preventDefault();
+  canvas.setPointerCapture(e.pointerId);
+  if (started === true) drag = { kind: mode };
+}
+canvas.addEventListener('pointermove', (e) => {
+  const at = which(e);
+  if (drag?.kind === 'pan2d') {
+    uv2d.cx -= (e.clientX - drag.x) * uv2d.scale; uv2d.cy += (e.clientY - drag.y) * uv2d.scale;
+    drag.x = e.clientX; drag.y = e.clientY; requestRender(); return;
+  }
+  if (drag?.kind === 'plane' && at) {
+    // extend the line across the whole view so it reads as a cut, not a segment
+    const l = $('planeLine'), dx = at.x - drag.x0, dy = at.y - drag.y0, k = 4000 / (Math.hypot(dx, dy) || 1);
+    l.setAttribute('x1', drag.x0 - dx * k); l.setAttribute('y1', drag.y0 - dy * k);
+    l.setAttribute('x2', drag.x0 + dx * k); l.setAttribute('y2', drag.y0 + dy * k);
+    drag.last = at;
+    return;
+  }
+  if (drag?.kind === 'sculpt' && at?.name === '3d') sculptMove(e, at);
+  else if (drag?.kind === 'paint' && at && (P.stroke?.t)) paintAt(at, false);
+  hover(e, at);
+});
+const endDrag = () => {
+  if (drag?.kind === 'plane' && !(drag.last && planeFromDrag(drag, drag.last))) $('planeLine').setAttribute('visibility', 'hidden');
+  if (drag?.kind === 'sculpt') sculptEnd();
+  if (drag?.kind === 'paint') paintEnd();
+  drag = null;
+};
+canvas.addEventListener('pointerup', endDrag);
+canvas.addEventListener('pointercancel', endDrag);
+canvas.addEventListener('pointerleave', () => { cursor3d.visible = false; cursor2d.visible = false; hover2d.visible = false; requestRender(); });
+
+let lastHover = 0;
+function hover(e, at) {
+  const now = performance.now();
+  if (!at || (now - lastHover < 16 && !drag)) return;
+  lastHover = now;
+  cursor3d.visible = false; cursor2d.visible = false; hover2d.visible = false;
+  if (at.name === '3d') {
+    const objs = mode === 'sculpt' ? (S.mesh ? [S.mesh] : []) : P.meshes;
+    const hit = objs.length ? pick(at, objs) : null;
+    if (hit) {
+      const n = hit.face.normal.clone().transformDirection(hit.object.matrixWorld);
+      cursor3d.position.copy(hit.point).addScaledVector(n, worldRadius(1, hit.point, at.r));
+      cursor3d.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), n);
+      cursor3d.scale.setScalar(worldRadius(brush.radius, hit.point, at.r));
+      cursor3d.visible = true;
+      if (mode === 'paint' && rects().uv) {
+        const h = hitUV(hit);
+        hover2d.position.set(h.uv.x * uv2d.aspect, 1 - h.uv.y, 1);
+        hover2d.scale.setScalar(12 * uv2d.scale); hover2d.visible = true;
+      }
+    }
+  } else if (at.name === 'uv' && P.layer2d) {
+    const uvp = display2dToUV(at);
+    cursor2d.position.set(uvp.x * uv2d.aspect, 1 - uvp.y, 1);
+    cursor2d.scale.setScalar(brush.radius * uv2d.scale); cursor2d.visible = true;
+  }
+  if (cloneMark.visible) cloneMark.scale.setScalar(6 * uv2d.scale);
+  requestRender();
+}
+function updateCursor() { if (cursor2d.visible) cursor2d.scale.setScalar(brush.radius * uv2d.scale); requestRender(); }
+function onWheel(e) {
+  const at = which(e);
+  if (at?.name !== 'uv') return;  // 3D: OrbitControls zooms
+  e.preventDefault(); e.stopImmediatePropagation();
+  const before = display2dToUV(at);
+  uv2d.scale *= Math.exp(e.deltaY * 0.0015);
+  uv2d.scale = Math.min(0.05, Math.max(1e-5, uv2d.scale));
+  const after = display2dToUV(at);  // zoom about the cursor
+  uv2d.cx += (before.x - after.x) * uv2d.aspect; uv2d.cy -= (before.y - after.y);
+  hover(e, at); requestRender();
+}
+
+let spaceDown = false;
+addEventListener('keydown', (e) => {
+  if (e.target.matches('input, select, textarea')) return;
+  if (e.code === 'Space') { spaceDown = true; return; }
+  if (plane.n && e.key === 'Enter') { e.preventDefault(); applyPlane(); return; }
+  if (plane.n && e.key === 'Escape') { endPlane(); return; }
+  const k = e.key.toLowerCase();
+  if ((e.ctrlKey || e.metaKey) && k === 'z') { e.preventDefault(); e.shiftKey ? doRedo() : doUndo(); return; }
+  if ((e.ctrlKey || e.metaKey) && k === 'y') { e.preventDefault(); doRedo(); return; }
+  if ((e.ctrlKey || e.metaKey) && k === 's') { e.preventDefault(); doSave(); return; }
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if (k === '[') setRadius(Math.max(4, brush.radius / 1.2));
+  else if (k === ']') setRadius(Math.min(300, brush.radius * 1.2));
+  else { const t = TOOLS[mode].find((x) => x[2].toLowerCase() === k); if (t) setTool(t[0]); }
+});
+addEventListener('keyup', (e) => { if (e.code === 'Space') spaceDown = false; });
+
+// ---------------------------------------------------------------- undo, save, status
+const anyDirty = () => S.dirty || P.dirty;
+function doUndo() {
+  if (mode === 'sculpt' && S.undo.length) S.redo.push(sculptSwap(S.undo.pop()));
+  else if (mode === 'paint' && P.undo.length) P.redo.push(paintSwap(P.undo.pop()));
+  else return;
+  if (mode === 'sculpt') S.dirty = true; else P.dirty = true;
+  updateStatus(); updateButtons();
+}
+function doRedo() {
+  if (mode === 'sculpt' && S.redo.length) S.undo.push(sculptSwap(S.redo.pop()));
+  else if (mode === 'paint' && P.redo.length) P.undo.push(paintSwap(P.redo.pop()));
+  else return;
+  if (mode === 'sculpt') S.dirty = true; else P.dirty = true;
+  updateStatus(); updateButtons();
+}
+let saving = false;
+async function doSave() {
+  if (saving || !(mode === 'sculpt' ? S.dirty : P.dirty)) return;
+  saving = true; $('saveBtn').disabled = true; $('saveBtn').textContent = 'Saving…';
+  try {
+    await (mode === 'sculpt' ? saveSculpt() : savePaint());
+    wsState = await api(`/api/workspaces/${ws}/state`);
+    renderModeInfo();
+  } catch (e) { fail(e); }
+  saving = false; $('saveBtn').textContent = 'Save';
+  updateStatus(); updateButtons();
+}
+$('undoBtn').addEventListener('click', doUndo);
+$('redoBtn').addEventListener('click', doRedo);
+$('saveBtn').addEventListener('click', doSave);
+$('discardBtn').addEventListener('click', () => {
+  if (!anyDirty() || confirm('Throw away the unsaved edits?')) { S.dirty = P.dirty = false; location.reload(); }
+});
+$('restoreBtn').addEventListener('click', async () => {
+  const what = mode === 'sculpt' ? 'mesh' : 'texture';
+  if (!confirm(`Delete your custom ${what === 'mesh' ? 'mesh' : 'textured model'}? The pipeline's version stays; this cannot be undone.`)) return;
+  try { const r = await api(`/api/workspaces/${ws}/edit/delete`, { method: 'POST', body: JSON.stringify({ what }) });
+    S.dirty = P.dirty = false; flash('deleted ' + r.deleted.join(', ')); setTimeout(() => location.reload(), 600);
+  } catch (e) { fail(e); }
+});
+function updateButtons() {
+  const dirty = mode === 'sculpt' ? S.dirty : P.dirty;
+  $('undoBtn').disabled = !(mode === 'sculpt' ? S.undo.length : P.undo.length);
+  $('redoBtn').disabled = !(mode === 'sculpt' ? S.redo.length : P.redo.length);
+  $('saveBtn').disabled = !dirty || saving;
+  $('dirtyInfo').textContent = [S.dirty && 'unsaved sculpt edits', P.dirty && 'unsaved paint'].filter(Boolean).join(' · ');
+}
+function updateStatus() {
+  if (mode === 'sculpt' && S.mesh) {
+    let cut = 0; const idx = S.idx;
+    for (let t = 0; t < idx.length / 3; t += 1) if (idx[t * 3] === idx[t * 3 + 1] && idx[t * 3] === idx[t * 3 + 2]) cut++;
+    $('status').textContent = `${(S.nf - cut).toLocaleString()} faces${cut ? ` (${cut.toLocaleString()} cut)` : ''} · ${S.nv.toLocaleString()} vertices · ${S.undo.length} undo`;
+  } else if (P.ready) {
+    $('status').textContent = P.layers.map((l) => `texture ${l.index}: ${l.W}×${l.H}`).join(' · ') + ` · ${P.undo.length}/${P.maxUndo} undo`;
+  }
+}
+addEventListener('beforeunload', (e) => { if (anyDirty()) { e.preventDefault(); e.returnValue = ''; } });
+
+const SWATCHES = ['#000000', '#ffffff', '#7f7f7f', '#c8a07a', '#8d5a3c', '#e3c4a8', '#b03a2e', '#2e86c1', '#28b463', '#f4d03f'];
+let recent = [];
+try { recent = JSON.parse(localStorage.getItem('mg.colors') || '[]'); } catch {}
+function renderSwatches() {
+  const all = [...new Set([...recent, ...SWATCHES])].slice(0, 16);
+  $('swatches').innerHTML = all.map((c) => `<i style="background:${c}" data-c="${c}" title="${c}"></i>`).join('');
+  $('swatches').querySelectorAll('[data-c]').forEach((el) => el.addEventListener('click', () => { $('color').value = el.dataset.c; colorChanged(); }));
+}
+function colorChanged() {
+  toolColor.set($('color').value);
+  recent = [$('color').value, ...recent.filter((c) => c !== $('color').value)].slice(0, 6);
+  try { localStorage.setItem('mg.colors', JSON.stringify(recent)); } catch {}
+  renderSwatches();
+}
+$('color').addEventListener('change', colorChanged);
+$('color').addEventListener('input', () => toolColor.set($('color').value));
+toolColor.set($('color').value); renderSwatches();
+
+// ---------------------------------------------------------------- display modes, holes
+// As on the Generate screen: colours, plain grey, wireframe, or grey with the wires on top (fading
+// out when the triangles get too small on screen to tell apart); holes drawn in orange.
+const DISPLAYS = ['colours', 'solid', 'wire', 'solidwire'];
+let display = 'colours';
+try { const d = localStorage.getItem('mg.editDisplay'); if (DISPLAYS.includes(d)) display = d; } catch {}
+$('dispMode').value = display;
+const wires = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial({ color: 0x1c2430, wireframe: true, transparent: true, depthWrite: false }));
+wires.raycast = () => {};
+const holes = { line: new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: 0xff7a2f })), pairs: null, for: null, moved: false };
+holes.line.raycast = () => {};
+function setDisplay(d) {
+  display = d; $('dispMode').value = d;
+  try { localStorage.setItem('mg.editDisplay', d); } catch {}
+  if (S.mesh) {
+    const m = S.mesh.material;
+    m.vertexColors = d === 'colours'; m.color.set(d === 'colours' ? 0xffffff : 0xc4cad3);
+    m.wireframe = d === 'wire';
+    m.polygonOffset = d === 'solidwire'; m.polygonOffsetFactor = 1; m.polygonOffsetUnits = 1;
+    m.needsUpdate = true;
+  }
+  requestRender();
+}
+function meanEdge() {
+  const P = S.pos, I = S.idx, step = Math.max(1, Math.floor(S.nf / 4000));
+  let sum = 0, k = 0;
+  for (let t = 0; t < S.nf; t += step) for (let e = 0; e < 3; e++) {
+    const a = I[3 * t + e] * 3, b = I[3 * t + (e + 1) % 3] * 3;
+    if (a === b) continue;
+    sum += Math.hypot(P[a] - P[b], P[a + 1] - P[b + 1], P[a + 2] - P[b + 2]); k++;
+  }
+  return k ? sum / k : 0;
+}
+function findHoles() {  // edges used by one triangle (cut faces are collapsed to a point and skipped)
+  const I = S.idx, nv = S.nv, count = new Map();
+  for (let t = 0; t < S.nf; t++) {
+    if (I[3 * t] === I[3 * t + 1] && I[3 * t] === I[3 * t + 2]) continue;
+    for (let e = 0; e < 3; e++) {
+      let a = I[3 * t + e], b = I[3 * t + (e + 1) % 3];
+      if (a === b) continue;
+      if (a > b) [a, b] = [b, a];
+      const key = a * nv + b; count.set(key, (count.get(key) || 0) + 1);
+    }
+  }
+  const pairs = [], parent = new Map();
+  const find = (x) => { while (parent.get(x) !== x) { parent.set(x, parent.get(parent.get(x))); x = parent.get(x); } return x; };
+  for (const [key, c] of count) {
+    if (c !== 1) continue;
+    const a = Math.floor(key / nv), b = key - a * nv;
+    pairs.push(a, b);
+    for (const v of [a, b]) if (!parent.has(v)) parent.set(v, v);
+    parent.set(find(a), find(b));
+  }
+  let loops = 0; for (const v of parent.keys()) if (find(v) === v) loops++;
+  holes.pairs = new Uint32Array(pairs); holes.for = S.geom; holes.moved = true;
+  $('holesInfo').textContent = loops ? `${loops.toLocaleString()} opening${loops === 1 ? '' : 's'} (${(pairs.length / 2).toLocaleString()} open edges), in orange` : 'closed: no holes';
+}
+function syncOverlays(viewH) {  // before each 3D draw: the overlays follow the mesh (strokes, undo, topology edits)
+  if (!S.mesh) return;
+  if (wires.parent !== S.mesh) S.mesh.add(wires);
+  if (holes.line.parent !== S.mesh) S.mesh.add(holes.line);
+  wires.visible = mode === 'sculpt' && display === 'solidwire';
+  if (wires.visible) {
+    if (wires.geometry !== S.geom) { wires.geometry = S.geom; S.edge = meanEdge(); }
+    const d = camera.position.distanceTo(controls.target) || 1, k = proj.pxPerUnit(viewH, d) * d;
+    const px = (S.edge || 0) * S.mesh.matrixWorld.getMaxScaleOnAxis() * k / d;
+    wires.material.opacity = 0.6 * THREE.MathUtils.clamp((px - 1.5) / 6, 0, 1);
+  }
+  holes.line.visible = mode === 'sculpt' && $('holesChk').checked;
+  if (!holes.line.visible) return;
+  if (holes.for !== S.geom) findHoles();
+  if (holes.moved) {
+    const P = S.pos, pr = holes.pairs, out = new Float32Array(pr.length * 3);
+    for (let i = 0; i < pr.length; i++) { out[3 * i] = P[3 * pr[i]]; out[3 * i + 1] = P[3 * pr[i] + 1]; out[3 * i + 2] = P[3 * pr[i] + 2]; }
+    holes.line.geometry.dispose(); holes.line.geometry = new THREE.BufferGeometry();
+    holes.line.geometry.setAttribute('position', new THREE.BufferAttribute(out, 3));
+    holes.moved = false;
+  }
+}
+$('dispMode').addEventListener('change', () => setDisplay($('dispMode').value));
+$('holesChk').addEventListener('change', () => { if (!$('holesChk').checked) $('holesInfo').textContent = ''; else holes.for = null; requestRender(); });
+addEventListener('keydown', (e) => {
+  if (e.target.matches('input, select, textarea') || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.key === '5') { proj.set(!camera.isOrthographicCamera); return; }
+  if (mode !== 'sculpt') return;
+  if (e.key.toLowerCase() === 'w') setDisplay(DISPLAYS[(DISPLAYS.indexOf(display) + 1) % DISPLAYS.length]);
+});
+
+// ---------------------------------------------------------------- start
+setRadius = bindSlider('radius', 'radius', 1, (v) => Math.round(v) + 'px');
+bindSlider('strength', 'strength', 0.01, (v) => Math.round(v * 100) + '%');
+bindSlider('hardness', 'hardness', 0.01, (v) => Math.round(v * 100) + '%');
+renderTools();
+try {
+  await loadWorkspaces();
+  if (ws) await openWorkspace(); else $('center').textContent = 'No workspaces yet: create one on the Generate screen.';
+} catch (e) { fail(e); $('center').textContent = e.message; }
+</script>
+</body>
+</html>
