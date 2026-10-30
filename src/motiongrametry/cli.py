@@ -45,6 +45,12 @@ def cmd_doctor(_: argparse.Namespace) -> int:
                  f"uv pip install {' '.join(vggt_deps)}" if vggt_deps else ""))
     for name, ok, note in rows:
         print(f"  {'ok ' if ok else '-- '} {name:<28} {note}")
+    from .checks import accel
+
+    acc = accel()
+    print(f"\nGPU: {acc['gpu'] or 'none usable'}")
+    for step, (dev, note) in acc["steps"].items():
+        print(f"  {step:<8} {dev:<8} {note}")
     print("\nAvailable paths:")
     print(f"  mvs   (SfM + OpenMVS, textured): {'yes' if backend else 'no'}")
     print(f"  vggt  (feed-forward + TSDF):     {'yes' if has('vggt') else 'no'}{'' if cuda else ' (CPU: <=24 frames, slow)'}")

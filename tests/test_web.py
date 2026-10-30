@@ -637,6 +637,7 @@ def test_delete_a_scan_needs_its_name_and_no_run(server, tmp_path):
     (ws.frames / "f.jpg").write_bytes(b"x" * 1000)
     status, z = call(base + "/api/workspaces/gone/size")
     assert status == 200 and z["bytes"] >= 1000 and z["video_outside"] is None
+    assert z["path"] == str(ws.root) and z["frees"] >= 0 and isinstance(z["frees_exact"], bool)
     assert call(base + "/api/workspaces/keepvid/size")[1]["video_outside"] == str(video.resolve())
     assert call(base + "/api/workspaces/gone/delete", "POST", {"confirm": "gon"})[0] == 400  # not its name
     assert ws.root.exists()

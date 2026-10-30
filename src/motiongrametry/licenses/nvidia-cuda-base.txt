@@ -1,0 +1,14 @@
+The nvidia variant of the motiongrametry Docker image is built on NVIDIA's CUDA container image
+(nvidia/cuda:13.2.0-cudnn-runtime-ubuntu24.04; OpenMVS carries its own CUDA 12.9 runtime), which contains the CUDA runtime libraries and
+cuDNN. They are NVIDIA proprietary software, provided under NVIDIA's terms:
+
+  NVIDIA Deep Learning Container License
+    https://developer.download.nvidia.com/licenses/NVIDIA_Deep_Learning_Container_License.pdf
+  CUDA Toolkit End User License Agreement (redistributable components)
+    https://docs.nvidia.com/cuda/eula/index.html
+  cuDNN Software License Agreement
+    https://docs.nvidia.com/deeplearning/cudnn/latest/reference/eula.html
+
+The license files NVIDIA ships are inside the image (/NGC-DL-CONTAINER-LICENSE and
+/usr/share/doc/*cuda*, /usr/share/doc/*cudnn*). pycolmap-cuda12 and onnxruntime-gpu use these
+libraries; the CUDA runtime wheels pycolmap-cuda12 depends on are listed with the Python packages.

@@ -25,13 +25,18 @@ EXTERNAL = [
              "(docker/openmvs.Dockerfile) and run as separate programs",
      "url": "https://cdcseacave.github.io/openMVS", "source": "https://github.com/cdcseacave/openMVS/tree/v2.3.0",
      "text": "openmvs-AGPL-3.0.txt", "copyright": "Copyright (c) Dan Cernea and the OpenMVS contributors",
-     "note": "The complete corresponding source is the v2.3.0 tag linked here; the image is built from it "
-             "unchanged by docker/openmvs.Dockerfile. The image also contains Ubuntu 24.04 libraries "
-             "(Boost, CGAL, OpenCV, ...) under their own licenses, listed in /usr/share/doc/*/copyright inside it."},
+     "note": "The complete corresponding source is the v2.3.0 tag linked here, built unchanged (with CUDA in the "
+             "motiongrametry Docker image, docker/Dockerfile; CPU-only in docker/openmvs.Dockerfile). The Docker "
+             "image also carries that source and VCGLib's in /usr/share/doc/openmvs. Both images contain Ubuntu "
+             "24.04 libraries (Boost, CGAL, OpenCV, ...) under their own licenses, in /usr/share/doc/*/copyright."},
     {"id": "vcglib", "name": "VCGLib", "version": "master at build time", "license": "GPL-3.0",
      "role": "geometry library compiled into OpenMVS",
      "url": "https://vcg.isti.cnr.it/vcglib", "source": "https://github.com/cdcseacave/VCG", "text": "vcglib-GPL-3.0.txt",
      "copyright": "Copyright (C) Visual Computing Lab, ISTI - CNR"},
+    {"id": "nvidia-cuda", "name": "NVIDIA CUDA runtime and cuDNN", "version": "13.2 / 9 (Docker image, nvidia variant)",
+     "license": "NVIDIA proprietary", "role": "GPU acceleration in the Docker image: COLMAP, ONNX Runtime (masks), OpenMVS",
+     "url": "https://hub.docker.com/r/nvidia/cuda", "source": None, "text": "nvidia-cuda-base.txt",
+     "copyright": "Copyright (c) NVIDIA Corporation"},
     {"id": "three", "name": "three.js", "version": "0.170.0", "license": "MIT",
      "role": "the 3D views in the browser (loaded from the jsDelivr CDN)",
      "url": "https://threejs.org", "source": "https://github.com/mrdoob/three.js", "text": "three.js.txt",

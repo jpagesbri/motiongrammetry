@@ -1,0 +1,10 @@
+# Adds the NVIDIA GPU (needs the NVIDIA Container Toolkit on the host; install.sh checks it).
+services:
+  motiongrametry:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

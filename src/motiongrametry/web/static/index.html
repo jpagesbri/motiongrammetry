@@ -2582,9 +2582,12 @@ $('delBtn').addEventListener('click', async () => {
   $('delModal').hidden = false; $('delConfirm').focus();
   try {
     const z = await api(`/api/workspaces/${encodeURIComponent(name)}/size`);
-    $('delInfo').textContent = `${z.files.toLocaleString()} file${z.files === 1 ? "" : "s"}, ${z.bytes >= 1e9 ? gb(z.bytes) : (z.bytes / 1e6).toFixed(0) + ' MB'}`
-      + (z.video_outside ? `. The video it was made from stays where it is: ${z.video_outside}` : '')
-      + (jobSnap?.status === 'running' ? '. A run is using it: stop the run first.' : '');
+    const sz = (b) => b >= 1e9 ? gb(b) : b >= 1e6 ? (b / 1e6).toFixed(0) + ' MB' : b >= 1e3 ? (b / 1e3).toFixed(0) + ' kB' : b + ' bytes';
+    $('delInfo').innerHTML = `<b>${esc(z.path)}</b><br>${z.files.toLocaleString()} file${z.files === 1 ? '' : 's'}, ${sz(z.bytes)}`
+      + ` · frees ${z.frees_exact ? '' : 'about '}<b>${sz(z.frees)}</b> of disk space`
+      + (z.frees_exact && z.shared > 1e6 ? `<br>${sz(z.shared)} of its data is shared with copies of it (Duplicate scan or a backup); that stays on disk while they exist.` : '')
+      + (z.video_outside ? `<br>The video it was made from stays where it is: ${esc(z.video_outside)}` : '')
+      + (jobSnap?.status === 'running' ? '<br>A run is using it: stop the run first.' : '');
   } catch (e) { $('delInfo').textContent = ''; }
 });
 $('delConfirm').addEventListener('input', () => { $('delGo').disabled = $('delConfirm').value !== current; });

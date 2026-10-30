@@ -409,17 +409,35 @@ class App:
         return dst
 
     def size(self, ws: Workspace) -> dict:
-        total = files = 0
+        """What a scan holds and what deleting it frees. Copies made by Duplicate scan or a
+        copy-on-write backup share data with it (btrfs, XFS): that data stays on disk. btrfs says
+        exactly how much is the scan's alone; elsewhere the blocks used (hard links excluded) are the
+        estimate."""
+        total = files = blocks = 0
         for d, _, names in os.walk(ws.root):
             for n in names:
                 try:
-                    total += os.lstat(os.path.join(d, n)).st_size
-                    files += 1
+                    st = os.lstat(os.path.join(d, n))
                 except OSError:
-                    pass
+                    continue
+                total += st.st_size
+                files += 1
+                if st.st_nlink == 1:
+                    blocks += st.st_blocks * 512
+        frees, exact = blocks, False
+        if shutil.which("btrfs"):
+            try:
+                r = subprocess.run(["btrfs", "filesystem", "du", "-s", "--raw", str(ws.root)],
+                                   capture_output=True, text=True, timeout=60)
+                cols = r.stdout.strip().splitlines()[-1].split() if r.returncode == 0 and r.stdout.strip() else []
+                if len(cols) >= 4 and cols[1].isdigit():
+                    frees, exact = int(cols[1]), True  # Total, Exclusive, Set shared, path
+            except (OSError, subprocess.TimeoutExpired):
+                pass
         video = self.meta(ws).get("video")
         outside = video if video and not (ws.root / video).resolve().is_relative_to(ws.root.resolve()) else None
-        return {"bytes": total, "files": files, "video_outside": outside}
+        return {"path": str(ws.root), "bytes": total, "files": files, "frees": frees, "frees_exact": exact,
+                "shared": max(0, blocks - frees) if exact else 0, "video_outside": outside}
 
     def delete(self, ws: Workspace, confirm: str) -> dict:
         """Remove a scan's folder and everything in it (keyframes, masks, reconstruction, meshes,
@@ -1160,9 +1178,10 @@ def make_handler(app: App):
             if parts in (["about"], ["about.html"]):
                 return self._file(STATIC / "about.html", "text/html; charset=utf-8")
             if parts == ["api", "about"]:
+                from ..checks import accel
                 from ..credits import about
 
-                return self._json(about())
+                return self._json({**about(), "system": {**accel(), "container": bool(os.environ.get("MG_IN_CONTAINER"))}})
             if parts == ["api", "about", "license"]:
                 from ..credits import license_text
 

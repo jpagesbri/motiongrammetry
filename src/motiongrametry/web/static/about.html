@@ -60,6 +60,10 @@ one file for redistribution:</p>
 <div class="bar"><a class="btn" href="/api/about/notices.txt" download="THIRD_PARTY_NOTICES.txt">Download all notices (THIRD_PARTY_NOTICES.txt)</a>
   <span class="muted">or on the command line: <code>mg notices -o THIRD_PARTY_NOTICES.txt</code></span></div>
 
+<h2 id="system">This installation</h2>
+<p class="muted" id="sysInfo">checking…</p>
+<table id="sysT"><tr><th>Step</th><th>Runs on</th><th></th></tr></table>
+
 <h2 id="terms">What the licenses ask of you</h2>
 <div class="note"><b>VGGT weights: non-commercial only</b>The optional <code>vggt</code> stage downloads <code>facebook/VGGT-1B</code>,
 licensed CC BY-NC 4.0: no commercial use. For commercial use, Meta publishes <code>facebook/VGGT-1B-Commercial</code> (gated, under the
@@ -108,6 +112,10 @@ document.addEventListener('click', async (e) => {
 });
 fetch('/api/about').then((r) => r.json()).then((a) => {
   $('version').textContent = `version ${a.version}`;
+  const sy = a.system || {};
+  $('sysInfo').textContent = `${sy.container ? 'Docker image' : 'installed directly'} · GPU: ${sy.gpu || 'none usable'}`;
+  $('sysT').insertAdjacentHTML('beforeend', Object.entries(sy.steps || {}).map(([k, [dev, note]]) =>
+    `<tr><td><code>${esc(k)}</code></td><td style="color:${dev === 'GPU' ? 'var(--ok)' : dev === 'missing' ? 'var(--warn)' : 'inherit'}">${esc(dev)}</td><td class="muted">${esc(note)}</td></tr>`).join(''));
   rows($('externalT'), a.external, 'external', (it) => `<td>${link(it.source || it.url, it.name)}<div class="muted" style="font-size:12px">${esc(it.copyright || '')}</div></td>
     <td class="v">${esc(it.version)}</td><td class="l lic">${esc(it.license)}</td><td>${esc(it.role)}${it.note ? `<div class="muted" style="font-size:12px">${esc(it.note)}</div>` : ''}</td>`);
   rows($('modelsT'), a.models, 'model', (it) => `<td>${link(it.url, it.name)}<div class="muted" style="font-size:12px">${esc(it.copyright || '')}</div></td>

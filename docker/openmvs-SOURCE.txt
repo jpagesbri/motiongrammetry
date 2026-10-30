@@ -1,0 +1,15 @@
+OpenMVS in this image: corresponding source (AGPL-3.0 section 6)
+
+This image contains executables of OpenMVS (DensifyPointCloud, ReconstructMesh, RefineMesh,
+TextureMesh, InterfaceCOLMAP), built without modification from:
+
+  OpenMVS  https://github.com/cdcseacave/openMVS  tag v2.3.0 (commit ce03889e2055a3d6cbcae9dd5a93b5eeea94b909)
+           license: GNU Affero General Public License v3.0 (OpenMVS-LICENSE-AGPL-3.0.txt)
+  VCGLib   https://github.com/cdcseacave/VCG       commit 658ba36d0a5666650da6e066b4794efc5a463407
+           license: GNU General Public License v3.0 (VCGLib-LICENSE-GPL-3.0.txt)
+
+The complete source of both is included next to this file (*-source.tar.gz), and the build
+recipe in build-recipes/Dockerfile (stage "openmvs"): CMake Release build with CUDA enabled,
+-D_FORTIFY_SOURCE=0, no source changes. The other libraries in the image come from Ubuntu
+24.04 and the NVIDIA CUDA base image; their licenses are in /usr/share/doc/*/copyright and the
+NVIDIA license files in the image.

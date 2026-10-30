@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import importlib.util
 import math
+import os
 import re
 import shutil
 import subprocess
@@ -39,6 +40,59 @@ def disk_free(path: Path) -> int:
 
 def has_module(name: str) -> bool:
     return importlib.util.find_spec(name) is not None
+
+
+def nvidia_gpu() -> str | None:
+    """Name of the first NVIDIA GPU this process can use (inside Docker: the one passed in)."""
+    if not shutil.which("nvidia-smi"):
+        return None
+    try:
+        r = subprocess.run(["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"], capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return r.stdout.strip().splitlines()[0] if r.returncode == 0 and r.stdout.strip() else None
+
+
+def accel() -> dict:
+    """Where each step that can use a GPU will run, and why: {step: (device, note)}."""
+    gpu = nvidia_gpu()
+    out = {}
+    try:
+        import pycolmap
+
+        cuda = bool(getattr(pycolmap, "has_cuda", False))
+        out["sfm"] = ("GPU", "SIFT features and matching on CUDA") if cuda and gpu else \
+            ("CPU", "no GPU passed in" if cuda else "CPU build of pycolmap (pycolmap-cuda12 adds CUDA)")
+    except ImportError:
+        out["sfm"] = ("missing", "pycolmap not installed")
+    if importlib.util.find_spec("onnxruntime"):
+        import onnxruntime
+
+        cuda = "CUDAExecutionProvider" in onnxruntime.get_available_providers()
+        out["mask"] = ("GPU", "ONNX Runtime CUDA") if cuda and gpu else \
+            ("CPU", "no GPU passed in" if cuda else "CPU build of ONNX Runtime (onnxruntime-gpu adds CUDA)")
+    else:
+        out["mask"] = ("missing", "the mask extra is not installed")
+    densify = shutil.which("DensifyPointCloud")
+    if densify:
+        try:
+            helptext = subprocess.run([densify, "--help"], capture_output=True, text=True, timeout=20).stdout
+        except (OSError, subprocess.TimeoutExpired):
+            helptext = ""
+        cuda = "cuda" in helptext.lower() or bool(os.environ.get("MG_OPENMVS_CUDA"))  # the image has both builds
+        out["mvs"] = ("GPU", "OpenMVS depth maps on CUDA") if cuda and gpu else \
+            ("CPU", "no GPU passed in" if cuda else "OpenMVS built without CUDA")
+    else:
+        out["mvs"] = ("CPU", "OpenMVS runs in its own container (docker/openmvs.Dockerfile, CPU build)") if shutil.which("docker") \
+            else ("missing", "OpenMVS not installed")
+    out["texture"] = ("CPU", "OpenMVS texturing has no GPU version")
+    if importlib.util.find_spec("torch"):
+        import torch
+
+        out["vggt"] = ("GPU", "PyTorch CUDA") if torch.cuda.is_available() else ("CPU", "slow: at most ~24 frames")
+    else:
+        out["vggt"] = ("missing", "not installed (optional)")
+    return {"gpu": gpu, "steps": out}
 
 
 def openmvs_problem() -> Diag | None:

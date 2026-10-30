@@ -28,6 +28,32 @@ video ──► frames ──► mask ──► poses ────────�
 | `mg texture` | OpenMVS texturing of the *cleaned* mesh → `model.glb`. |
 | `mg doctor` | Which backends are usable on this machine. |
 
+## Install with Docker (everything in one image)
+
+```bash
+docker/install.sh                 # checks Docker and the GPU, builds the image once, starts http://127.0.0.1:8765
+docker/install.sh stop | logs | status | update
+```
+
+One image (`docker/Dockerfile`) holds the app, COLMAP (pycolmap) and OpenMVS, plus the mask models'
+runtime. The `nvidia` variant builds OpenMVS with CUDA and uses the GPU builds of COLMAP and ONNX
+Runtime, so the depth maps (mvs), the masks and SfM's features and matching run on the GPU when one
+is passed in; everything else, and everything on a machine without a GPU, runs on the CPU. The
+Python packages are locked in `docker/requirements-nvidia.txt` (from `requirements-nvidia.in`).
+
+- **GPU**: `--gpu auto` (default) uses an NVIDIA GPU when Docker can reach it; that needs the NVIDIA
+  Container Toolkit on the host, and the script prints the commands for your distribution when it is
+  missing (or starts on the CPU). `--gpu none` forces the CPU. AMD GPUs run on the CPU for now.
+- **Data**: `~/motiongrametry` (or `--data DIR`) holds the scans (`workspaces/`, or `--workspaces DIR`
+  for an existing folder), the downloaded AI models and `.env` with these settings. Files are written
+  as your user. Videos in `videos/` (or `--videos DIR`) can be opened by path as `/videos/...`.
+- **Port**: `--port N` (default 8765, bound to 127.0.0.1 only).
+- **Licenses**: the image contains OpenMVS (AGPL-3.0) built unchanged, with its source and VCGLib's in
+  `/usr/share/doc/openmvs`, and NVIDIA's CUDA runtime and cuDNN under NVIDIA's terms; `/about` in the
+  app lists everything. The VGGT stage is not in the image.
+- `mg doctor` (inside: `docker compose ... exec motiongrametry mg doctor`) and the About page say
+  which steps run on the GPU.
+
 ## Setup
 
 Tested on Linux (x86-64, CachyOS/Arch) with an 8-core laptop CPU, 16 GB RAM and no NVIDIA GPU.

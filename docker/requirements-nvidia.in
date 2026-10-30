@@ -1,0 +1,14 @@
+# The image's Python packages (nvidia variant): the versions of the dev environment, with the GPU
+# builds of COLMAP and ONNX Runtime. Locked into requirements-nvidia.txt by:
+#   uv pip compile docker/requirements-nvidia.in -o docker/requirements-nvidia.txt \
+#     --python-version 3.12 --python-platform x86_64-manylinux_2_39
+numpy==2.5.4
+opencv-python-headless==5.0.0.93
+pycolmap-cuda12==4.2.1
+open3d==0.20.0
+trimesh==5.2.0
+scikit-image==0.26.0
+pillow==13.0.0
+packaging
+rembg==2.0.86
+onnxruntime-gpu==1.31.1

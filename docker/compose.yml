@@ -1,0 +1,21 @@
+# motiongrametry as a service: the web UI on http://127.0.0.1:${MG_PORT}, your scans and the
+# downloaded AI models in ${MG_DATA}. install.sh writes the .env this reads; by hand:
+#   docker compose -f docker/compose.yml [-f docker/compose.nvidia.yml] --env-file ~/motiongrametry/.env up -d
+name: motiongrametry
+services:
+  motiongrametry:
+    image: ${MG_IMAGE:-motiongrametry:nvidia}
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    # your user, so the scans it writes are yours on the host
+    user: "${MG_UID:-1000}:${MG_GID:-1000}"
+    ports:
+      - "127.0.0.1:${MG_PORT:-8765}:8765"
+    volumes:
+      - ${MG_DATA:?set MG_DATA}:/data
+      - ${MG_WORKSPACES:-${MG_DATA}/workspaces}:/data/workspaces
+      # "local video path" in the UI sees this folder as /videos (read-only)
+      - ${MG_VIDEOS:-${MG_DATA}/videos}:/videos:ro
+    shm_size: 2gb
+    restart: unless-stopped
