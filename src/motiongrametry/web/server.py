@@ -1094,11 +1094,23 @@ def make_handler(app: App):
             self.wfile.write(body)
 
         def _file(self, path: Path, ctype: str, cache: bool = False):
+            # cached files are revalidated on every use (a 304 when unchanged), so an update that
+            # replaces a file under the same name (help screenshots, scripts) shows up at once
+            st = path.stat()
+            etag = f'"{st.st_mtime_ns:x}-{st.st_size:x}"'
+            if cache and self.headers.get("If-None-Match") == etag:
+                self.send_response(HTTPStatus.NOT_MODIFIED)
+                self.send_header("ETag", etag)
+                self.send_header("Cache-Control", "no-cache")
+                self.end_headers()
+                return None
             data = path.read_bytes()
             self.send_response(HTTPStatus.OK)
             self.send_header("Content-Type", ctype)
             self.send_header("Content-Length", str(len(data)))
-            self.send_header("Cache-Control", "max-age=3600" if cache else "no-store")
+            self.send_header("Cache-Control", "no-cache" if cache else "no-store")
+            if cache:
+                self.send_header("ETag", etag)
             self.end_headers()
             self.wfile.write(data)
 
