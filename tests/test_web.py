@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 import struct
 import threading
 import time
@@ -605,6 +606,16 @@ def test_shared_page_modules_are_served(server):
         assert r.headers["Content-Type"].startswith("text/javascript") and b"REVISION" in r.read()
     assert call(base + "/vendor/..%2F..%2Fserver.py")[0] == 404
     assert call(base + "/..%2Fserver.py")[0] == 404
+
+
+def test_every_page_links_to_the_repository(server):
+    from motiongrammetry.credits import PROJECT
+
+    base, _ = server
+    for page in ["/", "/edit", "/help", "/about"]:
+        with urllib.request.urlopen(base + page) as r:
+            html = r.read().decode()
+        assert re.search(r'<a class="gh"[^>]* href="' + re.escape(PROJECT["url"]) + '"', html), page
 
 
 def test_about_lists_third_party_software_with_licenses(server):
