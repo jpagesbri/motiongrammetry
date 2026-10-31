@@ -615,7 +615,7 @@ def test_every_page_links_to_the_repository(server):
     for page in ["/", "/edit", "/help", "/about"]:
         with urllib.request.urlopen(base + page) as r:
             html = r.read().decode()
-        assert re.search(r'<a class="gh"[^>]* href="' + re.escape(PROJECT["url"]) + '"', html), page
+        assert re.search(r'<a class="gh[^"]*"[^>]* href="' + re.escape(PROJECT["url"]) + '"', html), page
 
 
 def test_about_lists_third_party_software_with_licenses(server):

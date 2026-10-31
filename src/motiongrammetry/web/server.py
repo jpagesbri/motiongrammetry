@@ -35,7 +35,7 @@ Preview data is served in the raw SfM frame together with one 4x4 "scene" transf
   GET  /api/workspaces/<ws>/preview.jpg     scan thumbnail (3D snapshot, else a keyframe)
   GET  /api/workspaces/<ws>/advice?subject= what to change next (advice.py), for assisted mode
   GET  /api/assist                          assisted mode's subject / coverage choices
-  GET  /<name>.js                           shared page modules (static/viewcube.js)
+  GET  /<name>.js, /<name>.css             shared page modules and styles (static/viewcube.js, topbar.css)
   GET  /vendor/<path>                       bundled three.js and three-mesh-bvh (static/vendor)
   GET  /about                               third-party software and licenses (credits.py)
   GET  /api/about[/license?kind=&id=|/notices.txt]   their list, one license text, all notices
@@ -1193,8 +1193,9 @@ def make_handler(app: App):
                 if not p.is_relative_to((STATIC / "vendor").resolve()) or not p.is_file():
                     raise FileNotFoundError("/".join(parts))
                 return self._file(p, "text/javascript; charset=utf-8" if p.suffix == ".js" else "text/plain; charset=utf-8", cache=True)
-            if len(parts) == 1 and re.fullmatch(r"[\w-]+\.js", parts[0]) and (STATIC / parts[0]).is_file():
-                return self._file(STATIC / parts[0], "text/javascript; charset=utf-8")  # shared page modules
+            if len(parts) == 1 and re.fullmatch(r"[\w-]+\.(js|css)", parts[0]) and (STATIC / parts[0]).is_file():
+                ctype = "text/css" if parts[0].endswith(".css") else "text/javascript"
+                return self._file(STATIC / parts[0], ctype + "; charset=utf-8")  # shared page modules and styles
             if parts in (["about"], ["about.html"]):
                 return self._file(STATIC / "about.html", "text/html; charset=utf-8")
             if parts == ["api", "about"]:

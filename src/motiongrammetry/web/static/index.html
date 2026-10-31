@@ -16,12 +16,7 @@
   button, input, select { font: inherit; color: inherit; }
   .app { display: grid; height: 100vh; grid-template-columns: 280px 1fr;
     grid-template-rows: 44px 1fr; grid-template-areas: "top top" "side work"; }
-  header { grid-area: top; display: flex; align-items: center; gap: 12px; padding: 0 14px;
-    border-bottom: 1px solid var(--line); background: var(--panel); }
-  header b { letter-spacing: .02em; }
-  header .muted { color: var(--muted); }
-  header a.gh { display: inline-flex; align-items: center; color: var(--muted); padding: 4px; border-radius: 5px; }
-  header a.gh:hover { color: var(--text); background: var(--panel2); }
+  header { grid-area: top; }
   aside, .right { background: var(--panel); overflow: auto; }
   aside { grid-area: side; border-right: 1px solid var(--line); }
   .right { display: flex; flex-direction: column; min-width: 0; }
@@ -278,10 +273,6 @@
   .pip.bad { background: var(--bad); }
   .pip[hidden] { display: none; }
   .pane:not(.on) { display: none; }
-  .screens { display: inline-flex; gap: 2px; margin-left: 18px; }
-  .screens a { padding: 4px 10px; border-radius: 5px; color: var(--muted); cursor: pointer; text-decoration: none; }
-  .screens a:hover { color: var(--text); }
-  .screens a.on { color: var(--text); background: var(--panel2); }
   .logwrap { flex: 1; display: flex; flex-direction: column; min-height: 200px; padding: 12px 14px; }
   .logwrap .head { display: flex; align-items: center; justify-content: space-between; }
   pre.log { flex: 1; margin: 0; overflow: auto; background: var(--bg); border: 1px solid var(--line); border-radius: 6px;
@@ -344,6 +335,7 @@
     .as-place .slot { height: 50vh; }
   }
 </style>
+<link rel="stylesheet" href="/topbar.css">
 <script type="importmap">
 { "imports": {
     "three": "/vendor/three/build/three.module.js",
@@ -401,10 +393,11 @@
   </div>
 </div>
 <div class="app">
-  <header>
-    <b>motiongrammetry</b><span class="muted" id="wsTitle">video → 3D mesh</span>
+  <header class="topbar">
+    <b>motiongrammetry</b>
     <nav class="screens"><a class="on">Generate</a><a id="toEditor" title="sculpt the clean mesh and paint the texture">Edit &amp; paint</a><a href="/help" target="_blank" title="the full how-to">Help</a><a href="/about" target="_blank" title="the open-source software it builds on, and their licenses">About</a></nav>
-    <span style="margin-left:auto" class="muted" id="jobStatus"></span>
+    <span class="muted" id="wsTitle"></span>
+    <span class="end muted" id="jobStatus"></span>
     <a class="gh" href="https://github.com/jpagesbri/motiongrammetry" target="_blank" rel="noopener" title="motiongrammetry on GitHub" aria-label="motiongrammetry on GitHub"><svg viewBox="0 0 16 16" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M8 0c4.42 0 8 3.58 8 8a8.01 8.01 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82a7.6 7.6 0 0 0-4 0C4.49 1.1 3.82 1.31 3.82 1.31c-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A8 8 0 0 1 0 8c0-4.42 3.58-8 8-8Z"/></svg></a>
   </header>
 

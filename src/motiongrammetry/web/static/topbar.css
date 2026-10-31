@@ -1,0 +1,13 @@
+/* The bar across the top of every page (Generate, Edit & paint, Help, About): one file, so it is the
+   same height, type and spacing everywhere. The pages define the colour variables it uses. */
+header.topbar { display: flex; align-items: center; gap: 12px; height: 44px; box-sizing: border-box; padding: 0 14px;
+  font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--panel); border-bottom: 1px solid var(--line); }
+header.topbar b { letter-spacing: .02em; }
+header.topbar .muted { color: var(--muted); }
+header.topbar .screens { display: inline-flex; gap: 2px; margin-left: 18px; }
+header.topbar .screens a { padding: 4px 10px; border-radius: 5px; color: var(--muted); cursor: pointer; text-decoration: none; }
+header.topbar .screens a:hover { color: var(--text); }
+header.topbar .screens a.on { color: var(--text); background: var(--panel2); }
+header.topbar .end { margin-left: auto; }
+header.topbar a.gh { display: inline-flex; align-items: center; color: var(--muted); padding: 4px; border-radius: 5px; }
+header.topbar a.gh:hover { color: var(--text); background: var(--panel2); }
