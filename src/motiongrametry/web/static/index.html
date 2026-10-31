@@ -1071,7 +1071,7 @@ function areaNormal(hit) {  // the surface's direction around the clicked point 
   return n.normalize().transformDirection(o.matrixWorld);
 }
 const picker = new THREE.Raycaster();
-function floorAt(e) {
+async function floorAt(e) {
   const r = renderer.domElement.getBoundingClientRect();
   picker.setFromCamera(new THREE.Vector2((e.clientX - r.left) / r.width * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), camera);
   pivot.updateMatrixWorld(true);
@@ -1082,8 +1082,44 @@ function floorAt(e) {
   const n = areaNormal(hit);
   if (n.dot(camera.position.clone().sub(hit.point)) < 0) n.negate();  // the side you clicked faces you
   pivot.quaternion.premultiply(new THREE.Quaternion().setFromUnitVectors(n, new THREE.Vector3(0, -1, 0)));
+  const rocked = await restOnHull(objs);
   armFloor(false); settle();
-  $('orMsg').textContent = 'that spot now rests on the floor';
+  $('orMsg').textContent = rocked ? 'it now rests on that side, the way it would on a table' : 'that spot now rests on the floor';
+}
+// Let it settle the way it would on a table: a curved base (a shoe's sole) touches the floor only
+// where its convex hull does, so turn onto the hull face right under the centre of mass. Repeats
+// until that face is level. False when the clicked spot was already the resting face.
+async function restOnHull(objs) {
+  const { ConvexHull } = await import('three/addons/math/ConvexHull.js');
+  const down = new THREE.Vector3(0, -1, 0), pts = [];
+  let total = 0;
+  for (const o of objs) total += o.geometry.attributes.position.count;
+  const step = Math.max(1, Math.floor(total / 40000));
+  let moved = false;
+  for (let iter = 0; iter < 6; iter++) {
+    pivot.updateMatrixWorld(true);
+    pts.length = 0;
+    const com = new THREE.Vector3();
+    for (const o of objs) {
+      const pos = o.geometry.attributes.position;
+      for (let i = 0; i < pos.count; i += step) pts.push(new THREE.Vector3().fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld));
+    }
+    if (pts.length < 4) return moved;
+    pts.forEach((p) => com.add(p)); com.divideScalar(pts.length);
+    const hull = new ConvexHull().setFromPoints(pts);
+    let face = null;
+    for (const f of hull.faces) {  // the downward face whose footprint holds the centre of mass
+      if (f.normal.y > -0.2) continue;
+      const a = f.edge.head().point, b = f.edge.next.head().point, c = f.edge.next.next.head().point;
+      const side = (p, q) => (q.x - p.x) * (com.z - p.z) - (q.z - p.z) * (com.x - p.x);
+      const s1 = side(a, b), s2 = side(b, c), s3 = side(c, a);
+      if ((s1 >= 0 && s2 >= 0 && s3 >= 0) || (s1 <= 0 && s2 <= 0 && s3 <= 0)) { face = f; break; }
+    }
+    if (!face || face.normal.angleTo(down) < 1e-3) return moved;
+    pivot.quaternion.premultiply(new THREE.Quaternion().setFromUnitVectors(face.normal.clone(), down));
+    moved = true;
+  }
+  return moved;
 }
 let downAt = null;
 renderer.domElement.addEventListener('pointerdown', (e) => { downAt = [e.clientX, e.clientY]; });

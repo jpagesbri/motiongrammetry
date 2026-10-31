@@ -3,7 +3,8 @@
 Sculpt brushes only move vertices. These change the surface itself, so they run here (numpy /
 Open3D / scikit-image) and hand the editor a new mesh; nothing is written to disk until it saves.
 
-- cap: close boundary loops with smoothed lids (all of them, or the ones a cut just opened).
+- cap: close boundary loops with even, membrane-relaxed lids (all of them, or the ones a cut just
+  opened): flat where the rim is flat, curving to meet it where it rises.
 - plane_cut: split the triangles along a plane, drop one side, close the cut with a flat cap.
 - restore: bring back raw-mesh triangles inside brushed spheres (what clean carved away).
 - keep_pieces: drop loose pieces, e.g. a part a cut separated from the body.
@@ -65,6 +66,147 @@ def _lid_colours(c, loops, owner):
     return np.round(rim[owner]).astype(np.uint8) if len(owner) else np.zeros((0, 3), np.uint8)
 
 
+def _triangulate(U, h):
+    """Even triangulation of the simple polygon U (n x 2): its own vertices and a hexagonal grid of
+    spacing h inside, kept clear of the rim. Returns (grid points, triangles indexing U then grid),
+    or None when some rim edge isn't in the Delaunay triangulation (a zigzag in the outline)."""
+    from scipy.spatial import Delaunay, cKDTree
+    from skimage.measure import points_in_poly
+
+    n = len(U)
+    lo, hi = U.min(0), U.max(0)
+    gx, gy = np.meshgrid(np.arange(lo[0], hi[0] + h, h), np.arange(lo[1], hi[1] + h, h * 0.866))
+    gx = gx + (np.arange(len(gx)) % 2)[:, None] * h / 2
+    G = np.stack([gx.ravel(), gy.ravel()], 1)
+    G = G[points_in_poly(G, U)]
+    if len(G):
+        G = G[cKDTree(U).query(G)[0] > 0.7 * h]
+    if len(G):  # nor inside a rim edge's diametral circle, which would keep that edge out of the Delaunay
+        mid, rad = (U + np.roll(U, -1, 0)) / 2, np.linalg.norm(np.roll(U, -1, 0) - U, axis=1) / 2
+        near = cKDTree(G).query_ball_point(mid, rad * 1.05)
+        G = np.delete(G, np.unique(np.fromiter((i for ids in near for i in ids), np.int64)), 0)
+    dt = Delaunay(np.concatenate([U, G]))
+
+    def rim_edge(a, b):
+        return a < n and b < n and (a - b) % n in (1, n - 1)
+
+    # inside or outside, flood-filled from the hull and flipping only across rim edges (a centroid
+    # test misjudges the slivers in thin notches); any contradiction means a rim edge is missing
+    side = np.full(len(dt.simplices), -1, np.int8)
+    todo = []
+    for t in np.flatnonzero((dt.neighbors == -1).any(1)):
+        for k in np.flatnonzero(dt.neighbors[t] == -1):
+            s_ = int(rim_edge(*np.delete(dt.simplices[t], k)))
+            if side[t] not in (-1, s_):
+                return None
+            side[t] = s_
+        todo.append(t)
+    while todo:
+        t = todo.pop()
+        for k, u in enumerate(dt.neighbors[t]):
+            if u == -1:
+                continue
+            s_ = side[t] ^ int(rim_edge(*np.delete(dt.simplices[t], k)))
+            if side[u] == -1:
+                side[u] = s_
+                todo.append(u)
+            elif side[u] != s_:
+                return None
+    tri = dt.simplices[side == 1]
+    # every rim edge, and nothing else, must be the lid's border
+    e = np.sort(np.concatenate([tri[:, [0, 1]], tri[:, [1, 2]], tri[:, [2, 0]]]), 1)
+    ue, cnt = np.unique(e, axis=0, return_counts=True)
+    rim = np.sort(np.stack([np.arange(n), (np.arange(n) + 1) % n], 1), 1)
+    border = ue[cnt == 1]
+    if not len(tri) or len(border) != n or np.unique(np.concatenate([border, rim]), axis=0).shape[0] != n:
+        return None
+    pts = np.concatenate([U, G])
+    a, b, c = pts[tri[:, 0]], pts[tri[:, 1]], pts[tri[:, 2]]
+    ccw = ((b - a)[:, 0] * (c - a)[:, 1] - (b - a)[:, 1] * (c - a)[:, 0]) > 0
+    tri[~ccw] = tri[~ccw][:, ::-1]
+    return G, tri
+
+
+def _lid(v, c, loop, base: int, max_points: int = 80_000):
+    """Lid for one boundary loop: the rim seen along its best-fit plane, filled with an even
+    triangulation, then relaxed as a membrane with the rim held. Where the rim is flat the lid is
+    flat; where it rises (a shoe's toe and heel) the lid curves up to meet it, with no crease and
+    no fan of slivers. Colours blend in from the rim the same way. The new vertices are numbered
+    from ``base``. None when the rim doesn't project to a simple outline (it folds over itself);
+    close_holes takes those."""
+    from scipy.sparse import coo_matrix
+    from scipy.sparse.linalg import splu
+
+    loop = np.asarray(loop, np.int64)
+    n = len(loop)
+    P = v[loop]
+    _, _, vt = np.linalg.svd(P - P.mean(0), full_matrices=False)
+    U = (P - P.mean(0)) @ vt[:2].T
+    area = 0.5 * abs(np.dot(U[:, 0], np.roll(U[:, 1], -1)) - np.dot(U[:, 1], np.roll(U[:, 0], -1)))
+    h = float(np.median(np.linalg.norm(np.roll(U, -1, 0) - U, axis=1)))
+    if area <= 0 or h <= 0:
+        return None
+    h = max(h, np.sqrt(area / max_points / 0.87))
+    # The 2D layout only decides how the lid is connected (the membrane below places it in 3D), so
+    # a rim that zigzags in projection is triangulated on a smoothed copy of its outline.
+    Us, done = U, 0
+    for k in (0, 8, 32, 128):
+        for _ in range(k - done):
+            Us = 0.5 * Us + 0.25 * (np.roll(Us, 1, 0) + np.roll(Us, -1, 0))
+        done = k
+        if (r := _triangulate(Us, h)) is not None:
+            break
+    else:
+        return None
+    G, tri = r
+    # wind against the rim's half-edges (loop[i] -> loop[i+1] belongs to the surface)
+    t0 = tri[np.isin(tri, [0, 1]).sum(1) == 2][0]
+    k = int(np.flatnonzero(t0 == 0)[0])
+    if t0[(k + 1) % 3] == 1:  # holds 0 -> 1, the surface's own direction: flip
+        tri = tri[:, ::-1]
+    # membrane: each inner vertex at the mean of its neighbours, the rim fixed
+    m = len(G)
+    X = np.zeros((m, 3))
+    Cc = np.zeros((m, 3))
+    if m:
+        ed = np.unique(np.sort(np.concatenate([tri[:, [0, 1]], tri[:, [1, 2]], tri[:, [2, 0]]]), 1), axis=0)
+        ed = np.concatenate([ed, ed[:, ::-1]])
+        ed = ed[ed[:, 0] >= n]
+        i, j = ed[:, 0] - n, ed[:, 1]
+        inner = j >= n
+        deg = np.bincount(i, minlength=m).astype(float)
+        A = coo_matrix((np.concatenate([deg, -np.ones(inner.sum())]),
+                        (np.concatenate([np.arange(m), i[inner]]), np.concatenate([np.arange(m), j[inner] - n]))),
+                       shape=(m, m)).tocsc()
+        rhs = np.zeros((m, 6))
+        np.add.at(rhs, i[~inner], np.concatenate([P, c[loop].astype(float)], 1)[j[~inner]])
+        sol = splu(A).solve(rhs)
+        X, Cc = sol[:, :3], sol[:, 3:]
+    ids = np.concatenate([loop, base + np.arange(m)])
+    return X, ids[tri], np.clip(np.round(Cc), 0, 255).astype(np.uint8)
+
+
+def close_loops(v, f, c, loops):
+    """Close the given boundary loops: even membrane lids (_lid), soap-film rings where that fails."""
+    out_v, out_f, out_c, rest = [v], [f], [c], []
+    base = len(v)
+    for loop in loops:
+        lid = _lid(v, c, loop, base)
+        if lid is None:
+            rest.append(loop)
+            continue
+        out_v.append(lid[0])
+        out_f.append(lid[1])
+        out_c.append(lid[2])
+        base += len(lid[0])
+    V, F, C = np.concatenate(out_v), np.concatenate(out_f), np.concatenate(out_c)
+    if rest:
+        V2, F, owner = close_holes(V, F, loops=rest, owners=True)
+        C = np.concatenate([C, _lid_colours(C, rest, owner)])
+        V = V2
+    return V, F, C
+
+
 # ---- operations ------------------------------------------------------------------------------
 def cap(v, f, c, seeds: np.ndarray | None = None):
     """Close the boundary loops touching any ``seeds`` vertex (all loops when None)."""
@@ -76,9 +218,7 @@ def cap(v, f, c, seeds: np.ndarray | None = None):
         loops = [l for l in loops if mark[l].any()]
     if not loops:
         return v, f, c, {"capped": 0}
-    V, F, owner = close_holes(v, f, loops=loops, owners=True)
-    C = np.concatenate([c, _lid_colours(c, loops, owner)])
-    V, F, C = compact(V, F, C)
+    V, F, C = compact(*close_loops(v, f, c, loops))
     return V, F, C, {"capped": len(loops)}
 
 
@@ -122,11 +262,12 @@ def plane_cut(v, f, c, point, normal, close: bool = True):
     if close and len(F):
         dist = np.abs((V - np.asarray(point, float)) @ n)
         eps = 1e-6 * float(np.linalg.norm(np.ptp(V, 0)))
-        loops = [l for l in boundary_loops(F) if (dist[l] <= eps).all()]
+        # An opening the cut made or crossed: most of its rim lies on the plane. Not all of it when the
+        # cut goes through an opening the scan already had (a shoe's open bottom reaching up into the
+        # toe): its rim there stays above the plane, and the lid follows it.
+        loops = [l for l in boundary_loops(F) if (dist[l] <= eps).mean() >= 0.5]
         if loops:
-            V2, F2, owner = close_holes(V, F, loops=loops, owners=True)
-            C = np.concatenate([C, _lid_colours(C, loops, owner)])
-            V, F = V2, F2
+            V, F, C = close_loops(V, F, C, loops)
             info["capped"] = len(loops)
     return V, F, C, info
 

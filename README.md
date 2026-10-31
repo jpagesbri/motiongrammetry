@@ -2,6 +2,36 @@
 
 Walk around a person or object with your phone, get a cleaned, textured 3D mesh.
 
+<table>
+  <tr>
+    <td width="50%"><img src="src/motiongrametry/web/static/help/preview-raw.jpg" alt="The raw reconstruction: the shoe, the stool and the room"><br>
+      <sub>What the camera saw: the shoe, the stool and the room…</sub></td>
+    <td width="50%"><img src="src/motiongrametry/web/static/help/preview.jpg" alt="The cleaned, textured shoe"><br>
+      <sub>…and the model you get: just the shoe, cleaned and textured.</sub></td>
+  </tr>
+  <tr>
+    <td><img src="src/motiongrametry/web/static/help/assist-stage.jpg" alt="The assisted run on a stage page"><br>
+      <sub>An assisted run explains every step and option, and checks each result.</sub></td>
+    <td><img src="src/motiongrametry/web/static/help/frames.jpg" alt="The frame viewer with a mask overlay"><br>
+      <sub>Every keyframe and its mask, with the doubtful ones flagged.</sub></td>
+  </tr>
+  <tr>
+    <td><img src="src/motiongrametry/web/static/help/edit-plane.jpg" alt="A plane cut across the toe in the editor"><br>
+      <sub>Edit the mesh: a plane cut takes off a scrap under the toe…</sub></td>
+    <td><img src="src/motiongrametry/web/static/help/edit-sole-below.jpg" alt="The shoe closed with a curved sole"><br>
+      <sub>…and Close all holes gives the open bottom a sole that follows its edge.</sub></td>
+  </tr>
+  <tr>
+    <td><img src="src/motiongrametry/web/static/help/orient.jpg" alt="The shoe standing on its sole in the orientation tool"><br>
+      <sub>Click the part it stands on; it settles as it would on a table.</sub></td>
+    <td><img src="src/motiongrametry/web/static/help/export.jpg" alt="The Export window building a 3D print file"><br>
+      <sub>Export a watertight print file at the size you want.</sub></td>
+  </tr>
+</table>
+
+<sub>The shoe is from the <a href="https://uco3d.github.io">uCO3D</a> dataset (Meta AI; CC BY 4.0), reconstructed and
+edited here. The in-app Help page walks through the same example step by step.</sub>
+
 ## Quick start
 
 You need [Docker](https://docs.docker.com/engine/install/) (on Windows: Docker Desktop with WSL2, and

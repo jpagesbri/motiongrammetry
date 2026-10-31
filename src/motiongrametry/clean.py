@@ -305,21 +305,55 @@ def export_glb(src: Path, dst: Path, transform: np.ndarray | None = None) -> Pat
 
 def boundary_loops(faces: np.ndarray) -> list[list[int]]:
     """Ordered loops of open edges, each following its faces' winding (rim half-edge a -> b).
-    Needs a manifold mesh, so every boundary vertex has exactly one way out."""
-    he = np.concatenate([faces[:, [0, 1]], faces[:, [1, 2]], faces[:, [2, 0]]]).astype(np.int64)
-    n = int(faces.max()) + 1 if len(faces) else 0
-    open_he = he[~np.isin(he[:, 0] * n + he[:, 1], he[:, 1] * n + he[:, 0])]
-    nxt = dict(zip(open_he[:, 0].tolist(), open_he[:, 1].tolist()))
-    loops, seen = [], set()
-    for start in nxt:
-        loop, v = [], start
-        while v not in seen and v in nxt:
-            seen.add(v)
-            loop.append(v)
-            v = nxt[v]
-        if v == start and len(loop) >= 3:
+    From each open edge the next is found by turning around its end vertex through that vertex's
+    own fan of faces, so a vertex where two openings touch (a cut that reached another hole) is
+    passed through correctly instead of losing both loops."""
+    F = len(faces)
+    if not F:
+        return []
+    faces = np.asarray(faces, np.int64)
+    # half-edge k = slot * F + face: slot 0 is (v0, v1), 1 is (v1, v2), 2 is (v2, v0)
+    he = np.concatenate([faces[:, [0, 1]], faces[:, [1, 2]], faces[:, [2, 0]]])
+    n = int(faces.max()) + 1
+    key = he[:, 0] * n + he[:, 1]
+    order = np.argsort(key)
+    pos = np.minimum(np.searchsorted(key[order], he[:, 1] * n + he[:, 0]), len(key) - 1)
+    twin = np.where(key[order][pos] == he[:, 1] * n + he[:, 0], order[pos], -1)
+    is_open = twin < 0
+
+    def following(k):  # the open half-edge leaving the end of open half-edge k
+        for _ in range(64):
+            k = ((k // F + 1) % 3) * F + k % F   # same face, the edge leaving that vertex
+            if is_open[k]:
+                return k
+            k = twin[k]                          # across it, into the next face of the fan
+        return -1
+
+    loops, seen = [], np.zeros(len(he), bool)
+    for start in np.flatnonzero(is_open):
+        if seen[start]:
+            continue
+        loop, k = [], int(start)
+        while k >= 0 and not seen[k]:
+            seen[k] = True
+            loop.append(int(he[k, 0]))
+            k = following(k)
+        if k == start and len(loop) >= 3:
             loops.append(loop)
-    return loops
+    # a loop through a shared vertex twice (a figure of eight: two openings touching) is two loops
+    out = []
+    while loops:
+        loop = loops.pop()
+        first = {}
+        for i, a in enumerate(loop):
+            if a in first:
+                j = first[a]
+                loops += [loop[j:i], loop[:j] + loop[i:]]
+                break
+            first[a] = i
+        else:
+            out.append(loop)
+    return [l for l in out[::-1] if len(l) >= 3]
 
 
 def close_holes(verts: np.ndarray, faces: np.ndarray, iters: int = 200, loops: list[list[int]] | None = None,

@@ -159,3 +159,53 @@ def test_editor_request_for_a_local_merge():
     data, info = run("merge_local", struct.pack("<I", len(params)) + params + encode_mesh(v, f, c))
     V, F, C = decode_mesh(data)
     assert info["local"] and len(F) == info["faces"] and trimesh.Trimesh(V, F, process=False).is_watertight
+
+
+def test_plane_cut_closes_an_opening_the_scan_already_had_where_it_crosses():
+    """A shell open at the bottom (a shoe on a stool) whose opening reaches above the cut in one place:
+    the new rim is mostly on the plane, and still gets its lid."""
+    m = o3d.geometry.TriangleMesh.create_sphere(1.0, 60)
+    v, f = np.asarray(m.vertices), np.asarray(m.triangles).astype(np.int64)
+    cen = v[f].mean(1)
+    open_bottom = (cen[:, 2] < -0.7) | ((cen[:, 2] < -0.3) & (np.abs(cen[:, 0]) < 0.15) & (cen[:, 1] > 0.5))
+    f = f[~open_bottom]
+    c = np.full((len(v), 3), 120, np.uint8)
+    V, F, C, info = plane_cut(v, f, c, point=[0, 0, -0.5], normal=[0, 0, -1])
+    assert info["capped"] == 1 and len(boundary_loops(F)) == 0
+
+
+def test_openings_touching_at_a_vertex_are_both_found_and_closed():
+    """A cut that reaches another hole leaves a vertex shared by two openings: each is still a loop."""
+    g = 6
+    v = np.array([[x, y, 0.0] for y in range(g) for x in range(g)], float)
+    cells = [(x, y) for y in range(g - 1) for x in range(g - 1) if (x, y) not in {(2, 2), (3, 3)}]
+    f = np.array([t for x, y in cells for t in ([y * g + x, y * g + x + 1, (y + 1) * g + x + 1],
+                                                 [y * g + x, (y + 1) * g + x + 1, (y + 1) * g + x])], np.int64)
+    loops = boundary_loops(f)
+    assert sorted(len(l) for l in loops) == [4, 4, 20], "the border and both holes, not one figure of eight"
+    shared = 3 * g + 3
+    V, F, C, info = cap(v, f, np.full((len(v), 3), 90, np.uint8), seeds=np.array([shared]))
+    assert info["capped"] == 2 and [len(l) for l in boundary_loops(F)] == [20]
+
+
+def test_cap_follows_a_rim_that_rises_at_one_end():
+    """A shoe's open bottom: flat most of the way, curving up at the toe. The lid is flat where the rim
+    is, curves up to meet it where it rises, never sags below it, and is an even mesh (not a fan)."""
+    k, rows = 160, 8
+    th = np.linspace(0, 2 * np.pi, k, endpoint=False)
+    x, y = 3 * np.cos(th), np.sin(th)
+    z0 = np.where(x > 1.5, 0.5 * ((x - 1.5) / 1.5) ** 2, 0.0)
+    v = np.concatenate([np.stack([x, y, z0 + (1 - z0) * j / rows], 1) for j in range(rows + 1)] + [[[0, 0, 1.0]]])
+    ring = lambda j: j * k + np.arange(k)  # noqa: E731
+    f = [np.stack([ring(j), ring(j + 1), np.roll(ring(j + 1), -1)], 1) for j in range(rows)]
+    f += [np.stack([ring(j), np.roll(ring(j + 1), -1), np.roll(ring(j), -1)], 1) for j in range(rows)]
+    f += [np.stack([ring(rows), np.full(k, len(v) - 1), np.roll(ring(rows), -1)], 1)]
+    f = np.concatenate(f).astype(np.int64)[:, ::-1]  # wound outwards
+    V, F, C, info = cap(v, f, np.full((len(v), 3), 150, np.uint8))
+    ok, _ = _closed(V, F)
+    lid = V[len(v):]
+    assert info["capped"] == 1 and ok
+    assert len(lid) > 300, "an even triangulation with inner vertices, not a fan to one centre"
+    assert np.abs(lid[lid[:, 0] < 0.5, 2]).max() < 0.01, "flat where the rim is flat (bar a gentle blend into the rise)"
+    assert lid[lid[:, 0] > 2.6, 2].min() > 0.15, "curving up towards the raised end"
+    assert lid[:, 2].min() > -1e-6, "never below the rim"

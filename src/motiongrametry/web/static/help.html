@@ -49,6 +49,7 @@
   .flow i { color: var(--muted); font-style: normal; }
   .muted { color: var(--muted); }
   .try { font-size: 13px; }
+  .note { color: var(--muted); font-size: 13px; }
   @media (max-width: 900px) { .wrap { grid-template-columns: 1fr; } nav.toc { display: none; } main { padding: 10px 16px 60px; } .grid2 { grid-template-columns: 1fr; } }
 </style>
 </head>
@@ -64,6 +65,9 @@
 <p>motiongrametry turns a phone video walking around something into a clean, textured 3D model, a 3D-print file and
 more. This page explains every screen, step and option, with what to do when something goes wrong. In a hurry? Choose
 <b>Assisted</b> in the Run tab of the Generate screen: it walks you through all of this for your own capture.</p>
+<p class="note">The screenshots follow one example from start to print: a canvas shoe filmed on a stool, from the
+<a href="https://uco3d.github.io" target="_blank" rel="noopener">uCO3D</a> dataset (Meta AI; Liu et al., 2025; CC BY 4.0),
+reconstructed and edited here.</p>
 
 <h2 id="overview">How it works</h2>
 <div class="flow"><span>Video</span><i>→</i><span>Keyframes</span><i>→</i><span>Masks</span><i>→</i><span>Camera positions</span><i>→</i>
@@ -171,8 +175,10 @@ and shared by both modes.</p>
 output and a History of every run; it is closed unless you open it (a dot means new output) and opens by itself when a step
 fails.</p>
 <h3 id="viewer">Preview: 3D model</h3>
-<figure><img src="/help/preview.jpg" alt="The Preview tab" loading="lazy">
-  <figcaption>The model in <b>Solid + wires</b> with its holes in orange; the files on the right.</figcaption></figure>
+<figure><img src="/help/preview-raw.jpg" alt="The raw mesh in the Preview: the shoe, the stool and the room" loading="lazy">
+  <figcaption>The <b>raw mesh</b> layer: mvs reconstructs everything the camera saw, the stool and the room included.</figcaption></figure>
+<figure><img src="/help/preview.jpg" alt="The Preview tab with the finished shoe" loading="lazy">
+  <figcaption>After clean, texture and the edits below: just the shoe, with its colours; the files on the right.</figcaption></figure>
 <p>Layers: camera positions, sparse points (from sfm), dense cloud and raw mesh (from mvs), clean mesh, textured model and,
 if you edited it, the custom version. Drag to orbit, right-drag or middle-drag to pan, wheel to zoom. Click a keyframe to
 look through its camera, double-click it to open it big. The <b>view cube</b> (bottom left, in every 3D view) shows which
@@ -185,11 +191,14 @@ mesh is; the wires fade in as you zoom, since on a dense scan they would cover e
 opening in orange and counts them: that is what the print report means by lids. <b>Files</b> lists the results with their size
 (stale ones are marked) and <b>Export…</b>.</p>
 <h3 id="orient">Orientation</h3>
-<figure><img src="/help/orient.jpg" alt="Orienting the model" loading="lazy">
-  <figcaption>Orient…: turn it in 90° steps, click the spot that rests on the floor, or use the rotate and move handles.</figcaption></figure>
+<figure><img src="/help/orient-floor.jpg" alt="Clicking the sole as the floor" loading="lazy">
+  <figcaption><b>Click the floor…</b>, then click the part it stands on: here the shoe's sole, seen from below.</figcaption></figure>
+<figure><img src="/help/orient.jpg" alt="The shoe standing on its sole" loading="lazy">
+  <figcaption>It turns onto that side and settles as it would on a table; <b>Save</b> and every export uses it.</figcaption></figure>
 <p>The model is stood up automatically (on the table or floor when one is found, else from how the camera moved). When that
 is wrong, <b>Orient…</b> (or the assisted run's last step) fixes it: <b>Click the floor…</b> then click the spot that should rest on
-the floor; <b>Turn 90°</b> about any axis; orbit until you face the model's front and press <b>This view is the front</b>;
+the floor (a curved base, like a sole, settles onto the points it would really rest on, so it stands
+without a stand); <b>Turn 90°</b> about any axis; orbit until you face the model's front and press <b>This view is the front</b>;
 or free <b>Rotate</b> / <b>Move</b> handles. <b>Centre</b> and <b>Drop to floor</b> tidy up; turns do it for you. <b>Save</b> and every
 export uses it: the GLBs, the print STL, the Export window and texture re-runs (the GLB and STL files are rebuilt in the
 background, about a minute). <b>Reset to automatic</b> forgets it. Nothing is re-run and the meshes are not changed. If you
@@ -250,8 +259,25 @@ under the print file and on the clean stage card, each with the option that chan
 <b>Delete custom version</b> goes back to them. Texture uses your edited mesh when it is newer than the clean mesh, so the
 order is: <b>sculpt → re-run texture → paint</b>.</p>
 <h3 id="sculpt">Sculpt</h3>
-<figure><img src="/help/edit-sculpt.jpg" alt="The sculpt editor" loading="lazy">
-  <figcaption>Sculpt tools on the left; left-drag on the mesh to sculpt, off it (or right-drag) to orbit.</figcaption></figure>
+<p>Left-drag on the mesh to use the tool, off it (or right-drag) to orbit, middle-drag to pan, wheel to zoom. The example: the
+shoe sat on a stool, so its underside was never filmed and the scan is open there, with a loose scrap
+hanging under the toe. Two tools and a save give it a sole.</p>
+<figure><img src="/help/edit-before.jpg" alt="The shoe in the editor with its open bottom in orange" loading="lazy">
+  <figcaption>1. <b>Highlight holes</b>: one opening, the whole bottom edge (orange), and the scrap under the toe.</figcaption></figure>
+<figure><img src="/help/edit-plane.jpg" alt="Drawing a plane cut across the toe" loading="lazy">
+  <figcaption>2. <b>Plane cut</b> (<kbd>V</kbd>): drag a line across the toe's lower corner. The part that would go is hidden as a
+  preview; <b>Flip side</b> keeps the other side, <b>Cut</b> (or <kbd>Enter</kbd>) applies.</figcaption></figure>
+<figure><img src="/help/edit-cut.jpg" alt="The shoe after the cut" loading="lazy">
+  <figcaption>3. The scrap is gone and the toe now rises from the floor. The cut joined the bottom opening, so it was left
+  open instead of being closed flat.</figcaption></figure>
+<figure><img src="/help/edit-open-below.jpg" alt="The open bottom of the shoe, seen from below" loading="lazy">
+  <figcaption>From below: the inside of the shoe shows through the opening.</figcaption></figure>
+<figure><img src="/help/edit-sole-below.jpg" alt="The shoe closed with a curved sole" loading="lazy">
+  <figcaption>4. <b>Close all holes</b>: the lid follows the scan's bottom edge, flat where it is flat and curving up to the toe
+  and the heel, like a real sole.</figcaption></figure>
+<figure><img src="/help/edit-saved.jpg" alt="The edited shoe saved" loading="lazy">
+  <figcaption>5. <b>Save</b> (<kbd>Ctrl+S</kbd>): a custom version with its own print file. Then re-run texture so the
+  photos cover the new mesh.</figcaption></figure>
 <p><b>Display</b> (<kbd>W</kbd>) and <b>highlight holes</b> work as in the Preview: <b>Solid + wires</b> after <b>Merge</b> shows
 how fine the new mesh is; holes update as you cut and fill.</p>
 <table>
@@ -265,9 +291,11 @@ how fine the new mesh is; holes update as you cut and fill.</p>
     (at the mesh's own resolution) and stitched in; the rest keeps every detail. An opening the spheres only partly cover is closed whole.
     Tick <b>Merge: whole mesh</b> to rebuild everything at <b>Detail</b> instead (merges separate shells, removes inner walls)</td></tr>
   <tr><td>Restore</td><td><kbd>R</kbd></td><td>Brush over the raw mesh (amber ghost) to bring back what clean carved away</td></tr>
-  <tr><td>Plane cut</td><td><kbd>V</kbd></td><td>Drag a line: cut straight through and close it flat (Enter to apply)</td></tr>
+  <tr><td>Plane cut</td><td><kbd>V</kbd></td><td>Drag a line: cut straight through (<kbd>Enter</kbd> to apply). A new opening is closed flat; one that
+    joins an opening the scan already had is left for <b>Close all holes</b></td></tr>
 </table>
-<p>Also: <b>Close all holes</b>, <b>Remove loose pieces</b>, <kbd>[</kbd> <kbd>]</kbd> brush size, <kbd>Ctrl</kbd> inverts,
+<p>Also: <b>Close all holes</b> (each lid is an even mesh that follows its rim: flat where the rim is flat, curved
+where it rises), <b>Remove loose pieces</b>, <kbd>[</kbd> <kbd>]</kbd> brush size, <kbd>Ctrl</kbd> inverts,
 <kbd>Ctrl+Z</kbd> / <kbd>Ctrl+Shift+Z</kbd> undo and redo, <kbd>Ctrl+S</kbd> save.</p>
 <h3 id="paint">Paint</h3>
 <figure><img src="/help/edit-paint.jpg" alt="The paint editor" loading="lazy">
