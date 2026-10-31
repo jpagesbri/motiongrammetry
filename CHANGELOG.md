@@ -17,6 +17,10 @@ the image with that version, and the About page and `mg --version` show it.
 - **Editor, clone on the model**: copies by place on the surface instead of by texture offset,
   which jumped to unrelated texels at every texture seam; strokes keep their alignment until a
   new source is picked.
+- **Editor, texture layout**: **Rebuild layout** cuts the texture again by the model's sides
+  (normals on a smoothed copy, an angle and a minimum piece size), flattens the pieces (LSCM),
+  packs them with xatlas and copies the colours across: a scan's 20 000 tiny pieces become a
+  few hundred whole parts. New dependency: xatlas (MIT; credited with pybind11, BSD-3-Clause).
 
 ## 0.1.0 — 2026-10-31
 

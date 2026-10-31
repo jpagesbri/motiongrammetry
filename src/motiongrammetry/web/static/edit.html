@@ -137,6 +137,17 @@
         <label class="check" title="close the opening a Cut stroke leaves; leave off to remove junk (walls, floaters)"><input type="checkbox" id="capCut"> Cut: cap the opening</label>
       </div>
     </section>
+    <section id="layoutOps" hidden>
+      <h2>Texture layout</h2>
+      <div class="note" style="margin:0 0 6px">The texture is cut into pieces by the photo each came from: thousands of tiny ones.
+        Rebuild it by the model's sides for fewer, bigger pieces that are easy to paint on the flat texture. Saved as your
+        custom texture; the pipeline's stays.</div>
+      <div class="slider" title="how far a piece's surface may turn: smaller makes more, flatter pieces"><span>Angle</span><input type="range" id="lyAngle" min="15" max="75" value="45"><span id="lyAngleV"></span></div>
+      <div class="slider" title="the smallest piece, as a share of the surface: smaller ones join the neighbour facing most the same way"><span>Min. piece</span><input type="range" id="lyMin" min="0" max="30" value="5"><span id="lyMinV"></span></div>
+      <div class="btns" style="margin-top:0"><button class="btn" id="lyCount" title="how many pieces there are now, and how many these settings make">Count pieces</button>
+        <button class="btn" id="lyGo">Rebuild layout</button></div>
+      <div class="note" id="lyInfo"></div>
+    </section>
     <section id="meshOps">
       <h2>Mesh</h2>
       <div class="note" id="fillInfo" style="margin:0 0 6px"></div>
@@ -512,6 +523,7 @@ async function setMode(m) {
   mode = m;
   document.querySelectorAll('[data-mode]').forEach((b) => b.classList.toggle('on', b.dataset.mode === m));
   $('paintOpts').hidden = m !== 'paint'; $('sculptOpts').hidden = m !== 'sculpt'; $('meshOps').hidden = m !== 'sculpt';
+  $('layoutOps').hidden = m !== 'paint';
   if (plane.n) endPlane();
   $('layoutSeg').hidden = m !== 'paint';
   renderTools();
@@ -1826,6 +1838,32 @@ $('redoBtn').addEventListener('click', doRedo);
 $('saveBtn').addEventListener('click', doSave);
 $('discardBtn').addEventListener('click', () => {
   if (!anyDirty() || confirm('Throw away the unsaved edits?')) { S.dirty = P.dirty = false; location.reload(); }
+});
+// ---- texture layout (atlas.py): the texture's pieces rebuilt by the model's sides
+const lyParams = () => ({ angle: Number($('lyAngle').value), min_size: Number($('lyMin').value) / 10 });
+function lyLabels() {
+  $('lyAngleV').textContent = $('lyAngle').value + '°';
+  $('lyMinV').textContent = (Number($('lyMin').value) / 10).toFixed(1) + '%';
+}
+['lyAngle', 'lyMin'].forEach((id) => $(id).addEventListener('input', () => { lyLabels(); $('lyInfo').textContent = ''; }));
+lyLabels();
+$('lyCount').addEventListener('click', async () => {
+  $('lyInfo').textContent = 'counting…';
+  try {
+    const r = await api(`/api/workspaces/${ws}/edit/layout`, { method: 'POST', body: JSON.stringify({ ...lyParams(), preview: true }) });
+    $('lyInfo').textContent = `now ${r.pieces_now.toLocaleString()} pieces · rebuilt: ${r.pieces.toLocaleString()}`;
+  } catch (e) { $('lyInfo').textContent = ''; fail(e); }
+});
+$('lyGo').addEventListener('click', async () => {
+  if (P.dirty) { fail(new Error('save or discard the paint first: the rebuild starts from the saved texture')); return; }
+  $('lyGo').disabled = true; $('lyInfo').textContent = 'rebuilding (about a minute for a dense scan)…';
+  try {
+    const r = await api(`/api/workspaces/${ws}/edit/layout`, { method: 'POST', body: JSON.stringify(lyParams()) });
+    flash(`texture rebuilt: ${r.pieces_now.toLocaleString()} → ${r.pieces.toLocaleString()} pieces, ${r.size.join(' × ')} px`);
+    const u = new URL(location.href);
+    if (u.searchParams.get('mode') === 'paint') setTimeout(() => location.reload(), 900);
+    else { u.searchParams.set('mode', 'paint'); setTimeout(() => location.replace(u), 900); }
+  } catch (e) { $('lyInfo').textContent = ''; fail(e); $('lyGo').disabled = false; }
 });
 $('restoreBtn').addEventListener('click', async () => {
   const what = mode === 'sculpt' ? 'mesh' : 'texture';

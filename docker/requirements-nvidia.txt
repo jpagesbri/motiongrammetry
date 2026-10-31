@@ -183,6 +183,7 @@ scikit-image==0.26.0
     #   rembg
 scipy==1.18.1
     # via
+    #   -r docker/requirements-nvidia.in
     #   pymatting
     #   rembg
     #   scikit-image
@@ -223,5 +224,7 @@ werkzeug==3.1.9
     #   open3d
 widgetsnbextension==4.0.16
     # via ipywidgets
+xatlas==0.0.11
+    # via -r docker/requirements-nvidia.in
 zipp==4.1.2
     # via importlib-metadata

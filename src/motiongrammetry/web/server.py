@@ -30,6 +30,7 @@ Preview data is served in the raw SfM frame together with one 4x4 "scene" transf
   POST /api/workspaces/<ws>/edit/mesh       sculpted mesh -> mesh/custom/ (see App.save_mesh)
   POST /api/workspaces/<ws>/edit/texture?i=N&from=pipeline|custom  painted texture -> mesh/custom/
   POST /api/workspaces/<ws>/edit/delete     {"what": "mesh"|"texture"} -> drop the custom version
+  POST /api/workspaces/<ws>/edit/layout     {"angle","min_size","preview"} -> rebuild the texture layout
   POST /api/workspaces/<ws>/export          {"items":[{"content","format"}],"source","options"} -> .ui/exports/
   GET  /api/workspaces/<ws>/exports/<file>  download it
   GET  /api/workspaces/<ws>/preview.jpg     scan thumbnail (3D snapshot, else a keyframe)
@@ -926,6 +927,40 @@ class App:
         export_glb(ply, c / "model.glb", workspace_alignment(ws, geometry))
         return {"texture": f"custom/{png.name}", "bytes": len(data)}
 
+    def relayout_texture(self, ws: Workspace, body: dict) -> dict:
+        """Rebuild the texture layout of the model the editor paints (see atlas.py): pieces cut by the
+        surface's sides. Written as the custom texture; the pipeline's files stay as they are."""
+        from .. import atlas
+        from ..clean import export_glb, workspace_alignment
+
+        self._editable(ws)
+        angle, min_size = float(body.get("angle", 45)), float(body.get("min_size", 0.5)) / 100
+        if not 10 <= angle <= 80 or not 0 <= min_size <= 0.2:
+            raise ValueError("angle: 10 to 80 degrees; min_size: 0 to 20 (% of the surface)")
+        c, info = ws.mesh / "custom", self.custom_info(ws)
+        src = c / "textured.ply" if info["texture"] else ws.mesh / "textured.ply"
+        if not src.exists():
+            raise FileNotFoundError("textured.ply: run texture first")
+        if body.get("preview"):
+            return {**atlas.preview(src, angle, min_size), "source": "custom" if info["texture"] else "pipeline"}
+        work = c / ".layout"
+        shutil.rmtree(work, ignore_errors=True)
+        work.mkdir(parents=True)
+        try:
+            out = atlas.relayout(src, work / "textured.ply", angle, min_size)
+            for old in list(c.glob("textured*")):
+                old.unlink()
+            for p in work.iterdir():
+                p.replace(c / p.name)
+        finally:
+            shutil.rmtree(work, ignore_errors=True)
+        if not info["texture"]:
+            self._custom_meta(ws, textured_from="clean")  # the pipeline's textured model, laid out anew
+        from_custom = self.custom_info(ws)["texture_from"] == "custom" and (c / "mesh_clean.ply").exists()
+        export_glb(c / "textured.ply", c / "model.glb",
+                   workspace_alignment(ws, c / "mesh_clean.ply" if from_custom else ws.mesh / "mesh_clean.ply"))
+        return {**out, "source": "custom" if info["texture"] else "pipeline"}
+
     def delete_custom(self, ws: Workspace, what: str) -> dict:
         """Drop the custom mesh or texture: the pipeline's version is what remains."""
         self._editable(ws)
@@ -1396,6 +1431,8 @@ def make_handler(app: App):
                                                        q.get("from", ["pipeline"])[0]))
                 if what == "delete":
                     return self._json(app.delete_custom(ws, self._body().get("what", "")))
+                if what == "layout":
+                    return self._json(app.relayout_texture(ws, self._body()))
                 if what == "op":  # cap / plane / remesh: mesh in, mesh out, nothing saved
                     from ..meshops import run
 

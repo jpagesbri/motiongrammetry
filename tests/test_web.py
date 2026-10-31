@@ -500,6 +500,34 @@ def test_export_window_builds_files_with_their_own_settings(server):
         assert call(base + "/api/workspaces/x/export", "POST", {"items": bad})[0] == code
 
 
+def test_texture_layout_is_rebuilt_into_the_custom_texture(server):
+    pytest.importorskip("xatlas")
+    import trimesh
+    from test_atlas import scattered_box
+
+    base, app = server
+    call(base + "/api/workspaces", "POST", {"name": "lay"})
+    ws = Workspace(app.root / "lay")
+    ws.mesh.mkdir()
+    scattered_box(ws.mesh)
+    trimesh.load(str(ws.mesh / "textured.ply"), process=True).export(str(ws.mesh / "mesh_clean.ply"))
+    url = base + "/api/workspaces/lay/edit/layout"
+    status, r = call(url, "POST", {"angle": 45, "min_size": 0.5, "preview": True})
+    assert status == 200 and (r["pieces_now"], r["pieces"], r["source"]) == (54, 6, "pipeline")
+    assert not (ws.mesh / "custom").exists()  # counting writes nothing
+    status, r = call(url, "POST", {"angle": 45, "min_size": 0.5})
+    assert status == 200 and r["pieces"] == 6
+    c = ws.mesh / "custom"
+    assert {"textured.ply", "textured0.png", "model.glb"} <= {p.name for p in c.iterdir()} and not (c / ".layout").exists()
+    state = call(base + "/api/workspaces/lay/state")[1]
+    assert state["custom"]["texture"] and state["custom"]["texture_from"] == "clean"
+    # a second rebuild starts from the custom texture; the pipeline's files never change
+    status, r = call(url, "POST", {"angle": 30})
+    assert status == 200 and r["source"] == "custom" and r["pieces_now"] == 6
+    assert trimesh.load(str(ws.mesh / "textured.ply"), process=False).visual.material.image.size == (1024, 1024)
+    assert call(url, "POST", {"angle": 5})[0] == 400
+
+
 def test_advice_reads_the_results_and_suggests_what_to_change(server):
     from motiongrammetry.advice import advise
 

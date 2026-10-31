@@ -30,6 +30,7 @@ Everything runs locally: your videos never leave the machine.
 | Dense surface and texture | [OpenMVS 2.3](https://github.com/cdcseacave/openMVS) |
 | Subject masks | BiRefNet, IS-Net and U²-Net through [rembg](https://github.com/danielgatis/rembg) and ONNX Runtime |
 | Mesh processing | Open3D, trimesh, scikit-image, SciPy, NumPy |
+| Texture layout (editor) | [xatlas](https://github.com/jpcy/xatlas) for packing; segmentation and LSCM flattening in `atlas.py` |
 | Optional fast path | [VGGT](https://github.com/facebookresearch/vggt) (PyTorch; non-commercial weights) |
 | Web interface | Python's standard HTTP server, [three.js](https://threejs.org) and three-mesh-bvh |
 | Packaging | Docker, with CUDA builds for NVIDIA GPUs |
@@ -67,7 +68,8 @@ defaults) and [docs/web-ui.md](docs/web-ui.md) (the interface, feature by featur
   after each step.
 - **Check the inputs**: every keyframe with its mask, with the doubtful ones flagged.
 - **Edit the mesh**: sculpt, cut, fill holes, close openings, bring back what the cleanup removed,
-  and paint the texture.
+  and paint the texture on the model or on the flat image, whose layout can be rebuilt into whole
+  parts instead of OpenMVS's thousands of tiny pieces.
 - **Set which way is up**: click the part it stands on, and it settles as it would on a table.
 - **Export** just what you need, each in a format that suits it: the textured model (GLB, OBJ),
   the clean mesh (GLB, PLY, OBJ), a watertight print at the size you want (STL, 3MF), the raw mesh,

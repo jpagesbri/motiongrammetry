@@ -312,6 +312,14 @@ pieces): <kbd>Ctrl</kbd>+click the top right corner of one side, start painting 
 side gets the first one's look, corner to corner, even when the two face different ways. The amber ring shows where it is
 copying from; the source must be in view. Later strokes keep the same alignment, so a side can be filled in several strokes,
 until you <kbd>Ctrl</kbd>+click a new source. On the flat texture, clone copies by position in the texture.</p>
+<p><b>Texture layout</b>: OpenMVS cuts the texture by the photo each bit came from, so a scan's texture is thousands of tiny
+pieces (20,000 for a head) and the flat texture is hard to paint on. <b>Rebuild layout</b> cuts it again by the model's sides:
+faces stay together while they face the same way (measured on a smoothed copy, so the scan's noise does not count),
+<b>Angle</b> is how far one piece may turn and <b>Min. piece</b> the smallest piece, as a share of the surface (smaller ones
+join their neighbour). Each piece is flattened and packed into a new image, and the colours are copied across triangle
+by triangle at the same level of detail: the model looks the same, the flat texture shows whole parts (about 250 pieces
+for that head, a minute to rebuild). <b>Count pieces</b> tells you the number first. It is saved as your custom texture;
+save or discard the paint before. Re-running texture brings back OpenMVS's layout.</p>
 
 <h2 id="troubleshooting">Troubleshooting</h2>
 <table>

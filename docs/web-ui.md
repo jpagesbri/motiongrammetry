@@ -72,7 +72,9 @@ mg ui --root ~/scans --port 9000
   that closes flat; close all holes; remove loose pieces; **restore**: brush over the raw mesh,
   shown as an amber ghost, to bring back what clean carved away; clean only deletes raw vertices,
   so restored triangles weld in seamlessly) and paint the texture on the model or on the flat atlas (brush,
-  restore original, blur, smudge, clone, lighten, darken, saturate, desaturate, colour picker),
+  restore original, blur, smudge, clone, lighten, darken, saturate, desaturate, colour picker; clone
+  on the model copies by place on the surface; **Rebuild layout** re-cuts the texture by the model's
+  sides with an angle and a minimum piece size, see `atlas.py`),
   with undo. Edits are saved as a **custom version** in `mesh/custom/` and never change the
   pipeline's files: a sculpt writes `custom/mesh_clean.ply`, its GLB and a custom print STL; the
   texture stage then projects the photos onto the custom mesh (when it is newer than the clean
