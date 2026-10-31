@@ -31,6 +31,8 @@ Preview data is served in the raw SfM frame together with one 4x4 "scene" transf
   POST /api/workspaces/<ws>/edit/texture?i=N&from=pipeline|custom  painted texture -> mesh/custom/
   POST /api/workspaces/<ws>/edit/delete     {"what": "mesh"|"texture"} -> drop the custom version
   POST /api/workspaces/<ws>/edit/layout     {"angle","min_size","preview"} -> rebuild the texture layout
+  POST /api/workspaces/<ws>/edit/layout?seams=1&from=pipeline|custom  one byte per face (seam bits) -> the same,
+                                            pieces enclosed by seams drawn in the editor
   POST /api/workspaces/<ws>/export          {"items":[{"content","format"}],"source","options"} -> .ui/exports/
   GET  /api/workspaces/<ws>/exports/<file>  download it
   GET  /api/workspaces/<ws>/preview.jpg     scan thumbnail (3D snapshot, else a keyframe)
@@ -943,11 +945,16 @@ class App:
             raise FileNotFoundError("textured.ply: run texture first")
         if body.get("preview"):
             return {**atlas.preview(src, angle, min_size), "source": "custom" if info["texture"] else "pipeline"}
+        seams = None
+        if "seams" in body:  # drawn on the model the editor showed: it must still be the one laid out here
+            if body.get("from") != ("custom" if info["texture"] else "pipeline"):
+                raise ValueError("the textured model changed since the editor loaded it: reload the editor")
+            seams = np.frombuffer(body["seams"], np.uint8)
         work = c / ".layout"
         shutil.rmtree(work, ignore_errors=True)
         work.mkdir(parents=True)
         try:
-            out = atlas.relayout(src, work / "textured.ply", angle, min_size)
+            out = atlas.relayout(src, work / "textured.ply", angle, min_size, seams=seams)
             for old in list(c.glob("textured*")):
                 old.unlink()
             for p in work.iterdir():
@@ -1432,6 +1439,8 @@ def make_handler(app: App):
                 if what == "delete":
                     return self._json(app.delete_custom(ws, self._body().get("what", "")))
                 if what == "layout":
+                    if q.get("seams"):
+                        return self._json(app.relayout_texture(ws, {"seams": self._raw(), "from": q.get("from", [""])[0]}))
                     return self._json(app.relayout_texture(ws, self._body()))
                 if what == "op":  # cap / plane / remesh: mesh in, mesh out, nothing saved
                     from ..meshops import run

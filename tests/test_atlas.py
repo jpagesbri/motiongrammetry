@@ -7,8 +7,6 @@ from PIL import Image
 
 from motiongrammetry import atlas
 
-pytest.importorskip("xatlas")
-
 
 def scattered_box(folder: Path, n: int = 3, chart: int = 64) -> Path:
     """A unit box whose sides are each cut into n x n texture pieces scattered and turned over the
@@ -53,6 +51,12 @@ def scattered_box(folder: Path, n: int = 3, chart: int = 64) -> Path:
     return folder / "textured.ply"
 
 
+def pieces_in(path: Path) -> int:
+    """Pieces in a written layout, counted back from its file (no two may have been packed as one)."""
+    m = trimesh.load(str(path), process=False)
+    return atlas.count_pieces(np.asarray(m.faces), np.asarray(m.visual.uv), np.asarray(m.vertices))
+
+
 def colours_at(m, faces, weights):
     img = np.asarray(m.visual.material.image.convert("RGB"), float)
     h, w = img.shape[:2]
@@ -64,7 +68,7 @@ def test_a_scattered_atlas_is_rebuilt_one_piece_per_side_with_the_same_colours(t
     src = scattered_box(tmp_path)
     assert atlas.preview(src) == {"pieces_now": 54, "pieces": 6, "faces": 108}
     info = atlas.relayout(src, tmp_path / "out.ply")
-    assert info["pieces_now"] == 54 and info["pieces"] == 6
+    assert info["pieces_now"] == 54 and info["pieces"] == 6 == pieces_in(tmp_path / "out.ply")
     out = trimesh.load(str(tmp_path / "out.ply"), process=False)  # finds out0.png through its TextureFile
     assert out.visual.material.image.size == tuple(info["size"])
     uv = np.asarray(out.visual.uv)
@@ -98,3 +102,56 @@ def test_a_model_without_texture_is_refused(tmp_path):
     trimesh.creation.box().export(str(tmp_path / "plain.ply"))
     with pytest.raises(ValueError, match="no texture"):
         atlas.preview(tmp_path / "plain.ply")
+
+
+def seam_mask(m, keep=lambda a, b: True):
+    """One byte per face, as the editor sends it: bit k when the edge from corner k to k + 1 is a
+    texture seam (the faces on either side use different coordinates) and keep(a, b) on its ends."""
+    f = np.asarray(m.faces)
+    _, w = np.unique(np.round(np.asarray(m.vertices), 6), axis=0, return_inverse=True)
+    first, seam = {}, set()
+    for fi, face in enumerate(f):
+        for k in range(3):
+            sa, sb = face[k], face[(k + 1) % 3]
+            e = tuple(sorted((w[sa], w[sb])))
+            pair = (sa, sb) if w[sa] < w[sb] else (sb, sa)
+            if first.setdefault(e, pair) != pair:
+                seam.add(e)
+    v = np.asarray(m.vertices)
+    mask = np.zeros(len(f), np.uint8)
+    for fi, face in enumerate(f):
+        for k in range(3):
+            sa, sb = face[k], face[(k + 1) % 3]
+            if tuple(sorted((w[sa], w[sb]))) in seam and keep(v[sa], v[sb]):
+                mask[fi] |= 1 << k
+    return mask
+
+
+def test_seams_drawn_by_hand_decide_the_pieces(tmp_path):
+    src = scattered_box(tmp_path)
+    m = trimesh.load(str(src), process=False)
+    # the texture's own seams: the same 54 pieces
+    assert atlas.relayout(src, tmp_path / "same.ply", seams=seam_mask(m))["pieces"] == 54
+    # only the box's edges (both ends on the box's edges: two coordinates at +-0.5): one piece per side
+    on_edge = lambda p: (np.abs(np.abs(p) - 0.5) < 1e-6).sum() >= 2  # noqa: E731
+    info = atlas.relayout(src, tmp_path / "sides.ply", seams=seam_mask(m, lambda a, b: on_edge(a) and on_edge(b)))
+    assert info["pieces"] == 6 == pieces_in(tmp_path / "sides.ply") and info["recut"] == 0
+    # the front's own seams joined, the rest kept: its 9 pieces become one. Pieces that meet along an
+    # edge flattened to the same coordinates must stay apart (they once were packed as one, overlapping)
+    front_inside = lambda a, b: a[2] > 0.5 - 1e-6 and b[2] > 0.5 - 1e-6 and not any(  # noqa: E731
+        abs(abs(a[i]) - 0.5) < 1e-6 and a[i] == b[i] for i in (0, 1))
+    info = atlas.relayout(src, tmp_path / "front.ply", seams=seam_mask(m, lambda a, b: not front_inside(a, b)))
+    assert info["pieces"] == 46 == pieces_in(tmp_path / "front.ply")
+    # no seams at all: a closed box cannot lie flat, so it is cut further, and says so
+    info = atlas.relayout(src, tmp_path / "none.ply", seams=np.zeros(len(m.faces), np.uint8))
+    assert info["pieces"] > 1 and info["recut"] == 1
+    with pytest.raises(ValueError, match="another model"):
+        atlas.relayout(src, tmp_path / "bad.ply", seams=np.zeros(3, np.uint8))
+
+
+def test_rebuilding_a_rebuilt_layout_keeps_its_size_and_pieces(tmp_path):
+    src = scattered_box(tmp_path)
+    first = atlas.relayout(src, tmp_path / "a.ply")
+    second = atlas.relayout(tmp_path / "a.ply", tmp_path / "b.ply")
+    assert second["pieces_now"] == second["pieces"] == first["pieces"] == 6
+    assert second["size"] == first["size"]

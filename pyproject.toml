@@ -16,7 +16,6 @@ dependencies = [
     "scikit-image>=0.22",
     "pillow>=10",
     "scipy>=1.11",
-    "xatlas>=0.0.11",  # packs the editor's rebuilt texture layout (atlas.py)
 ]
 
 [project.optional-dependencies]

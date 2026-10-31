@@ -47,14 +47,6 @@ EXTERNAL = [
      "role": "fast picking for the sculpt and paint brushes (bundled with the app)",
      "url": "https://github.com/gkjohnson/three-mesh-bvh", "source": "https://github.com/gkjohnson/three-mesh-bvh",
      "text": "three-mesh-bvh.txt", "copyright": "Copyright (c) 2018 Garrett Johnson"},
-    {"id": "xatlas", "name": "xatlas (C++ library)", "version": "compiled into the xatlas Python package", "license": "MIT",
-     "role": "packs the pieces of the editor's rebuilt texture layout (atlas.py)",
-     "url": "https://github.com/jpcy/xatlas", "source": "https://github.com/jpcy/xatlas", "text": "xatlas-MIT.txt",
-     "copyright": "Copyright (c) 2018-2020 Jonathan Young; includes thekla_atlas (Thekla, Inc; NVIDIA) and Fast-BVH"},
-    {"id": "pybind11", "name": "pybind11", "version": "compiled into the xatlas Python package", "license": "BSD-3-Clause",
-     "role": "the binding between xatlas and Python",
-     "url": "https://github.com/pybind/pybind11", "source": "https://github.com/pybind/pybind11",
-     "text": "pybind11-BSD-3-Clause.txt", "copyright": "Copyright (c) 2016 Wenzel Jakob"},
 ]
 # AI models downloaded on first use (not shipped with the app).
 MODELS = [
@@ -115,8 +107,7 @@ def _project_license() -> str:
 EXTRAS = {"mask": "subject masks", "vggt": "VGGT stage", "dev": "tests"}
 # Packages whose metadata says too little, or that are installed by hand (see pyproject.toml).
 DECLARED = {"vggt": ("VGGT License (Meta), see its license file", "optional: VGGT stage"),
-            "cuda-toolkit": ("LicenseRef-NVIDIA-Proprietary", None),
-            "xatlas": ("MIT", None)}  # the whole text in License:, no classifier
+            "cuda-toolkit": ("LicenseRef-NVIDIA-Proprietary", None)}
 _NAME = re.compile(r"[-_.]+")
 
 

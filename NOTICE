@@ -6,8 +6,7 @@ Licensed under the Apache License, Version 2.0 (see LICENSE).
 This product builds on third-party software and models that keep their own licenses: COLMAP
 (BSD-3-Clause, via pycolmap), OpenMVS (AGPL-3.0, run as separate programs; in the Docker image with
 its source in /usr/share/doc/openmvs), three.js and three-mesh-bvh (MIT, bundled in
-src/motiongrammetry/web/static/vendor), xatlas (MIT) and pybind11 (BSD-3-Clause), compiled into the
-xatlas Python package, the subject segmentation models (MIT / Apache-2.0), the
+src/motiongrammetry/web/static/vendor), the subject segmentation models (MIT / Apache-2.0), the
 optional VGGT (VGGT License; its weights CC BY-NC 4.0, non-commercial) and many Python packages.
 The full list with every license text: the About page of the app, or `mg notices`.
 

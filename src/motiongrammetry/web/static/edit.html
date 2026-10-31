@@ -147,6 +147,13 @@
       <div class="btns" style="margin-top:0"><button class="btn" id="lyCount" title="how many pieces there are now, and how many these settings make">Count pieces</button>
         <button class="btn" id="lyGo">Rebuild layout</button></div>
       <div class="note" id="lyInfo"></div>
+      <div class="btns"><button class="btn" id="seamBtn" title="show the texture's seams on the model and draw or erase them by hand">Edit seams…</button></div>
+      <div id="seamBar" hidden>
+        <span class="seg"><button data-seam="cut" class="on" title="drag along the model: the seam follows the mesh's edges">Cut</button><button data-seam="join" title="brush over seams to remove them">Join</button></span>
+        <div class="note" id="seamHelp"></div>
+        <div class="btns"><button class="btn primary" id="seamApply">Apply seams</button><button class="btn" id="seamCancel">Cancel</button></div>
+        <div class="note" id="seamInfo"></div>
+      </div>
     </section>
     <section id="meshOps">
       <h2>Mesh</h2>
@@ -524,6 +531,7 @@ async function setMode(m) {
   document.querySelectorAll('[data-mode]').forEach((b) => b.classList.toggle('on', b.dataset.mode === m));
   $('paintOpts').hidden = m !== 'paint'; $('sculptOpts').hidden = m !== 'sculpt'; $('meshOps').hidden = m !== 'sculpt';
   $('layoutOps').hidden = m !== 'paint';
+  if (SM.on && m !== 'paint') seamExit();
   if (plane.n) endPlane();
   $('layoutSeg').hidden = m !== 'paint';
   renderTools();
@@ -1239,6 +1247,7 @@ $('piecesBtn').addEventListener('click', () => meshOp('pieces', { keep: 0.1 }, '
 const P = { ready: false, group: new THREE.Group(), meshes: [], layers: [], depthRT: null, depthStale: true,
   undo: [], redo: [], pool: [], stroke: null, clone: null, unlit: true, uvScene: new THREE.Scene(), uvRT: null };
 P.group.visible = false; root.add(P.group);
+const SM = { on: false, tool: 'cut', undo: [], last: -1, lines: null };  // seams drawn by hand (see seamBuild)
 
 const quadGeo = new THREE.PlaneGeometry(2, 2);
 const orthoCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
@@ -1389,7 +1398,8 @@ async function loadPaint() {
       if (!geo.attributes.normal) geo.computeVertexNormals();
       const disp = new THREE.Mesh(geo, null);
       disp.matrixAutoUpdate = false; disp.matrix.copy(m.matrixWorld);
-      geo.boundsTree = new MeshBVH(geo); disp.raycast = acceleratedRaycast;
+      geo.userData.faceOrder = geo.index ? geo.index.array.slice() : null;  // the model's own order (seams)
+      geo.boundsTree = new MeshBVH(geo); disp.raycast = acceleratedRaycast;  // (reorders the index)
       disp.userData.layer = layer;
       P.group.add(disp); P.meshes.push(disp);
       for (const [sc, mat] of [[layer.scene, paintMat], [layer.maskScene, maskMat]]) {
@@ -1701,9 +1711,17 @@ function onPointerDown(e) {
     l.setAttribute('visibility', 'visible');
     return;
   }
+  if (SM.on && at.name === '3d' && e.button === 0 && !spaceDown) {
+    if (!seamDown(at)) return;                       // off the model: orbit
+    e.stopImmediatePropagation(); e.preventDefault();
+    canvas.setPointerCapture(e.pointerId);
+    drag = { kind: 'seam' };
+    return;
+  }
   if (at.name === 'uv') {
     e.stopImmediatePropagation(); e.preventDefault();
     canvas.setPointerCapture(e.pointerId);
+    if (SM.on && e.button === 0 && !spaceDown) return;  // seams are drawn on the model
     const panning = e.button === 1 || e.button === 2 || spaceDown;
     if (panning) { drag = { kind: 'pan2d', x: e.clientX, y: e.clientY }; return; }
     if (e.button !== 0) return;
@@ -1732,7 +1750,8 @@ canvas.addEventListener('pointermove', (e) => {
     drag.last = at;
     return;
   }
-  if (drag?.kind === 'sculpt' && at?.name === '3d') sculptMove(e, at);
+  if (drag?.kind === 'seam' && at?.name === '3d') seamMove(at);
+  else if (drag?.kind === 'sculpt' && at?.name === '3d') sculptMove(e, at);
   else if (drag?.kind === 'paint' && at && (P.stroke?.t)) paintAt(at, false);
   hover(e, at);
 });
@@ -1740,6 +1759,7 @@ const endDrag = () => {
   if (drag?.kind === 'plane' && !(drag.last && planeFromDrag(drag, drag.last))) $('planeLine').setAttribute('visibility', 'hidden');
   if (drag?.kind === 'sculpt') sculptEnd();
   if (drag?.kind === 'paint') paintEnd();
+  if (drag?.kind === 'seam') SM.last = -1;
   drag = null;
 };
 canvas.addEventListener('pointerup', endDrag);
@@ -1795,6 +1815,7 @@ addEventListener('keydown', (e) => {
   if (plane.n && e.key === 'Enter') { e.preventDefault(); applyPlane(); return; }
   if (plane.n && e.key === 'Escape') { endPlane(); return; }
   const k = e.key.toLowerCase();
+  if (SM.on && (e.ctrlKey || e.metaKey) && k === 'z' && !e.shiftKey) { e.preventDefault(); seamUndo(); return; }
   if ((e.ctrlKey || e.metaKey) && k === 'z') { e.preventDefault(); e.shiftKey ? doRedo() : doUndo(); return; }
   if ((e.ctrlKey || e.metaKey) && k === 'y') { e.preventDefault(); doRedo(); return; }
   if ((e.ctrlKey || e.metaKey) && k === 's') { e.preventDefault(); doSave(); return; }
@@ -1864,6 +1885,187 @@ $('lyGo').addEventListener('click', async () => {
     if (u.searchParams.get('mode') === 'paint') setTimeout(() => location.reload(), 900);
     else { u.searchParams.set('mode', 'paint'); setTimeout(() => location.replace(u), 900); }
   } catch (e) { $('lyInfo').textContent = ''; fail(e); $('lyGo').disabled = false; }
+});
+// ---- seams drawn by hand: the texture's seams shown on the model, cut or joined, then the layout
+// rebuilt with the pieces they enclose (atlas.from_seams). Edges are the welded mesh's (the model's
+// vertices are split where texture pieces meet: joined again by position). The server gets one
+// byte per face, in the model's own face order: bit k set when the edge from corner k to k+1 is a
+// seam. Cut follows the shortest path along the mesh's edges between the points the drag passes.
+function seamBuild() {
+  const disp = P.meshes[0], geo = disp.geometry, pos = geo.attributes.position.array;
+  const order = geo.userData.faceOrder || Uint32Array.from({ length: pos.length / 3 }, (_, i) => i);
+  const nv = pos.length / 3, nf = order.length / 3;
+  const weld = new Int32Array(nv), keyOf = new Map(), wp = [];
+  for (let i = 0; i < nv; i++) {
+    const k = pos[3 * i] + ',' + pos[3 * i + 1] + ',' + pos[3 * i + 2];
+    let w = keyOf.get(k);
+    if (w === undefined) { w = wp.length / 3; keyOf.set(k, w); wp.push(pos[3 * i], pos[3 * i + 1], pos[3 * i + 2]); }
+    weld[i] = w;
+  }
+  const W = wp.length / 3, edgeOf = new Map(), faceEdge = new Int32Array(nf * 3);
+  const ea = [], eb = [], first = [], seam = [];
+  for (let f = 0; f < nf; f++) for (let k = 0; k < 3; k++) {
+    const sa = order[3 * f + k], sb = order[3 * f + (k + 1) % 3], a = weld[sa], b = weld[sb];
+    const key = Math.min(a, b) * W + Math.max(a, b), pair = a < b ? sa * nv + sb : sb * nv + sa;
+    let e = edgeOf.get(key);
+    if (e === undefined) { e = ea.length; edgeOf.set(key, e); ea.push(Math.min(a, b)); eb.push(Math.max(a, b)); first.push(pair); seam.push(0); }
+    else if (first[e] !== pair) seam[e] = 1;  // the faces on either side use different texture coordinates
+    faceEdge[3 * f + k] = e;
+  }
+  const E = ea.length, A = Int32Array.from(ea), B = Int32Array.from(eb);
+  // vertex -> (neighbour, edge) lists, and normals to lift the lines off the surface
+  const deg = new Int32Array(W + 1);
+  for (let e = 0; e < E; e++) { deg[A[e] + 1]++; deg[B[e] + 1]++; }
+  for (let i = 0; i < W; i++) deg[i + 1] += deg[i];
+  const nb = new Int32Array(2 * E), ne = new Int32Array(2 * E), fill = deg.slice(0, W);
+  for (let e = 0; e < E; e++) { nb[fill[A[e]]] = B[e]; ne[fill[A[e]]++] = e; nb[fill[B[e]]] = A[e]; ne[fill[B[e]]++] = e; }
+  const P3 = Float32Array.from(wp), nrm = new Float32Array(3 * W);
+  for (let f = 0; f < nf; f++) {
+    const a = weld[order[3 * f]], b = weld[order[3 * f + 1]], c = weld[order[3 * f + 2]];
+    const ux = P3[3 * b] - P3[3 * a], uy = P3[3 * b + 1] - P3[3 * a + 1], uz = P3[3 * b + 2] - P3[3 * a + 2];
+    const vx = P3[3 * c] - P3[3 * a], vy = P3[3 * c + 1] - P3[3 * a + 1], vz = P3[3 * c + 2] - P3[3 * a + 2];
+    const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+    for (const v of [a, b, c]) { nrm[3 * v] += nx; nrm[3 * v + 1] += ny; nrm[3 * v + 2] += nz; }
+  }
+  geo.computeBoundingBox();
+  Object.assign(SM, { disp, weld, W, edgeOf, faceEdge, nf, A, B, E, seam: Uint8Array.from(seam), deg, nb, ne, P3, nrm,
+    lift: geo.boundingBox.getSize(new THREE.Vector3()).length() * 0.0015 });
+}
+function seamLines() {
+  SM.linesPending = false;
+  const { seam, A, B, P3, nrm, lift } = SM;
+  let n = 0;
+  for (let e = 0; e < SM.E; e++) n += seam[e];
+  const out = new Float32Array(n * 6);
+  let j = 0;
+  for (let e = 0; e < SM.E; e++) if (seam[e]) for (const v of [A[e], B[e]]) {
+    const l = Math.hypot(nrm[3 * v], nrm[3 * v + 1], nrm[3 * v + 2]) || 1;
+    for (let c = 0; c < 3; c++) out[j++] = P3[3 * v + c] + nrm[3 * v + c] / l * lift;
+  }
+  if (!SM.lines) {
+    SM.lines = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: 0xf0b429 }));
+    SM.lines.matrixAutoUpdate = false; SM.lines.frustumCulled = false; P.group.add(SM.lines);
+  }
+  SM.lines.matrix.copy(SM.disp.matrix);
+  SM.lines.geometry.dispose();
+  SM.lines.geometry = new THREE.BufferGeometry();
+  SM.lines.geometry.setAttribute('position', new THREE.BufferAttribute(out, 3));
+  $('seamInfo').textContent = `${n.toLocaleString()} seam edges · Ctrl+Z undoes a stroke`;
+  requestRender();
+}
+const seamRedraw = () => { if (!SM.linesPending) { SM.linesPending = true; requestAnimationFrame(seamLines); } };
+function seamVertex(hit) {  // the welded corner of the hit face nearest the hit
+  const local = hit.point.clone().applyMatrix4(new THREE.Matrix4().copy(SM.disp.matrixWorld).invert());
+  let best = -1, bd = Infinity;
+  for (const s of [hit.face.a, hit.face.b, hit.face.c]) {
+    const w = SM.weld[s], d = (SM.P3[3 * w] - local.x) ** 2 + (SM.P3[3 * w + 1] - local.y) ** 2 + (SM.P3[3 * w + 2] - local.z) ** 2;
+    if (d < bd) { bd = d; best = w; }
+  }
+  return best;
+}
+function seamPath(s, t) {  // edges of the shortest path between two welded vertices (A*), null if too far
+  const { P3, deg, nb, ne } = SM, d = (a, b) => Math.hypot(P3[3 * a] - P3[3 * b], P3[3 * a + 1] - P3[3 * b + 1], P3[3 * a + 2] - P3[3 * b + 2]);
+  const g = new Map([[s, 0]]), via = new Map(), heap = [[d(s, t), s]], done = new Set();
+  const push = (x) => { heap.push(x); let i = heap.length - 1; while (i && heap[(i - 1) >> 1][0] > heap[i][0]) { [heap[i], heap[(i - 1) >> 1]] = [heap[(i - 1) >> 1], heap[i]]; i = (i - 1) >> 1; } };
+  const pop = () => { const top = heap[0], last = heap.pop(); if (heap.length) { heap[0] = last; let i = 0;
+    for (;;) { const l = 2 * i + 1, r = l + 1; let m = i; if (l < heap.length && heap[l][0] < heap[m][0]) m = l; if (r < heap.length && heap[r][0] < heap[m][0]) m = r;
+      if (m === i) break; [heap[i], heap[m]] = [heap[m], heap[i]]; i = m; } } return top; };
+  while (heap.length && done.size < 50000) {
+    const [, v] = pop();
+    if (done.has(v)) continue;
+    if (v === t) { const path = []; for (let x = t; x !== s; x = via.get(x)[0]) path.push(via.get(x)[1]); return path; }
+    done.add(v);
+    for (let i = deg[v]; i < deg[v + 1]; i++) {
+      const u = nb[i], c = g.get(v) + d(v, u);
+      if (c < (g.get(u) ?? Infinity)) { g.set(u, c); via.set(u, [v, ne[i]]); push([c + d(u, t), u]); }
+    }
+  }
+  return null;
+}
+const _sa = new THREE.Vector3(), _sb = new THREE.Vector3(), _sp = new THREE.Vector3(), _seg = new THREE.Line3();
+function seamJoin(hit, at) {  // seams within the brush go, on surface facing you (as paint only reaches what you see)
+  const inv = new THREE.Matrix4().copy(SM.disp.matrixWorld).invert(), c = hit.point.clone().applyMatrix4(inv);
+  const eye = camera.position.clone().applyMatrix4(inv), look = camera.getWorldDirection(new THREE.Vector3()).transformDirection(inv);
+  const r = worldRadius(brush.radius, hit.point, at.r) / SM.disp.matrixWorld.getMaxScaleOnAxis(), sph = new THREE.Sphere(c, r);
+  const geo = SM.disp.geometry, idx = geo.index.array, { weld, W, edgeOf, seam, P3 } = SM;
+  geo.boundsTree.shapecast({
+    intersectsBounds: (box) => box.intersectsSphere(sph),
+    intersectsTriangle: (tri, i) => {
+      tri.getNormal(_sp);
+      const view = camera.isOrthographicCamera ? look.clone().negate() : eye.clone().sub(tri.a).normalize();
+      if (_sp.dot(view) < 0.2) return false;  // facing away, or seen edge-on
+      for (let k = 0; k < 3; k++) {
+        const a = weld[idx[3 * i + k]], b = weld[idx[3 * i + (k + 1) % 3]], e = edgeOf.get(Math.min(a, b) * W + Math.max(a, b));
+        if (!seam[e]) continue;
+        _sa.fromArray(P3, 3 * a); _sb.fromArray(P3, 3 * b);
+        if (_seg.set(_sa, _sb).closestPointToPoint(c, true, _sp).distanceTo(c) <= r) seam[e] = 0;  // the edge touches the brush
+      }
+      return false;
+    },
+  });
+}
+function seamDown(at) {
+  const hit = pick(at, [SM.disp]);
+  if (!hit) return false;
+  SM.undo.push(SM.seam.slice()); if (SM.undo.length > 30) SM.undo.shift();
+  SM.last = -1; SM.lastXY = null; seamMove(at, hit);
+  return true;
+}
+function seamMove(at, hit = pick(at, [SM.disp])) {
+  if (SM.tool === 'join') {  // brush dabs every half radius along the drag, as paint strokes do
+    const prev = SM.lastXY, step = Math.max(2, brush.radius * 0.5);
+    const n = prev ? Math.min(100, Math.floor(Math.hypot(at.x - prev.x, at.y - prev.y) / step)) : 0;
+    for (let i = 1; i <= n; i++) {
+      const p = { ...at, x: prev.x + (at.x - prev.x) * i / n, y: prev.y + (at.y - prev.y) * i / n }, h = pick(p, [SM.disp]);
+      if (h) seamJoin(h, p);
+    }
+    if (!n && hit) seamJoin(hit, at);
+    SM.lastXY = { x: at.x, y: at.y }; seamRedraw(); return;
+  }
+  if (!hit) { SM.last = -1; return; }
+  const v = seamVertex(hit);
+  if (SM.last >= 0 && v !== SM.last) for (const e of seamPath(SM.last, v) || []) SM.seam[e] = 1;
+  SM.last = v; seamRedraw();
+}
+function seamUndo() { if (SM.undo.length) { SM.seam = SM.undo.pop(); seamRedraw(); } }
+function seamHelp() {
+  $('seamHelp').textContent = SM.tool === 'cut'
+    ? 'Cut: drag along the model; the seam follows the mesh\'s edges. A closed loop makes a new piece; an open cut lets a curved piece lie flat.'
+    : 'Join: brush over seams to remove them; the pieces on either side become one.';
+}
+function seamExit() {
+  SM.on = false; $('seamBar').hidden = true; $('seamBtn').hidden = false;
+  if (SM.lines) { P.group.remove(SM.lines); SM.lines.geometry.dispose(); SM.lines = null; }
+  requestRender();
+}
+$('seamBtn').addEventListener('click', () => {
+  if (!P.ready || P.meshes.length !== 1) { fail(new Error('seams can be edited on a model with one texture image')); return; }
+  $('seamInfo').textContent = 'finding the seams…';
+  setTimeout(() => {  // let the message show: a dense scan takes a second or two
+    try { seamBuild(); } catch (e) { fail(e); return; }
+    SM.on = true; SM.undo = []; SM.last = -1;
+    $('seamBar').hidden = false; $('seamBtn').hidden = true; seamHelp(); seamLines();
+  }, 30);
+});
+document.querySelectorAll('[data-seam]').forEach((b) => b.addEventListener('click', () => {
+  SM.tool = b.dataset.seam;
+  document.querySelectorAll('[data-seam]').forEach((x) => x.classList.toggle('on', x === b));
+  seamHelp();
+}));
+$('seamCancel').addEventListener('click', seamExit);
+$('seamApply').addEventListener('click', async () => {
+  if (P.dirty) { fail(new Error('save or discard the paint first: the rebuild starts from the saved texture')); return; }
+  const mask = new Uint8Array(SM.nf);
+  for (let f = 0; f < SM.nf; f++) for (let k = 0; k < 3; k++) if (SM.seam[SM.faceEdge[3 * f + k]]) mask[f] |= 1 << k;
+  $('seamApply').disabled = true; $('seamInfo').textContent = 'rebuilding the layout with your seams (about a minute for a dense scan)…';
+  try {
+    const r = await api(`/api/workspaces/${ws}/edit/layout?seams=1&from=${P.from}`, { method: 'POST', body: mask });
+    flash(`texture rebuilt with your seams: ${r.pieces.toLocaleString()} pieces, ${r.size.join(' × ')} px`
+      + (r.recut ? ` · ${r.recut} piece${r.recut === 1 ? '' : 's'} folded over and ${r.recut === 1 ? 'was' : 'were'} cut further to lie flat` : ''));
+    const u = new URL(location.href);
+    if (u.searchParams.get('mode') === 'paint') setTimeout(() => location.reload(), 1500);
+    else { u.searchParams.set('mode', 'paint'); setTimeout(() => location.replace(u), 1500); }
+  } catch (e) { fail(e); $('seamInfo').textContent = ''; $('seamApply').disabled = false; }
 });
 $('restoreBtn').addEventListener('click', async () => {
   const what = mode === 'sculpt' ? 'mesh' : 'texture';

@@ -30,7 +30,6 @@ Everything runs locally: your videos never leave the machine.
 | Dense surface and texture | [OpenMVS 2.3](https://github.com/cdcseacave/openMVS) |
 | Subject masks | BiRefNet, IS-Net and U²-Net through [rembg](https://github.com/danielgatis/rembg) and ONNX Runtime |
 | Mesh processing | Open3D, trimesh, scikit-image, SciPy, NumPy |
-| Texture layout (editor) | [xatlas](https://github.com/jpcy/xatlas) for packing; segmentation and LSCM flattening in `atlas.py` |
 | Optional fast path | [VGGT](https://github.com/facebookresearch/vggt) (PyTorch; non-commercial weights) |
 | Web interface | Python's standard HTTP server, [three.js](https://threejs.org) and three-mesh-bvh |
 | Packaging | Docker, with CUDA builds for NVIDIA GPUs |

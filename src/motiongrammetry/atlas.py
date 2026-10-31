@@ -12,7 +12,8 @@ which makes painting on the flat texture hopeless. Here:
    neighbour that faces most the same way;
 2. flatten: each piece by least squares conformal maps (LSCM, Levy et al. 2002), at the texel
    density of the surface; a piece that folds over is split again;
-3. pack: the pieces into one image with xatlas (MIT, used through its pack-only mode);
+3. pack: each piece turned to its smallest enclosing rectangle, the rectangles in shelves, at
+   the detail the photo texture had (lowered only if the image would pass 8192 texels);
 4. bake: the geometry does not change, only the texture coordinates, so each new texel takes the
    colour of the same point of the same triangle in the old texture (bilinear), and a margin
    around every piece is filled from its edge so filtering shows no seams.
@@ -221,6 +222,10 @@ def _load(src: Path):
 
 def count_pieces(f: np.ndarray, uv: np.ndarray, v: np.ndarray) -> int:
     """Texture pieces: faces joined where they share an edge with the same coordinates on it."""
+    return int(_piece_labels(f, uv, v).max() + 1)
+
+
+def _piece_labels(f: np.ndarray, uv: np.ndarray, v: np.ndarray) -> np.ndarray:
     _, pid = np.unique(np.round(v, 6), axis=0, return_inverse=True)
     e = np.concatenate([f[:, [0, 1]], f[:, [1, 2]], f[:, [2, 0]]])
     fid = np.tile(np.arange(len(f)), 3)
@@ -232,8 +237,7 @@ def count_pieces(f: np.ndarray, uv: np.ndarray, v: np.ndarray) -> int:
     _, inv = np.unique(k, axis=0, return_inverse=True)
     o = np.argsort(inv, kind="stable")
     same = inv[o][1:] == inv[o][:-1]
-    lab = _components(len(f), fid[o][1:][same], fid[o][:-1][same])
-    return int(lab.max() + 1)
+    return _components(len(f), fid[o][1:][same], fid[o][:-1][same])
 
 
 def _geometry(m, smooth: int | None):
@@ -246,7 +250,7 @@ def _geometry(m, smooth: int | None):
     gf = pid[f]
     g = trimesh.Trimesh(pv, gf, process=False)
     area = g.area_faces
-    adj = g.face_adjacency
+    adj, adj_edges = g.face_adjacency, g.face_adjacency_edges
     if smooth is None:  # diffusion spreads ~sqrt(iterations) edges
         reach = 0.01 * float(np.linalg.norm(np.ptp(pv, axis=0))) / max(float(g.edges_unique_length.mean()), 1e-12)
         smooth = int(np.clip(round(reach ** 2), 0, 60))
@@ -256,13 +260,13 @@ def _geometry(m, smooth: int | None):
         normals = s.face_normals
     else:
         normals = g.face_normals
-    return pv, gf, area, adj, normals
+    return pv, gf, area, adj, adj_edges, normals
 
 
 def preview(src: Path, angle: float = 45.0, min_size: float = 0.005, smooth: int | None = None) -> dict:
     """How many pieces the current texture has and how many a rebuild would make."""
     m, _ = _load(src)
-    pv, gf, area, adj, normals = _geometry(m, smooth)
+    pv, gf, area, adj, _, normals = _geometry(m, smooth)
     pieces = sum(len(p) for p in _pieces(pv, gf, area, normals, segment(normals, area, adj, angle, min_size)))
     return {"pieces_now": count_pieces(np.asarray(m.faces), np.asarray(m.visual.uv), np.asarray(m.vertices)),
             "pieces": pieces, "faces": len(gf)}
@@ -279,71 +283,77 @@ def _pieces(pv, gf, area, normals, lab):
     return out
 
 
+def from_seams(gf: np.ndarray, adj: np.ndarray, adj_edges: np.ndarray, seams: np.ndarray) -> np.ndarray:
+    """A piece label per face from seams drawn by hand: seams[f] has bit k set when face f's edge
+    from corner k to corner k + 1 is a seam. Faces join across every other shared edge."""
+    if len(seams) != len(gf):
+        raise ValueError("the seams are for another model (the faces differ): reload the editor")
+    e = np.stack([gf, np.roll(gf, -1, axis=1)], 2)                 # (F, 3, 2): edge k = corner k -> k + 1
+    cut = ((seams[:, None].astype(np.uint8) >> np.arange(3, dtype=np.uint8)) & 1).astype(bool)
+    n = int(gf.max()) + 1
+    key = lambda pairs: (np.minimum(pairs[:, 0], pairs[:, 1]).astype(np.int64) * n  # noqa: E731
+                         + np.maximum(pairs[:, 0], pairs[:, 1]))
+    keep = ~np.isin(key(adj_edges), key(e[cut]))
+    return _components(len(gf), adj[keep, 0], adj[keep, 1])
+
+
 def relayout(src: Path, dst: Path, angle: float = 45.0, min_size: float = 0.005, smooth: int | None = None,
-             size: int | None = None, padding: int = 4, max_size: int = 8192) -> dict:
+             size: int | None = None, padding: int = 4, max_size: int = 8192, seams: np.ndarray | None = None) -> dict:
     """Write dst (a textured PLY naming its PNG, like OpenMVS's) with the new layout of src's texture.
     size: fit the atlas in a size x size image; by default it keeps the old texture's detail (texels
-    per unit of surface), up to max_size."""
+    per unit of surface), up to max_size. seams: pieces from seams drawn by hand (see from_seams)
+    instead of cut by the surface's sides."""
     import trimesh
-    import xatlas
     from PIL import Image
 
     t0 = time.time()
     m, old = _load(src)
     f_old, uv_old = np.asarray(m.faces), np.asarray(m.visual.uv, np.float64)
-    pv, gf, area, adj, normals = _geometry(m, smooth)
-    lab = segment(normals, area, adj, angle, min_size)
+    if seams is None:
+        pv, gf, area, adj, _, normals = _geometry(m, smooth)
+        lab = segment(normals, area, adj, angle, min_size)
+    else:
+        pv, gf, area, adj, adj_edges, normals = _geometry(m, 0)
+        lab = from_seams(gf, adj, adj_edges, seams)
     t_seg = time.time()
     # flatten each piece; every piece gets its own copy of its vertices (seams split)
     corner_uv = np.zeros((len(gf), 3, 2))
     chart = np.zeros(len(gf), np.int64)
-    n_charts = 0
+    n_charts = recut = 0
     for seg in _pieces(pv, gf, area, normals, lab):
+        recut += len(seg) > 1  # folded over: cut further so it lies flat
         for fids, uvs in seg:
             corner_uv[fids] = uvs
             chart[fids] = n_charts
             n_charts += 1
     t_flat = time.time()
-    # pack: one vertex per (chart, mesh vertex), so xatlas sees the pieces as separate islands
+    # one vertex per (piece, mesh vertex): the pieces' seams split the mesh
     key = np.stack([np.repeat(chart, 3), gf.ravel()], 1)
     uniq, vid = np.unique(key, axis=0, return_inverse=True)
     vid = vid.reshape(-1, 3)
-    vuv = np.zeros((len(uniq), 2))
-    vuv[vid.ravel()] = corner_uv.reshape(-1, 2)
     oh, ow = old.shape[:2]
     # texels per unit of length: OpenMVS gives each patch the detail of its photo, so keep the
-    # detail that 90% of the surface has (by area), not the average, or the sharp parts soften
-    per_face = np.sqrt(np.abs(_signed_area(uv_old * [ow, oh], f_old)) / np.maximum(area, 1e-20))
-    o = np.argsort(per_face)
-    cum = np.cumsum(area[o]) / max(area.sum(), 1e-20)
-    density = float(per_face[o][min(np.searchsorted(cum, 0.9), len(o) - 1)])
-
-    def pack(resolution: int, texels_per_unit: float):
-        a = xatlas.Atlas()
-        a.add_mesh(pv[uniq[:, 1]].astype(np.float32), vid.astype(np.uint32), uvs=vuv.astype(np.float32))
-        co = xatlas.ChartOptions()
-        co.use_input_mesh_uvs = True
-        po = xatlas.PackOptions()
-        po.resolution, po.texels_per_unit = resolution, texels_per_unit
-        po.padding, po.bilinear, po.rotate_charts = padding, True, True
-        a.generate(co, po)
-        return a
-
-    if size:
-        atlas = pack(int(size), 0.0)
-    else:
-        atlas = pack(0, density)
-        if max(atlas.width, atlas.height) > max_size:  # too big: same layout, less detail
-            atlas = pack(0, density * max_size / max(atlas.width, atlas.height) * 0.98)
-    vmap, faces, uvs = atlas[0]
-    if len(faces) != len(gf) or not np.array_equal(vmap[faces], vid):
-        raise RuntimeError("the packer reordered the triangles: cannot copy the texture across")
-    W, H = int(atlas.width), int(atlas.height)
+    # detail that 90% of the surface has (by area), not the average, or the sharp parts soften.
+    # Measured per old piece (its texels over its area): within a flattened piece the stretch
+    # varies a little, and a per-triangle measure would grow the image at every rebuild.
+    old_lab = _piece_labels(f_old, uv_old, np.asarray(m.vertices))
+    k = old_lab.max() + 1
+    piece_area = np.bincount(old_lab, area, k)
+    per_piece = np.sqrt(np.bincount(old_lab, np.abs(_signed_area(uv_old * [ow, oh], f_old)), k)
+                        / np.maximum(piece_area, 1e-20))
+    o = np.argsort(per_piece)
+    cum = np.cumsum(piece_area[o]) / max(piece_area.sum(), 1e-20)
+    density = float(per_piece[o][min(np.searchsorted(cum, 0.9), len(o) - 1)])
+    corner_px, W, H, used = pack(corner_uv, chart, n_charts, density, padding, size or max_size, fit=bool(size))
+    faces = vid
+    uvs = np.zeros((len(uniq), 2))
+    uvs[vid.ravel()] = (corner_px / [W, H]).reshape(-1, 2)
+    uvs[:, 1] = 1 - uvs[:, 1]  # pixels count down, texture coordinates up
     t_pack = time.time()
     new = bake(old, uv_old[f_old], uvs[faces], W, H, padding)
     t_bake = time.time()
     # write: OpenMVS-style textured PLY (per-vertex coordinates here) next to its PNG
-    out = trimesh.Trimesh(pv[uniq[vmap, 1]], faces, process=False)
+    out = trimesh.Trimesh(pv[uniq[:, 1]], faces, process=False)
     out.visual = trimesh.visual.TextureVisuals(uv=uvs, image=Image.fromarray(new))
     png = dst.with_name(dst.stem + "0.png")
     Image.fromarray(new).save(png, optimize=False, compress_level=6)
@@ -353,13 +363,78 @@ def relayout(src: Path, dst: Path, angle: float = 45.0, min_size: float = 0.005,
     tmp = dst.with_suffix(".tmp.ply")
     tmp.write_bytes(head + b"end_header\n" + rest)
     tmp.replace(dst)
-    info = {"pieces_now": count_pieces(f_old, uv_old, np.asarray(m.vertices)), "pieces": n_charts,
-            "size": [W, H], "used": round(float(atlas.utilization), 2), "faces": len(gf),
+    info = {"pieces_now": int(k), "pieces": n_charts, "recut": recut,
+            "size": [W, H], "used": round(used, 2), "faces": len(gf),
             "seconds": {"segment": round(t_seg - t0, 1), "flatten": round(t_flat - t_seg, 1),
                         "pack": round(t_pack - t_flat, 1), "bake": round(t_bake - t_pack, 1)}}
     log.info("texture layout: %d -> %d pieces, %dx%d, %.0f%% used, %.0f s", info["pieces_now"], n_charts, W, H,
              100 * info["used"], time.time() - t0)
     return info
+
+
+def _min_rect(p: np.ndarray) -> np.ndarray:
+    """Rotation (2 x 2) that turns points to their smallest enclosing rectangle, wider than tall."""
+    from scipy.spatial import ConvexHull, QhullError
+
+    try:
+        h = p[ConvexHull(p).vertices]
+    except (QhullError, ValueError):  # a line or a point
+        h = p
+    e = np.roll(h, -1, 0) - h
+    ang = np.unique(np.mod(np.arctan2(e[:, 1], e[:, 0]), np.pi / 2))
+    best, rot = np.inf, np.eye(2)
+    for a in ang:
+        c, s_ = np.cos(a), np.sin(a)
+        r = np.array([[c, s_], [-s_, c]])
+        q = h @ r.T
+        ext = np.ptp(q, 0)
+        if ext[0] * ext[1] < best:
+            best, rot = ext[0] * ext[1], (r if ext[0] >= ext[1] else np.array([[0, 1], [-1, 0]]) @ r)
+    return rot
+
+
+def pack(corner_uv: np.ndarray, chart: np.ndarray, n: int, density: float, padding: int, limit: int,
+         fit: bool = False):
+    """Lay the pieces out in one image: each turned to its smallest rectangle, the rectangles in
+    shelves (tallest first, each into the first shelf with room). corner_uv: (F, 3, 2) per piece, in surface units; density: texels per
+    unit, lowered until the image fits in limit (fit: scaled to fill limit instead).
+    Returns ((F, 3, 2) pixel positions, x right and y down, W, H, share of the image used)."""
+    order = np.argsort(chart, kind="stable")
+    bounds = np.searchsorted(chart[order], np.arange(n + 1))
+    local = np.zeros_like(corner_uv)
+    ext = np.zeros((n, 2))
+    for c in range(n):
+        f = order[bounds[c]:bounds[c + 1]]
+        p = corner_uv[f].reshape(-1, 2)
+        q = p @ _min_rect(p - p.mean(0)).T
+        q -= q.min(0)
+        local[f] = q.reshape(-1, 3, 2)
+        ext[c] = q.max(0)
+    area = float(np.abs(_signed_area(corner_uv.reshape(-1, 2), np.arange(corner_uv.size // 2).reshape(-1, 3))).sum())
+    s = density if not fit else limit / max(np.sqrt(area / 0.5), 1e-20)
+    for _ in range(40):
+        size = np.ceil(ext * s).astype(np.int64) + 2 * padding
+        width = int(max(size[:, 0].max(), np.ceil(np.sqrt((size[:, 0] * size[:, 1]).sum() * 1.15))))
+        pos = np.zeros((n, 2), np.int64)
+        shelves = []  # [y, height, x used]: tallest pieces first, each into the first shelf it fits
+        for c in np.argsort(-size[:, 1], kind="stable"):
+            w, h = size[c]
+            for sh in shelves:
+                if sh[2] + w <= width and h <= sh[1]:
+                    pos[c] = (sh[2], sh[0])
+                    sh[2] += w
+                    break
+            else:
+                y = shelves[-1][0] + shelves[-1][1] if shelves else 0
+                shelves.append([y, h, w])
+                pos[c] = (0, y)
+        W, H = width, int(shelves[-1][0] + shelves[-1][1])
+        if max(W, H) <= limit and (not fit or max(W, H) >= 0.97 * limit):
+            break
+        s *= (limit / max(W, H)) * (0.99 if max(W, H) > limit else 1.0)
+    px = local * s + (pos[chart] + padding)[:, None, :]
+    used = float(np.abs(_signed_area(px.reshape(-1, 2), np.arange(px.size // 2).reshape(-1, 3))).sum()) / (W * H)
+    return px, W, H, used
 
 
 def _raster(uv: np.ndarray, W: int, H: int, batch: int = 4_000_000):

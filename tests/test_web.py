@@ -501,7 +501,6 @@ def test_export_window_builds_files_with_their_own_settings(server):
 
 
 def test_texture_layout_is_rebuilt_into_the_custom_texture(server):
-    pytest.importorskip("xatlas")
     import trimesh
     from test_atlas import scattered_box
 
@@ -526,6 +525,22 @@ def test_texture_layout_is_rebuilt_into_the_custom_texture(server):
     assert status == 200 and r["source"] == "custom" and r["pieces_now"] == 6
     assert trimesh.load(str(ws.mesh / "textured.ply"), process=False).visual.material.image.size == (1024, 1024)
     assert call(url, "POST", {"angle": 5})[0] == 400
+    # seams drawn in the editor: one byte per face of the model it showed (here: its own seams again)
+    from test_atlas import seam_mask
+
+    mask = seam_mask(trimesh.load(str(c / "textured.ply"), process=False)).tobytes()
+
+    def seams(source):
+        req = urllib.request.Request(url + f"?seams=1&from={source}", data=mask, method="POST")
+        try:
+            with urllib.request.urlopen(req) as resp:
+                return resp.status, json.loads(resp.read())
+        except urllib.error.HTTPError as e:
+            return e.code, json.loads(e.read())
+
+    status, r = seams("custom")
+    assert status == 200 and r["pieces"] == r["pieces_now"] and r["recut"] == 0
+    assert seams("pipeline")[0] == 400  # the editor showed another model: refused
 
 
 def test_advice_reads_the_results_and_suggests_what_to_change(server):

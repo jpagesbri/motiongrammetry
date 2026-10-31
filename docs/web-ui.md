@@ -74,7 +74,8 @@ mg ui --root ~/scans --port 9000
   so restored triangles weld in seamlessly) and paint the texture on the model or on the flat atlas (brush,
   restore original, blur, smudge, clone, lighten, darken, saturate, desaturate, colour picker; clone
   on the model copies by place on the surface; **Rebuild layout** re-cuts the texture by the model's
-  sides with an angle and a minimum piece size, see `atlas.py`),
+  sides with an angle and a minimum piece size, or **Edit seams…** with the seams drawn on the
+  model, cut along mesh edges and joined with a brush; see `atlas.py`),
   with undo. Edits are saved as a **custom version** in `mesh/custom/` and never change the
   pipeline's files: a sculpt writes `custom/mesh_clean.ply`, its GLB and a custom print STL; the
   texture stage then projects the photos onto the custom mesh (when it is newer than the clean

@@ -10,7 +10,6 @@ trimesh==5.2.0
 scikit-image==0.26.0
 pillow==13.0.0
 scipy==1.18.1
-xatlas==0.0.11
 packaging
 rembg==2.0.86
 onnxruntime-gpu==1.31.1

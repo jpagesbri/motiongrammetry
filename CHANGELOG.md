@@ -19,8 +19,11 @@ the image with that version, and the About page and `mg --version` show it.
   new source is picked.
 - **Editor, texture layout**: **Rebuild layout** cuts the texture again by the model's sides
   (normals on a smoothed copy, an angle and a minimum piece size), flattens the pieces (LSCM),
-  packs them with xatlas and copies the colours across: a scan's 20 000 tiny pieces become a
-  few hundred whole parts. New dependency: xatlas (MIT; credited with pybind11, BSD-3-Clause).
+  packs them and copies the colours across: a scan's 20 000 tiny pieces become a few hundred
+  whole parts.
+- **Editor, seams by hand**: **Edit seams…** shows the texture's seams on the model; **Cut**
+  draws new ones along the mesh's edges, **Join** brushes them away, and **Apply seams** rebuilds
+  the layout with exactly those pieces (one that cannot lie flat is cut further, and says so).
 
 ## 0.1.0 — 2026-10-31
 
