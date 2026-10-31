@@ -24,6 +24,8 @@ the image with that version, and the About page and `mg --version` show it.
 - **Editor, seams by hand**: **Edit seams…** shows the texture's seams on the model; **Cut**
   draws new ones along the mesh's edges, **Join** brushes them away, and **Apply seams** rebuilds
   the layout with exactly those pieces (one that cannot lie flat is cut further, and says so).
+  The pieces show in colours as you draw; **Preview** / **Preview texture** show the new texture
+  at low resolution without saving; **Undo layout** goes back; the editor updates in place.
 
 ## 0.1.0 — 2026-10-31
 

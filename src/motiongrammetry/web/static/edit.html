@@ -145,13 +145,17 @@
       <div class="slider" title="how far a piece's surface may turn: smaller makes more, flatter pieces"><span>Angle</span><input type="range" id="lyAngle" min="15" max="75" value="45"><span id="lyAngleV"></span></div>
       <div class="slider" title="the smallest piece, as a share of the surface: smaller ones join the neighbour facing most the same way"><span>Min. piece</span><input type="range" id="lyMin" min="0" max="30" value="5"><span id="lyMinV"></span></div>
       <div class="btns" style="margin-top:0"><button class="btn" id="lyCount" title="how many pieces there are now, and how many these settings make">Count pieces</button>
+        <button class="btn" id="lyLook" title="a quick, low-resolution look at the new texture in the flat view: nothing is saved">Preview</button>
         <button class="btn" id="lyGo">Rebuild layout</button></div>
       <div class="note" id="lyInfo"></div>
-      <div class="btns"><button class="btn" id="seamBtn" title="show the texture's seams on the model and draw or erase them by hand">Edit seams…</button></div>
+      <div class="btns"><button class="btn" id="seamBtn" title="show the texture's seams on the model and draw or erase them by hand">Edit seams…</button>
+        <button class="btn" id="lyUndo" hidden title="back to the texture layout before the last rebuild (until you save paint or re-run texture)">Undo layout</button></div>
       <div id="seamBar" hidden>
         <span class="seg"><button data-seam="cut" class="on" title="drag along the model: the seam follows the mesh's edges">Cut</button><button data-seam="join" title="brush over seams to remove them">Join</button></span>
         <div class="note" id="seamHelp"></div>
-        <div class="btns"><button class="btn primary" id="seamApply">Apply seams</button><button class="btn" id="seamCancel">Cancel</button></div>
+        <label class="check" title="each piece your seams make in its own colour"><input type="checkbox" id="seamColour" checked> colour the pieces</label>
+        <div class="btns"><button class="btn" id="seamLook" title="a quick, low-resolution look at the texture these seams make, in the flat view: nothing is saved">Preview texture</button>
+          <button class="btn primary" id="seamApply">Apply seams</button><button class="btn" id="seamCancel">Cancel</button></div>
         <div class="note" id="seamInfo"></div>
       </div>
     </section>
@@ -556,6 +560,7 @@ function renderModeInfo() {
   const c = wsState.custom || {}, m = mode;
   const has = m === 'sculpt' ? c.mesh : c.texture;
   $('restoreBtn').hidden = !has;
+  $('lyUndo').hidden = !c.layout_undo;
   $('modeNote').textContent = m === 'sculpt'
     ? (c.mesh ? 'editing your custom mesh (the pipeline clean mesh is kept as it is)' : 'the pipeline clean mesh: saving creates a custom version, the original stays')
     : (c.texture ? 'painting your custom textured model' : 'the pipeline textured model: saving creates a custom version, the original stays');
@@ -1421,7 +1426,7 @@ async function loadPaint() {
   const bytes = P.layers.reduce((s, l) => s + l.W * l.H * 4, 0);
   P.maxUndo = Math.max(2, Math.min(12, Math.floor(768e6 / bytes)));
   setLayer2d(P.layers[0]);
-  P.ready = true; P.dirty = false;
+  P.ready = true; P.dirty = false; P.savedAt = 0;  // undo steps since the last save: back there, nothing is unsaved
   renderer.setRenderTarget(null);
 }
 function applyPaintMaterials() {
@@ -1652,19 +1657,21 @@ function paintStart(e, at) {
     if (P.depthStale) refreshDepth(at.r);
     if (tool.paint === 'clone' && P.clone?.point) refreshUVBuf(at.r);
   }
+  endLook();  // painting goes back from a layout preview to the texture
   P.stroke = { t: tool.paint, snap: new Map(), lastUV: null, lastPx: null, radiusTex: 10 };
   paintAt(at, true);
   return true;
 }
 function paintEnd() {
   const st = P.stroke; if (!st) return;
+  if (st.snap.size && P.undo.length < P.savedAt) P.savedAt = -1;  // a new branch: the saved state is out of reach
   for (const [layer, rt] of st.snap) {
     dilateMat.uniforms.mask.value = layer.mask.texture; dilateMat.uniforms.before.value = rt.texture;
     dilateMat.uniforms.texel.value.set(1 / layer.W, 1 / layer.H);
     blit(layer.cur.texture, layer.other, dilateMat);
     swapLayer(layer);
     P.undo.push({ layer, rt });
-    while (P.undo.length > P.maxUndo) P.pool.push(P.undo.shift().rt);
+    while (P.undo.length > P.maxUndo) { P.pool.push(P.undo.shift().rt); P.savedAt--; }
   }
   if (st.snap.size) { P.redo.forEach((r) => P.pool.push(r.rt)); P.redo = []; P.dirty = true; }
   P.stroke = null;
@@ -1693,8 +1700,8 @@ async function savePaint() {
     P.from = 'custom';  // the first save copied the model into the custom version
   }
   renderer.setRenderTarget(null);
-  P.dirty = false;
-  flash('saved as your custom textured model (the pipeline texture is unchanged): see Outputs → Custom');
+  P.dirty = false; P.savedAt = P.undo.length;
+  flash('saved as your custom textured model (the pipeline texture is unchanged): Export… takes it out from "your edits"');
 }
 
 // ---------------------------------------------------------------- pointer, wheel, keys
@@ -1759,7 +1766,7 @@ const endDrag = () => {
   if (drag?.kind === 'plane' && !(drag.last && planeFromDrag(drag, drag.last))) $('planeLine').setAttribute('visibility', 'hidden');
   if (drag?.kind === 'sculpt') sculptEnd();
   if (drag?.kind === 'paint') paintEnd();
-  if (drag?.kind === 'seam') SM.last = -1;
+  if (drag?.kind === 'seam') { SM.last = -1; seamPieces(); }
   drag = null;
 };
 canvas.addEventListener('pointerup', endDrag);
@@ -1832,14 +1839,14 @@ function doUndo() {
   if (mode === 'sculpt' && S.undo.length) S.redo.push(sculptSwap(S.undo.pop()));
   else if (mode === 'paint' && P.undo.length) P.redo.push(paintSwap(P.undo.pop()));
   else return;
-  if (mode === 'sculpt') S.dirty = true; else P.dirty = true;
+  if (mode === 'sculpt') S.dirty = true; else { endLook(); P.dirty = P.undo.length !== P.savedAt; }
   updateStatus(); updateButtons();
 }
 function doRedo() {
   if (mode === 'sculpt' && S.redo.length) S.undo.push(sculptSwap(S.redo.pop()));
   else if (mode === 'paint' && P.redo.length) P.undo.push(paintSwap(P.redo.pop()));
   else return;
-  if (mode === 'sculpt') S.dirty = true; else P.dirty = true;
+  if (mode === 'sculpt') S.dirty = true; else { endLook(); P.dirty = P.undo.length !== P.savedAt; }
   updateStatus(); updateButtons();
 }
 let saving = false;
@@ -1880,12 +1887,69 @@ $('lyGo').addEventListener('click', async () => {
   $('lyGo').disabled = true; $('lyInfo').textContent = 'rebuilding (about a minute for a dense scan)…';
   try {
     const r = await api(`/api/workspaces/${ws}/edit/layout`, { method: 'POST', body: JSON.stringify(lyParams()) });
-    flash(`texture rebuilt: ${r.pieces_now.toLocaleString()} → ${r.pieces.toLocaleString()} pieces, ${r.size.join(' × ')} px`);
-    const u = new URL(location.href);
-    if (u.searchParams.get('mode') === 'paint') setTimeout(() => location.reload(), 900);
-    else { u.searchParams.set('mode', 'paint'); setTimeout(() => location.replace(u), 900); }
-  } catch (e) { $('lyInfo').textContent = ''; fail(e); $('lyGo').disabled = false; }
+    await reloadPaint();
+    $('lyInfo').textContent = '';
+    flash(`texture rebuilt: ${r.pieces_now.toLocaleString()} → ${r.pieces.toLocaleString()} pieces, ${r.size.join(' × ')} px · Undo layout goes back`);
+  } catch (e) { $('lyInfo').textContent = ''; fail(e); }
+  $('lyGo').disabled = false;
 });
+$('lyLook').addEventListener('click', async () => {
+  $('lyLook').disabled = true; $('lyInfo').textContent = 'making a preview of the texture…';
+  try {
+    const r = await api(`/api/workspaces/${ws}/edit/layout`, { method: 'POST', body: JSON.stringify({ ...lyParams(), preview: 'image' }) });
+    showLook(r); $('lyInfo').textContent = `preview in the flat view: ${r.pieces.toLocaleString()} pieces (not applied)`;
+  } catch (e) { $('lyInfo').textContent = ''; fail(e); }
+  $('lyLook').disabled = false;
+});
+$('lyUndo').addEventListener('click', async () => {
+  if (P.dirty && !confirm('Throw away the unsaved paint and go back to the previous texture layout?')) return;
+  $('lyUndo').disabled = true;
+  try {
+    const r = await api(`/api/workspaces/${ws}/edit/layout`, { method: 'POST', body: JSON.stringify({ undo: true }) });
+    if (SM.on) seamExit();
+    await reloadPaint();
+    flash(r.restored === 'pipeline' ? 'back to the pipeline\'s texture layout' : 'back to the previous texture layout');
+  } catch (e) { fail(e); }
+  $('lyUndo').disabled = false;
+});
+// A low-resolution look at a new layout, shown in the flat view instead of the texture (nothing is
+// saved); any change, Apply or Cancel goes back to the texture.
+const LOOK = { tex: null };
+function showLook(r) {
+  new THREE.TextureLoader().load(r.image, (tex) => {
+    endLook();
+    tex.colorSpace = THREE.SRGBColorSpace; tex.flipY = false;  // as the model's own texture (glTF)
+    LOOK.tex = tex;
+    uv2d.aspect = r.size[0] / r.size[1];
+    uvPlane.scale.set(uv2d.aspect, 1, 1); frame2d.scale.set(uv2d.aspect, 1, 1);
+    uvPlane.material.map = tex; uvPlane.material.needsUpdate = true;
+    $('label2d').textContent = `preview · ${r.pieces.toLocaleString()} pieces${r.recut ? ` (${r.recut} cut further to lie flat)` : ''} · not applied`;
+    if (layout === '3d') document.querySelector('[data-layout=split]').click();  // the flat view shows it
+    fit2d(); requestRender();
+  });
+}
+function endLook() {
+  if (!LOOK.tex) return;
+  LOOK.tex.dispose(); LOOK.tex = null;
+  if (P.layer2d) { setLayer2d(P.layer2d); fit2d(); }
+  requestRender();
+}
+// After the layout changed on the server: the new textured model, in place (same view).
+async function reloadPaint() {
+  endLook();
+  for (const l of P.layers) { for (const rt of [l.a, l.b, l.mask]) rt.dispose(); l.orig?.dispose?.(); }
+  for (const d of P.meshes) { P.group.remove(d); d.geometry.dispose(); d.material?.dispose?.(); }
+  for (const e of [...P.undo, ...P.redo]) e.rt?.dispose?.();
+  P.pool.forEach((rt) => rt.dispose());
+  Object.assign(P, { layers: [], meshes: [], undo: [], redo: [], pool: [], ready: false, dirty: false, clone: null, depthStale: true });
+  P.uvScene.clear(); cloneMark.visible = false;
+  wsState = await api(`/api/workspaces/${ws}/state`);
+  renderModeInfo();
+  await loadPaint();
+  P.group.visible = mode === 'paint';
+  scene.updateMatrixWorld(true);
+  fit2d(); updateStatus(); updateButtons(); requestRender();
+}
 // ---- seams drawn by hand: the texture's seams shown on the model, cut or joined, then the layout
 // rebuilt with the pieces they enclose (atlas.from_seams). Edges are the welded mesh's (the model's
 // vertices are split where texture pieces meet: joined again by position). The server gets one
@@ -1903,13 +1967,13 @@ function seamBuild() {
     weld[i] = w;
   }
   const W = wp.length / 3, edgeOf = new Map(), faceEdge = new Int32Array(nf * 3);
-  const ea = [], eb = [], first = [], seam = [];
+  const ea = [], eb = [], first = [], seam = [], ef0 = [], ef1 = [];  // per edge: its (first two) faces
   for (let f = 0; f < nf; f++) for (let k = 0; k < 3; k++) {
     const sa = order[3 * f + k], sb = order[3 * f + (k + 1) % 3], a = weld[sa], b = weld[sb];
     const key = Math.min(a, b) * W + Math.max(a, b), pair = a < b ? sa * nv + sb : sb * nv + sa;
     let e = edgeOf.get(key);
-    if (e === undefined) { e = ea.length; edgeOf.set(key, e); ea.push(Math.min(a, b)); eb.push(Math.max(a, b)); first.push(pair); seam.push(0); }
-    else if (first[e] !== pair) seam[e] = 1;  // the faces on either side use different texture coordinates
+    if (e === undefined) { e = ea.length; edgeOf.set(key, e); ea.push(Math.min(a, b)); eb.push(Math.max(a, b)); first.push(pair); seam.push(0); ef0.push(f); ef1.push(-1); }
+    else { if (first[e] !== pair) seam[e] = 1; if (ef1[e] < 0) ef1[e] = f; }  // different texture coordinates either side: a seam
     faceEdge[3 * f + k] = e;
   }
   const E = ea.length, A = Int32Array.from(ea), B = Int32Array.from(eb);
@@ -1928,7 +1992,8 @@ function seamBuild() {
     for (const v of [a, b, c]) { nrm[3 * v] += nx; nrm[3 * v + 1] += ny; nrm[3 * v + 2] += nz; }
   }
   geo.computeBoundingBox();
-  Object.assign(SM, { disp, weld, W, edgeOf, faceEdge, nf, A, B, E, seam: Uint8Array.from(seam), deg, nb, ne, P3, nrm,
+  Object.assign(SM, { disp, weld, W, edgeOf, faceEdge, nf, A, B, E, seam: Uint8Array.from(seam), deg, nb, ne, P3, nrm, order,
+    ef0: Int32Array.from(ef0), ef1: Int32Array.from(ef1),
     lift: geo.boundingBox.getSize(new THREE.Vector3()).length() * 0.0015 });
 }
 function seamLines() {
@@ -2007,6 +2072,7 @@ function seamJoin(hit, at) {  // seams within the brush go, on surface facing yo
 function seamDown(at) {
   const hit = pick(at, [SM.disp]);
   if (!hit) return false;
+  endLook();  // the seams change: a preview no longer shows them
   SM.undo.push(SM.seam.slice()); if (SM.undo.length > 30) SM.undo.shift();
   SM.last = -1; SM.lastXY = null; seamMove(at, hit);
   return true;
@@ -2027,7 +2093,44 @@ function seamMove(at, hit = pick(at, [SM.disp])) {
   if (SM.last >= 0 && v !== SM.last) for (const e of seamPath(SM.last, v) || []) SM.seam[e] = 1;
   SM.last = v; seamRedraw();
 }
-function seamUndo() { if (SM.undo.length) { SM.seam = SM.undo.pop(); seamRedraw(); } }
+function seamUndo() { if (SM.undo.length) { SM.seam = SM.undo.pop(); seamRedraw(); seamPieces(); } }
+// The pieces the seams make right now: faces joined across every edge that is not a seam, each piece
+// coloured on a copy of the model shown in its place (it updates after every stroke).
+function seamPieces() {
+  const { nf, E, seam, ef0, ef1 } = SM, parent = new Int32Array(nf);
+  for (let f = 0; f < nf; f++) parent[f] = f;
+  const find = (x) => { while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; } return x; };
+  for (let e = 0; e < E; e++) if (!seam[e] && ef1[e] >= 0) { const a = find(ef0[e]), b = find(ef1[e]); if (a !== b) parent[a] = b; }
+  let n = 0;
+  const id = new Int32Array(nf).fill(-1), lab = new Int32Array(nf);
+  for (let f = 0; f < nf; f++) { const r = find(f); if (id[r] < 0) id[r] = n++; lab[f] = id[r]; }
+  SM.pieces = n;
+  $('seamInfo').textContent = `${n.toLocaleString()} pieces · ${SM.seam.reduce((s, x) => s + x, 0).toLocaleString()} seam edges · Ctrl+Z undoes a stroke`;
+  if (!$('seamColour').checked) { seamColourOff(); return; }
+  if (!SM.colourMesh) {
+    const pos = SM.disp.geometry.attributes.position.array, order = SM.order, flat = new Float32Array(nf * 9);
+    for (let i = 0; i < nf * 3; i++) for (let c = 0; c < 3; c++) flat[3 * i + c] = pos[3 * order[i] + c];
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(flat, 3));
+    g.setAttribute('color', new THREE.BufferAttribute(new Float32Array(nf * 9), 3));
+    SM.colourMesh = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide }));
+    SM.colourMesh.matrixAutoUpdate = false; SM.colourMesh.matrix.copy(SM.disp.matrix); P.group.add(SM.colourMesh);
+  }
+  const col = SM.colourMesh.geometry.attributes.color, a = col.array, c = new THREE.Color();
+  for (let f = 0; f < nf; f++) {
+    c.setHSL((lab[f] * 0.618034) % 1, 0.55, 0.42 + 0.16 * ((lab[f] * 7) % 3) / 2);
+    for (let k = 0; k < 3; k++) { a[9 * f + 3 * k] = c.r; a[9 * f + 3 * k + 1] = c.g; a[9 * f + 3 * k + 2] = c.b; }
+  }
+  col.needsUpdate = true;
+  SM.colourMesh.visible = true; SM.disp.visible = false;
+  requestRender();
+}
+function seamColourOff() {
+  if (SM.colourMesh) SM.colourMesh.visible = false;
+  if (SM.disp) SM.disp.visible = true;
+  requestRender();
+}
+$('seamColour').addEventListener('change', () => { if (SM.on) seamPieces(); });
 function seamHelp() {
   $('seamHelp').textContent = SM.tool === 'cut'
     ? 'Cut: drag along the model; the seam follows the mesh\'s edges. A closed loop makes a new piece; an open cut lets a curved piece lie flat.'
@@ -2036,6 +2139,9 @@ function seamHelp() {
 function seamExit() {
   SM.on = false; $('seamBar').hidden = true; $('seamBtn').hidden = false;
   if (SM.lines) { P.group.remove(SM.lines); SM.lines.geometry.dispose(); SM.lines = null; }
+  if (SM.colourMesh) { P.group.remove(SM.colourMesh); SM.colourMesh.geometry.dispose(); SM.colourMesh = null; }
+  if (SM.disp) SM.disp.visible = true;
+  endLook();
   requestRender();
 }
 $('seamBtn').addEventListener('click', () => {
@@ -2044,7 +2150,7 @@ $('seamBtn').addEventListener('click', () => {
   setTimeout(() => {  // let the message show: a dense scan takes a second or two
     try { seamBuild(); } catch (e) { fail(e); return; }
     SM.on = true; SM.undo = []; SM.last = -1;
-    $('seamBar').hidden = false; $('seamBtn').hidden = true; seamHelp(); seamLines();
+    $('seamBar').hidden = false; $('seamBtn').hidden = true; seamHelp(); seamLines(); seamPieces();
   }, 30);
 });
 document.querySelectorAll('[data-seam]').forEach((b) => b.addEventListener('click', () => {
@@ -2053,19 +2159,30 @@ document.querySelectorAll('[data-seam]').forEach((b) => b.addEventListener('clic
   seamHelp();
 }));
 $('seamCancel').addEventListener('click', seamExit);
-$('seamApply').addEventListener('click', async () => {
-  if (P.dirty) { fail(new Error('save or discard the paint first: the rebuild starts from the saved texture')); return; }
+function seamMask() {  // one byte per face in the model's order: bit k when its edge k -> k+1 is a seam
   const mask = new Uint8Array(SM.nf);
   for (let f = 0; f < SM.nf; f++) for (let k = 0; k < 3; k++) if (SM.seam[SM.faceEdge[3 * f + k]]) mask[f] |= 1 << k;
+  return mask;
+}
+$('seamLook').addEventListener('click', async () => {
+  $('seamLook').disabled = true; $('seamInfo').textContent = 'making a preview of the texture…';
+  try {
+    showLook(await api(`/api/workspaces/${ws}/edit/layout?seams=1&preview=1&from=${P.from}`, { method: 'POST', body: seamMask() }));
+    seamPieces();
+  } catch (e) { fail(e); }
+  $('seamLook').disabled = false;
+});
+$('seamApply').addEventListener('click', async () => {
+  if (P.dirty) { fail(new Error('save or discard the paint first: the rebuild starts from the saved texture')); return; }
   $('seamApply').disabled = true; $('seamInfo').textContent = 'rebuilding the layout with your seams (about a minute for a dense scan)…';
   try {
-    const r = await api(`/api/workspaces/${ws}/edit/layout?seams=1&from=${P.from}`, { method: 'POST', body: mask });
+    const r = await api(`/api/workspaces/${ws}/edit/layout?seams=1&from=${P.from}`, { method: 'POST', body: seamMask() });
+    seamExit(); await reloadPaint();
     flash(`texture rebuilt with your seams: ${r.pieces.toLocaleString()} pieces, ${r.size.join(' × ')} px`
-      + (r.recut ? ` · ${r.recut} piece${r.recut === 1 ? '' : 's'} folded over and ${r.recut === 1 ? 'was' : 'were'} cut further to lie flat` : ''));
-    const u = new URL(location.href);
-    if (u.searchParams.get('mode') === 'paint') setTimeout(() => location.reload(), 1500);
-    else { u.searchParams.set('mode', 'paint'); setTimeout(() => location.replace(u), 1500); }
-  } catch (e) { fail(e); $('seamInfo').textContent = ''; $('seamApply').disabled = false; }
+      + (r.recut ? ` · ${r.recut} piece${r.recut === 1 ? '' : 's'} folded over and ${r.recut === 1 ? 'was' : 'were'} cut further to lie flat` : '')
+      + ' · Undo layout goes back');
+  } catch (e) { fail(e); $('seamInfo').textContent = ''; }
+  $('seamApply').disabled = false;
 });
 $('restoreBtn').addEventListener('click', async () => {
   const what = mode === 'sculpt' ? 'mesh' : 'texture';

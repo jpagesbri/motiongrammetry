@@ -542,6 +542,33 @@ def test_texture_layout_is_rebuilt_into_the_custom_texture(server):
     assert status == 200 and r["pieces"] == r["pieces_now"] and r["recut"] == 0
     assert seams("pipeline")[0] == 400  # the editor showed another model: refused
 
+    # a preview: an image of the new texture, nothing saved
+    before = {p.name: p.stat().st_mtime_ns for p in c.iterdir() if p.is_file()}
+    status, r = call(url, "POST", {"angle": 60, "preview": "image"})
+    assert status == 200 and r["image"].startswith("data:image/png;base64,") and max(r["size"]) <= 1024
+    assert {p.name: p.stat().st_mtime_ns for p in c.iterdir() if p.is_file()} == before
+    assert not (ws.root / ".ui" / "layout-preview").exists()
+
+    # undo: back to the layout the last rebuild replaced, one step
+    state = lambda: call(base + "/api/workspaces/lay/state")[1]["custom"]  # noqa: E731
+    first = (c / "textured0.png").stat().st_ino  # the very file set aside comes back
+    assert call(url, "POST", {"angle": 45})[0] == 200 and state()["layout_undo"]
+    assert (c / "textured0.png").stat().st_ino != first
+    assert call(url, "POST", {"undo": True})[1] == {"restored": "custom"}
+    assert (c / "textured0.png").stat().st_ino == first and not state()["layout_undo"]
+    assert call(url, "POST", {"undo": True})[0] == 404  # nothing more to go back to
+    # painting after a rebuild ends its undo (it would throw the paint away)
+    assert call(url, "POST", {"angle": 45})[0] == 200
+    png = (c / "textured0.png").read_bytes()
+    req = urllib.request.Request(base + "/api/workspaces/lay/edit/texture?i=0&from=custom", data=png, method="POST")
+    urllib.request.urlopen(req).read()
+    assert not state()["layout_undo"]
+    # a rebuild from the pipeline's texture goes back to it: no custom texture left
+    assert call(base + "/api/workspaces/lay/edit/delete", "POST", {"what": "texture"})[0] == 200
+    assert call(url, "POST", {"angle": 45})[0] == 200
+    assert call(url, "POST", {"undo": True})[1] == {"restored": "pipeline"}
+    assert not state()["texture"] and not list(c.glob("textured*"))
+
 
 def test_advice_reads_the_results_and_suggests_what_to_change(server):
     from motiongrammetry.advice import advise

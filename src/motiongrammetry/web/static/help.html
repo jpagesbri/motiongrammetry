@@ -318,15 +318,19 @@ faces stay together while they face the same way (measured on a smoothed copy, s
 <b>Angle</b> is how far one piece may turn and <b>Min. piece</b> the smallest piece, as a share of the surface (smaller ones
 join their neighbour). Each piece is flattened and packed into a new image, and the colours are copied across triangle
 by triangle at the same level of detail: the model looks the same, the flat texture shows whole parts (about 250 pieces
-for that head, a minute to rebuild). <b>Count pieces</b> tells you the number first. It is saved as your custom texture;
-save or discard the paint before. Re-running texture brings back OpenMVS's layout.</p>
+for that head, a minute to rebuild). <b>Count pieces</b> tells you the number first, and <b>Preview</b> shows the new
+texture at low resolution in the flat view, in a few seconds, without saving anything. It is saved as your custom texture;
+save or discard the paint before. <b>Undo layout</b> goes back to the layout it replaced, until you save paint or re-run
+texture. Re-running texture brings back OpenMVS's layout.</p>
 <p><b>Edit seams…</b> draws the texture's seams on the model in amber, to change them by hand (best after a Rebuild layout:
 OpenMVS's own layout is a wall of lines). <b>Cut</b>: drag along the model and the seam follows the mesh's edges between
 the points you pass; a closed loop makes a new piece, and an open cut lets a curved piece (a cone, a cap) lie flat.
 <b>Join</b>: brush over seams to remove them, on the surface facing you; the pieces either side become one.
-<kbd>Ctrl</kbd>+<kbd>Z</kbd> undoes a stroke. <b>Apply seams</b> rebuilds the layout with exactly the pieces your seams
-enclose, flattened, packed and recoloured as above; a piece that cannot lie flat is cut further, and the message says how
-many were.</p>
+<kbd>Ctrl</kbd>+<kbd>Z</kbd> undoes a stroke. With <b>colour the pieces</b> each piece your seams make shows in its own
+colour, with the count, after every stroke. <b>Preview texture</b> shows the texture they would make in the flat view,
+nothing saved. <b>Apply seams</b> rebuilds the layout with exactly the pieces your seams enclose, flattened, packed and
+recoloured as above; a piece that cannot lie flat is cut further, and the message says how many were. <b>Undo layout</b>
+goes back.</p>
 
 <h2 id="troubleshooting">Troubleshooting</h2>
 <table>

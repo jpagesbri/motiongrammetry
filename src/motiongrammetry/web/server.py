@@ -31,8 +31,10 @@ Preview data is served in the raw SfM frame together with one 4x4 "scene" transf
   POST /api/workspaces/<ws>/edit/texture?i=N&from=pipeline|custom  painted texture -> mesh/custom/
   POST /api/workspaces/<ws>/edit/delete     {"what": "mesh"|"texture"} -> drop the custom version
   POST /api/workspaces/<ws>/edit/layout     {"angle","min_size","preview"} -> rebuild the texture layout
-  POST /api/workspaces/<ws>/edit/layout?seams=1&from=pipeline|custom  one byte per face (seam bits) -> the same,
-                                            pieces enclosed by seams drawn in the editor
+                                            (preview: true counts, "image" a low-resolution look; nothing saved)
+  POST /api/workspaces/<ws>/edit/layout?seams=1&from=pipeline|custom[&preview=1]  one byte per face (seam
+                                            bits) -> the same, pieces enclosed by seams drawn in the editor
+  POST /api/workspaces/<ws>/edit/layout     {"undo": true} -> back to the layout before the last rebuild
   POST /api/workspaces/<ws>/export          {"items":[{"content","format"}],"source","options"} -> .ui/exports/
   GET  /api/workspaces/<ws>/exports/<file>  download it
   GET  /api/workspaces/<ws>/preview.jpg     scan thumbnail (3D snapshot, else a keyframe)
@@ -95,6 +97,7 @@ OUTPUTS = [
     ("mesh/custom/textured.ply", "Custom textured mesh (PLY; needs its PNG)", "custom"),
 ]
 STL = "mesh/print.stl"
+LAYOUT_PREVIOUS = ".layout-previous"  # in mesh/custom/: the texture layout the last rebuild replaced
 
 # Progress patterns found in stage output (mg logging, COLMAP glog, OpenMVS).
 PROGRESS = [
@@ -838,6 +841,9 @@ class App:
             "texture_from": info.get("textured_from"),  # "custom" mesh or the pipeline's "clean" one
             "texture_stale": bool(tex.exists() and mesh.exists() and info.get("textured_from") != "custom"
                                   or tex.exists() and mesh.exists() and mt(tex) + 1 < mt(mesh)),
+            # the layout before the last rebuild is kept until the texture changes again (paint, texture run)
+            "layout_undo": bool(tex.exists() and (c / LAYOUT_PREVIOUS / "after").exists()
+                                and (c / LAYOUT_PREVIOUS / "after").read_text() == str(tex.stat().st_mtime_ns)),
         }
 
     @staticmethod
@@ -931,10 +937,15 @@ class App:
 
     def relayout_texture(self, ws: Workspace, body: dict) -> dict:
         """Rebuild the texture layout of the model the editor paints (see atlas.py): pieces cut by the
-        surface's sides. Written as the custom texture; the pipeline's files stay as they are."""
+        surface's sides. Written as the custom texture; the pipeline's files stay as they are, and the
+        layout it replaces is kept aside (undo_layout)."""
+        import base64
+
         from .. import atlas
         from ..clean import export_glb, workspace_alignment
 
+        if body.get("undo"):
+            return self.undo_layout(ws)
         self._editable(ws)
         angle, min_size = float(body.get("angle", 45)), float(body.get("min_size", 0.5)) / 100
         if not 10 <= angle <= 80 or not 0 <= min_size <= 0.2:
@@ -943,20 +954,38 @@ class App:
         src = c / "textured.ply" if info["texture"] else ws.mesh / "textured.ply"
         if not src.exists():
             raise FileNotFoundError("textured.ply: run texture first")
-        if body.get("preview"):
-            return {**atlas.preview(src, angle, min_size), "source": "custom" if info["texture"] else "pipeline"}
+        source = "custom" if info["texture"] else "pipeline"
         seams = None
         if "seams" in body:  # drawn on the model the editor showed: it must still be the one laid out here
-            if body.get("from") != ("custom" if info["texture"] else "pipeline"):
+            if body.get("from") != source:
                 raise ValueError("the textured model changed since the editor loaded it: reload the editor")
             seams = np.frombuffer(body["seams"], np.uint8)
-        work = c / ".layout"
+        elif body.get("preview") and body["preview"] != "image":
+            return {**atlas.preview(src, angle, min_size), "source": source}
+        if body.get("preview") == "image":  # a quick look at the new texture, nothing saved
+            look = ws.root / ".ui" / "layout-preview"
+            shutil.rmtree(look, ignore_errors=True)
+            look.mkdir(parents=True)
+            try:
+                out = atlas.relayout(src, look / "look.ply", angle, min_size, seams=seams, preview=1024)
+                png = base64.b64encode((look / "look0.png").read_bytes()).decode()
+            finally:
+                shutil.rmtree(look, ignore_errors=True)
+            return {**out, "source": source, "image": "data:image/png;base64," + png}
+        work, prev = c / ".layout", c / LAYOUT_PREVIOUS
         shutil.rmtree(work, ignore_errors=True)
         work.mkdir(parents=True)
         try:
             out = atlas.relayout(src, work / "textured.ply", angle, min_size, seams=seams)
-            for old in list(c.glob("textured*")):
-                old.unlink()
+            shutil.rmtree(prev, ignore_errors=True)  # keep what it replaces: one step back
+            prev.mkdir(parents=True)
+            if info["texture"]:
+                for p in [*c.glob("textured*"), c / "model.glb"]:
+                    if p.exists():
+                        p.replace(prev / p.name)
+                (prev / "from").write_text(info["texture_from"] or "")
+            else:
+                (prev / "pipeline").write_text("")
             for p in work.iterdir():
                 p.replace(c / p.name)
         finally:
@@ -966,7 +995,29 @@ class App:
         from_custom = self.custom_info(ws)["texture_from"] == "custom" and (c / "mesh_clean.ply").exists()
         export_glb(c / "textured.ply", c / "model.glb",
                    workspace_alignment(ws, c / "mesh_clean.ply" if from_custom else ws.mesh / "mesh_clean.ply"))
-        return {**out, "source": "custom" if info["texture"] else "pipeline"}
+        (prev / "after").write_text(str((c / "textured.ply").stat().st_mtime_ns))
+        return {**out, "source": source}
+
+    def undo_layout(self, ws: Workspace) -> dict:
+        """Back to the texture layout the last rebuild replaced (the pipeline's, or the custom one)."""
+        self._editable(ws)
+        c = ws.mesh / "custom"
+        prev = c / LAYOUT_PREVIOUS
+        if not self.custom_info(ws)["layout_undo"]:
+            raise FileNotFoundError("no layout to go back to: saving paint or re-running texture ends the undo")
+        for p in [*c.glob("textured*"), c / "model.glb"]:
+            p.unlink(missing_ok=True)
+        if (prev / "pipeline").exists():
+            back = "pipeline"
+            self._custom_meta(ws, textured_from=None)
+        else:
+            back = "custom"
+            for p in [*prev.glob("textured*"), prev / "model.glb"]:
+                if p.exists():
+                    p.replace(c / p.name)
+            self._custom_meta(ws, textured_from=(prev / "from").read_text() or None)
+        shutil.rmtree(prev, ignore_errors=True)
+        return {"restored": back}
 
     def delete_custom(self, ws: Workspace, what: str) -> dict:
         """Drop the custom mesh or texture: the pipeline's version is what remains."""
@@ -979,6 +1030,7 @@ class App:
             (c / n).unlink()
         if what == "texture":
             self._custom_meta(ws, textured_from=None)
+            shutil.rmtree(c / LAYOUT_PREVIOUS, ignore_errors=True)
         if not gone:
             raise FileNotFoundError(f"no custom {what}")
         return {"deleted": gone}
@@ -1440,7 +1492,8 @@ def make_handler(app: App):
                     return self._json(app.delete_custom(ws, self._body().get("what", "")))
                 if what == "layout":
                     if q.get("seams"):
-                        return self._json(app.relayout_texture(ws, {"seams": self._raw(), "from": q.get("from", [""])[0]}))
+                        return self._json(app.relayout_texture(ws, {"seams": self._raw(), "from": q.get("from", [""])[0],
+                                                                    "preview": "image" if q.get("preview") else None}))
                     return self._json(app.relayout_texture(ws, self._body()))
                 if what == "op":  # cap / plane / remesh: mesh in, mesh out, nothing saved
                     from ..meshops import run

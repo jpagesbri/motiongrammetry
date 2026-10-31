@@ -298,16 +298,23 @@ def from_seams(gf: np.ndarray, adj: np.ndarray, adj_edges: np.ndarray, seams: np
 
 
 def relayout(src: Path, dst: Path, angle: float = 45.0, min_size: float = 0.005, smooth: int | None = None,
-             size: int | None = None, padding: int = 4, max_size: int = 8192, seams: np.ndarray | None = None) -> dict:
+             size: int | None = None, padding: int = 4, max_size: int = 8192, seams: np.ndarray | None = None,
+             preview: int | None = None) -> dict:
     """Write dst (a textured PLY naming its PNG, like OpenMVS's) with the new layout of src's texture.
     size: fit the atlas in a size x size image; by default it keeps the old texture's detail (texels
     per unit of surface), up to max_size. seams: pieces from seams drawn by hand (see from_seams)
-    instead of cut by the surface's sides."""
+    instead of cut by the surface's sides. preview: a quick look at most this many texels wide (the
+    old texture read at a lower resolution too)."""
     import trimesh
     from PIL import Image
 
     t0 = time.time()
     m, old = _load(src)
+    if preview:
+        img = Image.fromarray(old.astype(np.uint8))
+        img.thumbnail((2 * preview, 2 * preview))
+        old = np.asarray(img, np.float32)
+        max_size, padding = preview, 2
     f_old, uv_old = np.asarray(m.faces), np.asarray(m.visual.uv, np.float64)
     if seams is None:
         pv, gf, area, adj, _, normals = _geometry(m, smooth)
