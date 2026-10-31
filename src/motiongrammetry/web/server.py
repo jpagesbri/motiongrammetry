@@ -30,7 +30,7 @@ Preview data is served in the raw SfM frame together with one 4x4 "scene" transf
   POST /api/workspaces/<ws>/edit/mesh       sculpted mesh -> mesh/custom/ (see App.save_mesh)
   POST /api/workspaces/<ws>/edit/texture?i=N&from=pipeline|custom  painted texture -> mesh/custom/
   POST /api/workspaces/<ws>/edit/delete     {"what": "mesh"|"texture"} -> drop the custom version
-  POST /api/workspaces/<ws>/export          {"format","source","options"} -> one file in .ui/exports/
+  POST /api/workspaces/<ws>/export          {"items":[{"content","format"}],"source","options"} -> .ui/exports/
   GET  /api/workspaces/<ws>/exports/<file>  download it
   GET  /api/workspaces/<ws>/preview.jpg     scan thumbnail (3D snapshot, else a keyframe)
   GET  /api/workspaces/<ws>/advice?subject= what to change next (advice.py), for assisted mode
@@ -364,6 +364,8 @@ class App:
             "stale": self.stale(ws),
             "disk": self.disk(ws),
             "outputs": self.outputs(ws),
+            "exportable": {v: [k for k, p in self.export_sources(ws, v == "custom").items() if p]
+                           for v in ("pipeline", "custom")},
             "cameras": ws.cameras_from(),
             "raw_meshes": [s for s, rel in RAW_MESH.items() if (ws.root / rel).exists()],
             "raw_source": ws.mesh_producer(ws.raw_mesh()),
@@ -939,79 +941,165 @@ class App:
             raise FileNotFoundError(f"no custom {what}")
         return {"deleted": gone}
 
-    # ---- export window: one file at a time, with its own settings ------------------------------
-    EXPORT_FORMATS = {"stl": "print.stl", "glb_textured": "textured.glb", "glb_mesh": "mesh.glb",
-                      "obj": "textured-obj.zip", "ply": "mesh.ply"}
+    # ---- export window: pick the contents, each in a format that suits it ----------------------
+    # content: (label, formats; the first is the default)
+    EXPORT_CONTENTS = {
+        "textured": ("Textured model", ("glb", "obj")),
+        "mesh": ("Clean mesh, vertex colours", ("glb", "ply", "obj")),
+        "print": ("3D print", ("stl", "3mf")),
+        "raw": ("Raw mesh before cleanup", ("ply", "obj", "glb")),
+        "cloud": ("Dense point cloud", ("ply",)),
+        "cameras": ("Cameras and sparse points", ("colmap",)),
+    }
+    LEGACY_FORMATS = {"stl": ("print", "stl"), "glb_textured": ("textured", "glb"), "glb_mesh": ("mesh", "glb"),
+                      "obj": ("textured", "obj"), "ply": ("mesh", "ply")}
     PRINT_SETTINGS = {"height_mm": float, "base": float, "mode": ("auto", "solid", "shell"), "stand": ("auto", "none"),
                       "min_wall": float, "shell": float, "shell_side": ("inward", "outward", "both")}
 
-    def export(self, ws: Workspace, body: dict) -> dict:
-        """Build one export (format, pipeline or custom version, settings) into .ui/exports/."""
-        import trimesh
-
-        from ..clean import export_glb, export_print_stl, workspace_alignment
-
-        fmt, source, opts = body.get("format"), body.get("source", "pipeline"), body.get("options") or {}
-        if fmt not in self.EXPORT_FORMATS or source not in ("pipeline", "custom"):
-            raise ValueError("unknown export")
-        c, custom = ws.mesh / "custom", source == "custom"
+    def export_sources(self, ws: Workspace, custom: bool) -> dict[str, Path | None]:
+        """What each content is made from, None when this scan (or version) does not have it."""
+        c = ws.mesh / "custom"
         mesh = c / "mesh_clean.ply" if custom else ws.mesh / "mesh_clean.ply"
         textured = c / "textured.ply" if custom else ws.mesh / "textured.ply"
-        # a custom texture painted on the pipeline model has the pipeline mesh's geometry
-        tex_geom = mesh if not custom or self.custom_info(ws)["texture_from"] == "custom" else ws.mesh / "mesh_clean.ply"
-        needs = textured if fmt in ("glb_textured", "obj") else mesh
-        if not needs.exists():
-            raise FileNotFoundError(f"{'custom ' if custom else ''}{needs.name}")
+        used = ws.load_manifest().get("clean", {}).get("input")
+        raws = [ws.root / RAW_MESH[p] for p in [ws.mesh_producer(used), "mvs", "vggt"] if p]
+        have = lambda p: p if p is not None and p.exists() else None  # noqa: E731
+        return {"textured": have(textured), "mesh": have(mesh), "print": have(mesh),
+                "raw": None if custom else next((p for p in raws if p.exists()), None),
+                "cloud": None if custom else have(ws.root / "mvs/scene_dense.ply"),
+                "cameras": None if custom else have(ws.sparse / "images.bin")}
+
+    def export(self, ws: Workspace, body: dict) -> dict:
+        """Build the chosen contents (each in its format), from the pipeline or custom version, into
+        .ui/exports/: one file, or a zip of them all. A lone {"format"} is one content (older API)."""
+        import zipfile
+
+        source, opts = body.get("source", "pipeline"), body.get("options") or {}
+        items = body.get("items")
+        if items is None and body.get("format") in self.LEGACY_FORMATS:
+            content, fmt = self.LEGACY_FORMATS[body["format"]]
+            items = [{"content": content, "format": fmt}]
+        if not items or source not in ("pipeline", "custom"):
+            raise ValueError("unknown export")
+        items = [(i.get("content"), i.get("format")) for i in items]
+        for content, fmt in items:
+            if content not in self.EXPORT_CONTENTS or fmt not in self.EXPORT_CONTENTS[content][1]:
+                raise ValueError(f"unknown export: {content} as {fmt}")
+        if len({c for c, _ in items}) != len(items):
+            raise ValueError("each content once")
         up = opts.get("up", "auto")
         if up not in ("auto", "plane", "camera", "none"):
             raise ValueError("up: auto, plane, camera or none")
+        print_kw = {}
+        for k, kind in self.PRINT_SETTINGS.items():
+            if opts.get(k) in (None, ""):
+                continue
+            if isinstance(kind, tuple) and opts[k] not in kind:
+                raise ValueError(f"{k}: one of {', '.join(kind)}")
+            print_kw[k] = opts[k] if isinstance(kind, tuple) else float(opts[k])
+        custom = source == "custom"
+        sources = self.export_sources(ws, custom)
+        for content, _ in items:
+            if sources[content] is None:
+                raise FileNotFoundError(f"{'custom ' if custom else ''}{self.EXPORT_CONTENTS[content][0].lower()}")
         out_dir = ws.root / ".ui" / "exports"
         out_dir.mkdir(parents=True, exist_ok=True)
-        dst = out_dir / f"{ws.root.name}-{'custom-' if custom else ''}{self.EXPORT_FORMATS[fmt]}"
+        stem = f"{ws.root.name}-{'custom-' if custom else ''}"
+        files = [self._export_one(ws, content, fmt, sources, custom, up, opts.get("height_mm"), print_kw,
+                                  out_dir, stem) for content, fmt in items]
+        if len(files) == 1:
+            one = files[0]
+            return {**one, "files": files, "source": source, "bundle": False}
+        # several: one zip, each content in its own folder (an OBJ's or COLMAP model's zip unpacked into it)
+        dst = out_dir / f"{stem}export.zip"
         tmp = dst.with_name("tmp-" + dst.name)
-        result: dict = {"issues": []}
-        if fmt == "stl":
-            kw = {}
-            for k, kind in self.PRINT_SETTINGS.items():
-                if opts.get(k) in (None, ""):
-                    continue
-                if isinstance(kind, tuple) and opts[k] not in kind:
-                    raise ValueError(f"{k}: one of {', '.join(kind)}")
-                kw[k] = opts[k] if isinstance(kind, tuple) else float(opts[k])
-            info = export_print_stl(mesh, tmp, workspace_alignment(ws, mesh, up=up), ws=ws, **kw)
-            result.update(issues=info.pop("print_issues"), info=info)
+        with zipfile.ZipFile(tmp, "w") as z:
+            for f in files:
+                p = out_dir / f["file"]
+                if p.suffix == ".zip":
+                    with zipfile.ZipFile(p) as inner:
+                        for n in inner.namelist():
+                            z.writestr(f"{f['content']}/{n}", inner.read(n), zipfile.ZIP_DEFLATED)
+                else:
+                    z.write(p, f"{f['content']}/{p.name}",
+                            zipfile.ZIP_STORED if p.suffix in (".glb", ".3mf") else zipfile.ZIP_DEFLATED)
+        tmp.replace(dst)
+        return {"file": dst.name, "size": dst.stat().st_size, "files": files, "source": source, "bundle": True,
+                "issues": [i for f in files for i in f["issues"]]}
+
+    def _export_one(self, ws: Workspace, content: str, fmt: str, sources: dict, custom: bool, up: str, height,
+                    print_kw: dict, out_dir: Path, stem: str) -> dict:
+        import zipfile
+
+        import trimesh
+
+        from ..clean import export_glb, export_print_stl, workspace_alignment, write_3mf
+
+        src = sources[content]
+        name = {"obj": f"{content}-obj.zip", "colmap": f"{content}-colmap.zip"}.get(fmt, f"{content}.{fmt}")
+        dst = out_dir / (stem + name)
+        tmp = dst.with_name("tmp-" + dst.name)
+        entry = {"content": content, "label": self.EXPORT_CONTENTS[content][0], "format": fmt, "issues": []}
+        if content == "print":
+            stl = dst.with_suffix(".stl") if fmt == "stl" else out_dir / f"{stem}{content}-preview.stl"
+            info = export_print_stl(src, tmp.with_suffix(".stl"), workspace_alignment(ws, src, up=up), ws=ws, **print_kw)
+            tmp.with_suffix(".stl").replace(stl)
+            if fmt == "3mf":
+                write_3mf(trimesh.load(str(stl), force="mesh", process=False), tmp)
+                tmp.replace(dst)
+                entry["preview"] = stl.name  # the browser has no 3MF loader: the same mesh as STL
+            entry.update(issues=info.pop("print_issues"), info=info)
+        elif content == "cameras":  # the COLMAP model as sfm wrote it, in the reconstruction's frame
+            with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as z:
+                for p in sorted(ws.sparse.glob("*.bin")):
+                    z.write(p, f"sparse/0/{p.name}")
+            tmp.replace(dst)
+            entry["info"] = {"frame": "reconstruction"}
         else:
-            T = workspace_alignment(ws, tex_geom if fmt in ("glb_textured", "obj") else mesh, up=up)
+            # placed like the clean mesh, so contents exported together line up; a height sets the
+            # real size of the clean model (glTF in metres, the others in millimetres)
+            ref = sources["mesh"] or src
+            if content == "textured" and custom and self.custom_info(ws)["texture_from"] != "custom":
+                ref = ws.mesh / "mesh_clean.ply"  # a custom texture painted on the pipeline model
+            if content in ("raw", "cloud"):
+                ref = ws.mesh / "mesh_clean.ply" if (ws.mesh / "mesh_clean.ply").exists() else src
+            T = workspace_alignment(ws, ref, up=up)
             T = np.eye(4) if T is None else T
-            height = opts.get("height_mm")
-            if height not in (None, ""):  # real size: glTF is in metres, OBJ / PLY in millimetres
-                v = np.asarray(trimesh.load(str(needs), force="mesh", process=False).vertices)
+            if height not in (None, ""):
+                v = np.asarray(trimesh.load(str(ref), force="mesh", process=False).vertices)
                 ext = float(np.ptp(v @ T[:3, :3].T, axis=0)[1])
-                unit = 0.001 if fmt.startswith("glb") else 1.0
+                unit = 0.001 if fmt == "glb" else 1.0
                 if ext > 0:
                     T = np.diag([*(3 * [float(height) * unit / ext]), 1.0]) @ T
-            if fmt.startswith("glb"):
-                export_glb(needs, tmp.with_suffix(".glb"), T)
+            if fmt == "glb":
+                export_glb(src, tmp.with_suffix(".glb"), T)
                 tmp.with_suffix(".glb").replace(tmp)
+            elif content == "cloud":  # Open3D: OpenMVS adds per-point view lists trimesh cannot read
+                import open3d as o3d
+
+                pc = o3d.io.read_point_cloud(str(src))
+                pc.transform(T)
+                o3d.io.write_point_cloud(str(tmp.with_suffix(".ply")), pc)
+                tmp.with_suffix(".ply").replace(tmp)
             elif fmt == "ply":
-                m = trimesh.load(str(needs), force="mesh", process=False)
+                m = trimesh.load(str(src), force="mesh", process=False)
                 m.apply_transform(T)
                 m.export(str(tmp), file_type="ply")
-            else:  # OBJ + MTL + texture images, zipped
-                import zipfile
-
+            else:  # OBJ (+ MTL + texture images when textured), zipped
                 from trimesh.exchange.obj import export_obj
 
-                m = trimesh.load(str(needs), force="mesh", process=False)
+                m = trimesh.load(str(src), force="mesh", process=False)
                 m.apply_transform(T)
-                text, files = export_obj(m, include_texture=True, return_texture=True, mtl_name="model.mtl")
-                with zipfile.ZipFile(tmp, "w") as z:
+                textured = content == "textured"
+                text, extra = export_obj(m, include_texture=textured, include_color=not textured,
+                                         return_texture=True, mtl_name="model.mtl")
+                with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as z:
                     z.writestr("model.obj", text)
-                    for name, data in files.items():
-                        z.writestr(name, data)
-            result["info"] = {"up": up, "height_mm": height}
-        tmp.replace(dst)
-        return {**result, "file": dst.name, "size": dst.stat().st_size, "format": fmt, "source": source}
+                    for n, data in extra.items():
+                        z.writestr(n, data)
+            tmp.replace(dst)
+            entry["info"] = {"up": up, "height_mm": height}
+        return {**entry, "file": dst.name, "size": dst.stat().st_size}
 
     def export_file(self, ws: Workspace, name: str) -> Path:
         p = ws.root / ".ui" / "exports" / name

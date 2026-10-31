@@ -478,6 +478,27 @@ def test_export_window_builds_files_with_their_own_settings(server):
     assert call(base + "/api/workspaces/x/export", "POST", {"format": "glb_mesh", "source": "custom"})[0] == 404
     assert call(base + "/api/workspaces/x/exports/..%2Fmanifest.json")[0] == 404
 
+    # pick the contents, each in its format: several come as one zip, a folder each
+    assert call(base + "/api/workspaces/x/state")[1]["exportable"] == {"pipeline": ["textured", "mesh", "print"],
+                                                                       "custom": []}
+    items = [{"content": "print", "format": "3mf"}, {"content": "mesh", "format": "obj"},
+             {"content": "textured", "format": "glb"}]
+    status, r = call(base + "/api/workspaces/x/export", "POST", {"items": items, "options": {"height_mm": 40}})
+    assert status == 200 and r["bundle"] and [f["content"] for f in r["files"]] == ["print", "mesh", "textured"]
+    with urllib.request.urlopen(base + "/api/workspaces/x/exports/" + r["file"]) as resp:
+        z = zipfile.ZipFile(io.BytesIO(resp.read()))
+    assert {"print/x-print.3mf", "mesh/model.obj", "textured/x-textured.glb"} <= set(z.namelist())
+    model = z.read("print/x-print.3mf")
+    three = zipfile.ZipFile(io.BytesIO(model))  # a 3MF is a zip of XML, with its unit
+    xml = three.read("3D/3dmodel.model").decode()
+    assert 'unit="millimeter"' in xml and xml.count("<triangle ") > 12 and "[Content_Types].xml" in three.namelist()
+    assert r["files"][0]["preview"].endswith(".stl")
+    assert len(z.read("mesh/model.obj").decode().split("\nv ")[1].split()) == 6  # vertex colours on each v line
+    # contents the scan does not have, unknown formats, the same content twice
+    for bad, code in [([{"content": "cloud", "format": "ply"}], 404), ([{"content": "print", "format": "glb"}], 400),
+                      ([{"content": "mesh", "format": "ply"}, {"content": "mesh", "format": "glb"}], 400), ([], 400)]:
+        assert call(base + "/api/workspaces/x/export", "POST", {"items": bad})[0] == code
+
 
 def test_advice_reads_the_results_and_suggests_what_to_change(server):
     from motiongrammetry.advice import advise

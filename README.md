@@ -43,8 +43,8 @@ writes its own, so any stage can be re-run with other options without starting o
 
 ```
 video ─► keyframes ─► masks ─► camera positions ─► raw mesh ─► clean mesh ─► texture ─► exports
-         sharpest,    AI       COLMAP / GLOMAP     OpenMVS      carved with    OpenMVS    GLB, STL,
-         by motion    model    (or VGGT)           (or VGGT)    the masks                 OBJ, PLY
+         sharpest,    AI       COLMAP / GLOMAP     OpenMVS      carved with    OpenMVS    GLB, OBJ, PLY,
+         by motion    model    (or VGGT)           (or VGGT)    the masks                 STL, 3MF
 ```
 
 - **`src/motiongrammetry/`** is a Python package with a command line, `mg`, for every stage. Each
@@ -69,7 +69,10 @@ defaults) and [docs/web-ui.md](docs/web-ui.md) (the interface, feature by featur
 - **Edit the mesh**: sculpt, cut, fill holes, close openings, bring back what the cleanup removed,
   and paint the texture.
 - **Set which way is up**: click the part it stands on, and it settles as it would on a table.
-- **Export** a textured GLB or OBJ, or a watertight STL at the size you want, ready for a slicer.
+- **Export** just what you need, each in a format that suits it: the textured model (GLB, OBJ),
+  the clean mesh (GLB, PLY, OBJ), a watertight print at the size you want (STL, 3MF), the raw mesh,
+  the dense point cloud or the cameras (COLMAP, for Gaussian splatting or NeRF tools). Several
+  come as one zip.
 - **Compare settings** by duplicating a scan and running it again, on the GPU or the CPU.
 
 <table>
@@ -88,8 +91,8 @@ defaults) and [docs/web-ui.md](docs/web-ui.md) (the interface, feature by featur
   <tr>
     <td><img src="src/motiongrammetry/web/static/help/orient.jpg" alt="The shoe standing on its sole in the orientation tool"><br>
       <sub>Setting which way is up.</sub></td>
-    <td><img src="src/motiongrammetry/web/static/help/export.jpg" alt="The Export window building a 3D print file"><br>
-      <sub>Exporting a watertight print file.</sub></td>
+    <td><img src="src/motiongrammetry/web/static/help/export.jpg" alt="The Export window: contents and formats, with the 3D print previewed"><br>
+      <sub>Picking what to export, with the print previewed.</sub></td>
   </tr>
 </table>
 
@@ -129,8 +132,8 @@ Open http://127.0.0.1:8765, create a **New scan**, and upload your video. Then, 
 - **Manual** is the same screen with every option and stage at hand, for when you know what you
   want.
 
-When it's done, the **Preview** tab shows the model, the keyframes and masks and the files, and
-**Export…** builds the file you need. **Edit & paint** opens the editor.
+When it's done, the **Preview** tab shows the model and the keyframes and masks, and **Export…**
+lets you pick what to take out and in which format. **Edit & paint** opens the editor.
 
 **Help** in the app is the full how-to: how to film, every screen and option, a worked example from
 video to print with screenshots, and what to do when something goes wrong.

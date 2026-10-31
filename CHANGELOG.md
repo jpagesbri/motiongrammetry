@@ -10,6 +10,11 @@ the image with that version, and the About page and `mg --version` show it.
 
 ## Unreleased
 
+- **Export**: pick the contents to take out (textured model, clean mesh, 3D print, raw mesh,
+  dense point cloud, cameras) and each one's format; several come as one zip. New formats:
+  3MF for prints, OBJ for the clean and raw meshes, the dense cloud as PLY and the COLMAP
+  camera model. The Preview's file list is replaced by a short summary and the print check.
+
 ## 0.1.0 — 2026-10-31
 
 The first version.

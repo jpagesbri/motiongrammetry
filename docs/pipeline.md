@@ -156,8 +156,8 @@ All options (and their help) are in `options.py`; `mg <stage> --help` lists the 
   is "behind" comes from the cameras: rays from the real camera positions hit the visible
   surface from the front (98-99.9% on real scans); geometry alone gets a face mask backwards. When the centre of mass is not over the model's own base,
   `--print-stand auto` adds a 2 mm disc under it. Whatever is left (invented share, stand,
-  thin walls, pieces, overhangs) is reported on the clean card and under the STL in Outputs,
-  each with the option that changes it. Without a support plane, "up" is the normal of the
+  thin walls, pieces, overhangs) is reported on the clean card, in the Preview's print check
+  and in Export, each with the option that changes it. Without a support plane, "up" is the normal of the
   camera orbit, ~10 degrees truer than the mean camera up-vector on a partial hand-held orbit.
 - **OpenMVS quirks:** relative image paths resolve against the working folder (so it is set to
   `mvs/`), OBJ export segfaults (PLY + texture PNG is used), bow-tie vertices crash the texture

@@ -695,6 +695,29 @@ def export_print_stl(mesh_path: Path, dst: Path, transform: np.ndarray | None, w
     return info
 
 
+def write_3mf(mesh, dst: Path) -> Path:
+    """A 3MF file (the slicers' zip of XML, with its unit: millimetres) from a trimesh, without lxml."""
+    import zipfile
+
+    v = "\n".join(f'<vertex x="{x:.4f}" y="{y:.4f}" z="{z:.4f}"/>' for x, y, z in np.asarray(mesh.vertices))
+    t = "\n".join(f'<triangle v1="{a}" v2="{b}" v3="{c}"/>' for a, b, c in np.asarray(mesh.faces))
+    model = ('<?xml version="1.0" encoding="UTF-8"?>\n'
+             '<model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">\n'
+             f'<resources><object id="1" type="model"><mesh><vertices>\n{v}\n</vertices><triangles>\n{t}\n'
+             '</triangles></mesh></object></resources>\n<build><item objectid="1"/></build>\n</model>\n')
+    types = ('<?xml version="1.0" encoding="UTF-8"?>\n<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+             '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+             '<Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/></Types>\n')
+    rels = ('<?xml version="1.0" encoding="UTF-8"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            '<Relationship Target="/3D/3dmodel.model" Id="rel0" '
+            'Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/></Relationships>\n')
+    with zipfile.ZipFile(dst, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("[Content_Types].xml", types)
+        z.writestr("_rels/.rels", rels)
+        z.writestr("3D/3dmodel.model", model)
+    return dst
+
+
 def print_kwargs(opts: dict) -> dict:
     """print_* options (as the pipeline and UI name them) -> print_mesh arguments."""
     names = {"print_height": "height_mm", "print_base": "base", "print_mode": "mode", "print_stand": "stand",

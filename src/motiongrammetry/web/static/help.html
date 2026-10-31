@@ -176,7 +176,7 @@ fails.</p>
 <figure><img src="/help/preview-raw.jpg" alt="The raw mesh in the Preview: the shoe, the stool and the room" loading="lazy">
   <figcaption>The <b>raw mesh</b> layer: mvs reconstructs everything the camera saw, the stool and the room included.</figcaption></figure>
 <figure><img src="/help/preview.jpg" alt="The Preview tab with the finished shoe" loading="lazy">
-  <figcaption>After clean, texture and the edits below: just the shoe, with its colours; the files on the right.</figcaption></figure>
+  <figcaption>After clean, texture and the edits below: just the shoe, with its colours; Export on the right.</figcaption></figure>
 <p>Layers: camera positions, sparse points (from sfm), dense cloud and raw mesh (from mvs), clean mesh, textured model and,
 if you edited it, the custom version. Drag to orbit, right-drag or middle-drag to pan, wheel to zoom. Click a keyframe to
 look through its camera, double-click it to open it big. The <b>view cube</b> (bottom left, in every 3D view) shows which
@@ -186,8 +186,8 @@ and orthographic (no foreshortening: sizes and parallel lines stay true, handy f
 <b>Display</b> (<kbd>W</kbd> cycles): <b>Colours</b>,
 <b>Solid grey</b> (judge the shape without the photo), <b>Wireframe</b>, or <b>Solid + wires</b> (the shape and how dense the
 mesh is; the wires fade in as you zoom, since on a dense scan they would cover everything). <b>Highlight holes</b> draws every
-opening in orange and counts them: that is what the print report means by lids. <b>Files</b> lists the results with their size
-(stale ones are marked) and <b>Export…</b>.</p>
+opening in orange and counts them: that is what the print report means by lids. <b>Export</b> says what the scan has ready
+(and whether some of it is stale), shows the print check, and opens <b>Export…</b>.</p>
 <h3 id="orient">Orientation</h3>
 <figure><img src="/help/orient-floor.jpg" alt="Clicking the sole as the floor" loading="lazy">
   <figcaption><b>Click the floor…</b>, then click the part it stands on: here the shoe's sole, seen from below.</figcaption></figure>
@@ -220,23 +220,29 @@ the Run panel, in the assisted run, or on the command line as <code>--option-nam
 <p>Named sets of options for the capture problems that come up most often; explicit options still win.</p>
 <div id="presetsRef"><p class="muted">loading…</p></div>
 
-<h2 id="outputs">Outputs and Export</h2>
+<h2 id="outputs">Export</h2>
+<p>Tick what you want to take out of a scan and pick each one's format; several come as one zip, a folder each (every file
+is also downloadable on its own).</p>
 <table>
-  <tr><th>File</th><th>What it is</th><th>Use it for</th></tr>
-  <tr><td><code>model.glb</code></td><td>Textured model, Y-up</td><td>Viewers, Blender, the web, AR</td></tr>
-  <tr><td><code>mesh_clean.glb</code> / <code>.ply</code></td><td>Clean mesh with vertex colours</td><td>Editing, measuring, when no texture is needed</td></tr>
-  <tr><td><code>print.stl</code></td><td>One closed solid, Z-up, in millimetres, with a printability report</td><td>3D printing (slicers)</td></tr>
-  <tr><td><code>textured.ply</code> + <code>textured0.png</code></td><td>Textured mesh in the reconstruction's frame</td><td>Other photogrammetry tools</td></tr>
-  <tr><td><code>scene_mesh.ply</code>, <code>scene_dense.ply</code></td><td>Raw mesh and dense cloud (with background)</td><td>Inspection, other cleaners</td></tr>
-  <tr><td><code>custom/…</code></td><td>Your edited versions (sculpt, paint)</td><td>Same as above</td></tr>
+  <tr><th>Content</th><th>Formats</th><th>Use it for</th></tr>
+  <tr><td>Textured model</td><td>GLB, OBJ + MTL + PNG (zip)</td><td>Viewers, Blender, the web, AR</td></tr>
+  <tr><td>Clean mesh (a colour per vertex)</td><td>GLB, PLY, OBJ</td><td>Editing, measuring, when no texture is needed</td></tr>
+  <tr><td>3D print: one closed solid, Z-up, in mm</td><td>STL, 3MF (keeps the unit)</td><td>Slicers</td></tr>
+  <tr><td>Raw mesh, before cleanup</td><td>PLY, OBJ, GLB</td><td>Inspection, other cleaners</td></tr>
+  <tr><td>Dense point cloud</td><td>PLY</td><td>Point-cloud tools (CloudCompare, …)</td></tr>
+  <tr><td>Cameras: the COLMAP model</td><td>COLMAP (zip of <code>sparse/0</code>)</td><td>Gaussian splatting, NeRF, other photogrammetry tools</td></tr>
 </table>
+<p><b>From</b> picks the pipeline's results or your edits (the custom version from the editor); the raw mesh, cloud and
+cameras exist only in the pipeline's. Contents a scan does not have yet say which stage makes them.</p>
 <h3 id="export">Export…</h3>
 <figure><img src="/help/export.jpg" alt="The Export window" loading="lazy">
-  <figcaption>One file with its own settings: format, pipeline or custom version, orientation, size and, for prints, how the solid is made. The result is shown in 3D with its report.</figcaption></figure>
-<p>Formats: 3D print (STL), textured GLB, vertex-colour GLB, textured OBJ (a zip with the material and image) and PLY. A height
-sets the real size (GLB in metres, the others in millimetres; a scan has no scale of its own). <b>Up</b> is your saved
-orientation when you set one (see <a href="#orient">Orientation</a>), else automatic; the other choices are for one-off files.
-Settings are remembered per file type.</p>
+  <figcaption>The contents to take out, each in its format, the orientation, the size and, for prints, how the solid is made. The result is shown in 3D with its report.</figcaption></figure>
+<p>Everything exported together is placed the same way, so the pieces line up. A height sets the clean model's real size
+(GLB in metres, the others in millimetres; a scan has no scale of its own), and everything else is scaled with it.
+<b>Up</b> is your saved orientation when you set one (see <a href="#orient">Orientation</a>), else automatic; the other
+choices are for one-off files. The cameras stay in the reconstruction's frame, as COLMAP tools expect. The 3D view shows
+each file (pick one at the top left when there are several); a dense cloud of hundreds of MB is only downloaded. Your
+choices are remembered.</p>
 <h3 id="printing">3D printing</h3>
 <p>A scan is a surface, often with holes and pieces; a printer needs one closed solid that stands. The print file is rebuilt
 on a ~0.3 mm grid, which removes self-intersections and thickens walls thinner than the <b>minimum wall</b>.</p>

@@ -53,14 +53,16 @@ mg ui --root ~/scans --port 9000
   warnings and errors are listed on each stage card.
 - **Log** (drawer): live stage output (COLMAP internals hidden by default), and a History tab with every
   stage run and the OpenMVS tool logs, each viewable or downloadable.
-- **Files** (Preview tab): download links for the results (textured GLB, clean mesh, 3D-print STL,
-  PLYs, raw mesh, dense cloud) with their size, a zip of `mesh/`, and the folder they are in; stale
-  files are marked.
-- **Export…** (Preview tab): one file at a time with its own settings, remembered per file type:
-  3D print STL (height, solid / shell / auto, which way the shell grows and how thick, minimum
-  wall, stand, flat base), textured GLB, vertex-colour GLB, textured OBJ (zip with MTL and PNG) or
-  PLY, from the pipeline or the custom version, with orientation and a real-world height (GLB in
-  metres, the others in millimetres). Shows the built file in 3D and, for prints, the report.
+- **Export** (Preview tab): what the scan has ready (stale results flagged), the print check and
+  the folder on disk.
+- **Export…**: tick the contents and pick each one's format: textured model (GLB, OBJ + MTL + PNG),
+  clean mesh with vertex colours (GLB, PLY, OBJ), 3D print (STL or 3MF; height, solid / shell /
+  auto, which way the shell grows and how thick, minimum wall, stand, flat base), raw mesh (PLY,
+  OBJ, GLB), dense point cloud (PLY) and cameras (the COLMAP model). From the pipeline or the
+  custom version (raw mesh, cloud and cameras only from the pipeline), with orientation and a
+  real-world height shared by everything (GLB in metres, the others in millimetres; the cameras
+  stay in the reconstruction's frame). One content is one file, several are one zip with a folder
+  each. Shows each built file in 3D and, for prints, the report. Choices are remembered.
 - **Edit & paint** (`/edit`): sculpt the clean mesh (draw, dig, inflate, deflate, smooth,
   flatten, pinch, grab, cut away, with an option to cap what a cut opens; fill + merge to add
   volume, e.g. close the hole of a ring shape: by default only the region around the fill spheres
@@ -75,7 +77,7 @@ mg ui --root ~/scans --port 9000
   pipeline's files: a sculpt writes `custom/mesh_clean.ply`, its GLB and a custom print STL; the
   texture stage then projects the photos onto the custom mesh (when it is newer than the clean
   mesh) into `custom/model.glb`, which you can paint; painting the pipeline's textured model copies
-  it into `custom/` first. Outputs and the zip list both versions, the viewer has a **Custom
+  it into `custom/` first. Export offers both versions, the viewer has a **Custom
   (edited)** layer, and **Delete custom version** goes back to the pipeline's.
 - **Keyframes**: thumbnail strip with optional mask overlay; click one to view from its camera,
   double-click to open it in the frame viewer.
