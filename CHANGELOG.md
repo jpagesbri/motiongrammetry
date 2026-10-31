@@ -26,6 +26,10 @@ the image with that version, and the About page and `mg --version` show it.
   the layout with exactly those pieces (one that cannot lie flat is cut further, and says so).
   The pieces show in colours as you draw; **Preview** / **Preview texture** show the new texture
   at low resolution without saving; **Undo layout** goes back; the editor updates in place.
+- **Editor, texture after sculpting**: paint mode offers **Texture my edits** (the texture step on
+  the edited mesh, run from the editor) and **Carry the texture over** (no photos: a layout for the
+  edited mesh coloured from the nearest point of the old texture; removed pieces go, closed holes
+  take the colour around them; also for VGGT scans).
 
 ## 0.1.0 — 2026-10-31
 

@@ -570,6 +570,33 @@ def test_texture_layout_is_rebuilt_into_the_custom_texture(server):
     assert not state()["texture"] and not list(c.glob("textured*"))
 
 
+def test_texture_is_carried_over_to_the_sculpted_mesh(server):
+    import trimesh
+    from test_atlas import scattered_box
+
+    base, app = server
+    call(base + "/api/workspaces", "POST", {"name": "tr"})
+    ws = Workspace(app.root / "tr")
+    (ws.mesh / "custom").mkdir(parents=True)
+    scattered_box(ws.mesh)
+    welded = trimesh.load(str(ws.mesh / "textured.ply"), process=True)
+    welded.export(str(ws.mesh / "mesh_clean.ply"))
+    welded.update_faces(welded.triangles_center[:, 1] < 0.5 - 1e-6)  # sculpted: the top removed
+    welded.remove_unreferenced_vertices()
+    welded.export(str(ws.mesh / "custom" / "mesh_clean.ply"))
+    state = lambda: call(base + "/api/workspaces/tr/state")[1]  # noqa: E731
+    assert state()["can_texture"] is False  # no OpenMVS scene: only carrying over is possible
+    status, r = call(base + "/api/workspaces/tr/edit/transfer", "POST", {})
+    assert status == 200 and r["pieces"] == 5 and r["source"] == "pipeline"
+    c = state()["custom"]
+    assert c["texture"] and c["texture_from"] == "custom" and not c["texture_stale"] and c["layout_undo"]
+    assert len(trimesh.load(str(ws.mesh / "custom" / "textured.ply"), process=False).faces) == len(welded.faces)
+    assert call(base + "/api/workspaces/tr/edit/layout", "POST", {"undo": True})[1] == {"restored": "pipeline"}
+    assert not state()["custom"]["texture"]
+    (ws.mesh / "custom" / "mesh_clean.ply").unlink()
+    assert call(base + "/api/workspaces/tr/edit/transfer", "POST", {})[0] == 404  # nothing sculpted
+
+
 def test_advice_reads_the_results_and_suggests_what_to_change(server):
     from motiongrammetry.advice import advise
 

@@ -207,8 +207,11 @@ def flatten(v: np.ndarray, f: np.ndarray, normals: np.ndarray, area: np.ndarray,
 
 
 # ---- the whole thing ----------------------------------------------------------------------
-def _load(src: Path):
+def _load(src: Path, preview: int | None = None):
+    """The textured mesh and its texture (float RGB); for a preview, the texture at most twice the
+    preview's size (read at a lower resolution, it is quick)."""
     import trimesh
+    from PIL import Image
 
     pngs = sorted(src.parent.glob(src.stem + "[0-9]*.png"))
     if len(pngs) > 1:
@@ -217,7 +220,10 @@ def _load(src: Path):
     img = getattr(m.visual.material, "image", None) if hasattr(m.visual, "material") else None
     if img is None or getattr(m.visual, "uv", None) is None:
         raise ValueError("the model has no texture to lay out")
-    return m, np.asarray(img.convert("RGB"), np.float32)
+    img = img.convert("RGB")
+    if preview:
+        img.thumbnail((2 * preview, 2 * preview), Image.BILINEAR)
+    return m, np.asarray(img, np.float32)
 
 
 def count_pieces(f: np.ndarray, uv: np.ndarray, v: np.ndarray) -> int:
@@ -297,6 +303,61 @@ def from_seams(gf: np.ndarray, adj: np.ndarray, adj_edges: np.ndarray, seams: np
     return _components(len(gf), adj[keep, 0], adj[keep, 1])
 
 
+def _detail(f: np.ndarray, uv: np.ndarray, v: np.ndarray, area: np.ndarray, ow: int, oh: int) -> tuple[float, int]:
+    """Texels per unit of length to keep, and the number of pieces, of a textured mesh.
+
+    OpenMVS gives each patch the detail of its photo, so keep the detail that 90% of the surface has
+    (by area), not the average, or the sharp parts soften. Measured per piece (its texels over its
+    area): within a flattened piece the stretch varies a little, and a per-triangle measure would
+    grow the image at every rebuild."""
+    lab = _piece_labels(f, uv, v)
+    k = lab.max() + 1
+    piece_area = np.bincount(lab, area, k)
+    per_piece = np.sqrt(np.bincount(lab, np.abs(_signed_area(uv * [ow, oh], f)), k) / np.maximum(piece_area, 1e-20))
+    o = np.argsort(per_piece)
+    cum = np.cumsum(piece_area[o]) / max(piece_area.sum(), 1e-20)
+    return float(per_piece[o][min(np.searchsorted(cum, 0.9), len(o) - 1)]), int(k)
+
+
+def _layout(pv, gf, area, normals, lab, density, padding, limit, fit=False) -> dict:
+    """Flatten and pack the pieces lab labels: one vertex per (piece, mesh vertex), so the pieces'
+    seams split the mesh. Returns their vertices, faces, coordinates (v up) and the image size."""
+    corner_uv = np.zeros((len(gf), 3, 2))
+    chart = np.zeros(len(gf), np.int64)
+    n = recut = 0
+    for seg in _pieces(pv, gf, area, normals, lab):
+        recut += len(seg) > 1  # folded over: cut further so it lies flat
+        for fids, uvs in seg:
+            corner_uv[fids] = uvs
+            chart[fids] = n
+            n += 1
+    key = np.stack([np.repeat(chart, 3), gf.ravel()], 1)
+    uniq, vid = np.unique(key, axis=0, return_inverse=True)
+    vid = vid.reshape(-1, 3)
+    corner_px, W, H, used = pack(corner_uv, chart, n, density, padding, limit, fit=fit)
+    uvs = np.zeros((len(uniq), 2))
+    uvs[vid.ravel()] = (corner_px / [W, H]).reshape(-1, 2)
+    uvs[:, 1] = 1 - uvs[:, 1]  # pixels count down, texture coordinates up
+    return {"vertices": pv[uniq[:, 1]], "faces": vid, "uv": uvs, "W": W, "H": H, "used": used,
+            "pieces": n, "recut": recut}
+
+
+def _write(dst: Path, vertices: np.ndarray, faces: np.ndarray, uv: np.ndarray, image: np.ndarray) -> None:
+    """A textured PLY naming its PNG next to it (dst.stem + "0.png"), as OpenMVS writes them."""
+    import trimesh
+    from PIL import Image
+
+    out = trimesh.Trimesh(vertices, faces, process=False)
+    out.visual = trimesh.visual.TextureVisuals(uv=uv, image=Image.fromarray(image))
+    png = dst.with_name(dst.stem + "0.png")
+    Image.fromarray(image).save(png, optimize=False, compress_level=6)
+    head, rest = out.export(file_type="ply").split(b"end_header\n", 1)
+    head = head.replace(b"\nelement vertex", f"\ncomment TextureFile {png.name}\nelement vertex".encode(), 1)
+    tmp = dst.with_suffix(".tmp.ply")
+    tmp.write_bytes(head + b"end_header\n" + rest)
+    tmp.replace(dst)
+
+
 def relayout(src: Path, dst: Path, angle: float = 45.0, min_size: float = 0.005, smooth: int | None = None,
              size: int | None = None, padding: int = 4, max_size: int = 8192, seams: np.ndarray | None = None,
              preview: int | None = None) -> dict:
@@ -305,15 +366,9 @@ def relayout(src: Path, dst: Path, angle: float = 45.0, min_size: float = 0.005,
     per unit of surface), up to max_size. seams: pieces from seams drawn by hand (see from_seams)
     instead of cut by the surface's sides. preview: a quick look at most this many texels wide (the
     old texture read at a lower resolution too)."""
-    import trimesh
-    from PIL import Image
-
     t0 = time.time()
-    m, old = _load(src)
+    m, old = _load(src, preview)
     if preview:
-        img = Image.fromarray(old.astype(np.uint8))
-        img.thumbnail((2 * preview, 2 * preview))
-        old = np.asarray(img, np.float32)
         max_size, padding = preview, 2
     f_old, uv_old = np.asarray(m.faces), np.asarray(m.visual.uv, np.float64)
     if seams is None:
@@ -323,59 +378,68 @@ def relayout(src: Path, dst: Path, angle: float = 45.0, min_size: float = 0.005,
         pv, gf, area, adj, adj_edges, normals = _geometry(m, 0)
         lab = from_seams(gf, adj, adj_edges, seams)
     t_seg = time.time()
-    # flatten each piece; every piece gets its own copy of its vertices (seams split)
-    corner_uv = np.zeros((len(gf), 3, 2))
-    chart = np.zeros(len(gf), np.int64)
-    n_charts = recut = 0
-    for seg in _pieces(pv, gf, area, normals, lab):
-        recut += len(seg) > 1  # folded over: cut further so it lies flat
-        for fids, uvs in seg:
-            corner_uv[fids] = uvs
-            chart[fids] = n_charts
-            n_charts += 1
-    t_flat = time.time()
-    # one vertex per (piece, mesh vertex): the pieces' seams split the mesh
-    key = np.stack([np.repeat(chart, 3), gf.ravel()], 1)
-    uniq, vid = np.unique(key, axis=0, return_inverse=True)
-    vid = vid.reshape(-1, 3)
-    oh, ow = old.shape[:2]
-    # texels per unit of length: OpenMVS gives each patch the detail of its photo, so keep the
-    # detail that 90% of the surface has (by area), not the average, or the sharp parts soften.
-    # Measured per old piece (its texels over its area): within a flattened piece the stretch
-    # varies a little, and a per-triangle measure would grow the image at every rebuild.
-    old_lab = _piece_labels(f_old, uv_old, np.asarray(m.vertices))
-    k = old_lab.max() + 1
-    piece_area = np.bincount(old_lab, area, k)
-    per_piece = np.sqrt(np.bincount(old_lab, np.abs(_signed_area(uv_old * [ow, oh], f_old)), k)
-                        / np.maximum(piece_area, 1e-20))
-    o = np.argsort(per_piece)
-    cum = np.cumsum(piece_area[o]) / max(piece_area.sum(), 1e-20)
-    density = float(per_piece[o][min(np.searchsorted(cum, 0.9), len(o) - 1)])
-    corner_px, W, H, used = pack(corner_uv, chart, n_charts, density, padding, size or max_size, fit=bool(size))
-    faces = vid
-    uvs = np.zeros((len(uniq), 2))
-    uvs[vid.ravel()] = (corner_px / [W, H]).reshape(-1, 2)
-    uvs[:, 1] = 1 - uvs[:, 1]  # pixels count down, texture coordinates up
+    density, k = _detail(f_old, uv_old, np.asarray(m.vertices), area, old.shape[1], old.shape[0])
+    lay = _layout(pv, gf, area, normals, lab, density, padding, size or max_size, fit=bool(size))
     t_pack = time.time()
-    new = bake(old, uv_old[f_old], uvs[faces], W, H, padding)
+    # the same triangles: each new texel takes the colour of the same point in the old texture
+    sample, corners = _sampler(old, uv_old[f_old]), uv_old[f_old]
+    new = _fill(lay["W"], lay["H"], lay["uv"][lay["faces"]],
+                lambda tri, bc: sample(np.einsum("nk,nkj->nj", bc, corners[tri])), padding)
     t_bake = time.time()
-    # write: OpenMVS-style textured PLY (per-vertex coordinates here) next to its PNG
-    out = trimesh.Trimesh(pv[uniq[:, 1]], faces, process=False)
-    out.visual = trimesh.visual.TextureVisuals(uv=uvs, image=Image.fromarray(new))
-    png = dst.with_name(dst.stem + "0.png")
-    Image.fromarray(new).save(png, optimize=False, compress_level=6)
-    data = out.export(file_type="ply")
-    head, rest = data.split(b"end_header\n", 1)
-    head = head.replace(b"\nelement vertex", f"\ncomment TextureFile {png.name}\nelement vertex".encode(), 1)
-    tmp = dst.with_suffix(".tmp.ply")
-    tmp.write_bytes(head + b"end_header\n" + rest)
-    tmp.replace(dst)
-    info = {"pieces_now": int(k), "pieces": n_charts, "recut": recut,
-            "size": [W, H], "used": round(used, 2), "faces": len(gf),
-            "seconds": {"segment": round(t_seg - t0, 1), "flatten": round(t_flat - t_seg, 1),
-                        "pack": round(t_pack - t_flat, 1), "bake": round(t_bake - t_pack, 1)}}
-    log.info("texture layout: %d -> %d pieces, %dx%d, %.0f%% used, %.0f s", info["pieces_now"], n_charts, W, H,
+    _write(dst, lay["vertices"], lay["faces"], lay["uv"], new)
+    info = {"pieces_now": k, "pieces": lay["pieces"], "recut": lay["recut"], "size": [lay["W"], lay["H"]],
+            "used": round(lay["used"], 2), "faces": len(gf),
+            "seconds": {"segment": round(t_seg - t0, 1), "layout": round(t_pack - t_seg, 1), "bake": round(t_bake - t_pack, 1)}}
+    log.info("texture layout: %d -> %d pieces, %dx%d, %.0f%% used, %.0f s", k, lay["pieces"], lay["W"], lay["H"],
              100 * info["used"], time.time() - t0)
+    return info
+
+
+def transfer(src: Path, mesh: Path, dst: Path, angle: float = 45.0, min_size: float = 0.005, padding: int = 4,
+             max_size: int = 8192) -> dict:
+    """Carry src's texture over to another mesh of the same subject (the editor's sculpted one),
+    without the photos: mesh gets its own layout (cut by its sides, as relayout) and each texel the
+    colour of the nearest point of src's textured surface. Removed parts are simply gone; new
+    surface (closed holes, merged volume) takes the colour of the surface nearest to it."""
+    import open3d as o3d
+    import trimesh
+
+    t0 = time.time()
+    m, old = _load(src)
+    f_src, uv_src, v_src = np.asarray(m.faces), np.asarray(m.visual.uv, np.float64), np.asarray(m.vertices)
+    target = trimesh.load(str(mesh), force="mesh", process=False)
+    pv, gf, area, adj, _, normals = _geometry(target, None)
+    lab = segment(normals, area, adj, angle, min_size)
+    src_area = trimesh.Trimesh(v_src, f_src, process=False).area_faces
+    density, k = _detail(f_src, uv_src, v_src, src_area, old.shape[1], old.shape[0])
+    lay = _layout(pv, gf, area, normals, lab, density, padding, max_size)
+    t_lay = time.time()
+    scene = o3d.t.geometry.RaycastingScene()
+    scene.add_triangles(o3d.core.Tensor(v_src.astype(np.float32)), o3d.core.Tensor(f_src.astype(np.uint32)))
+    sample, corners = _sampler(old, uv_src[f_src]), uv_src[f_src]
+    far = []
+
+    def colour(tri, bc):
+        p = np.einsum("nk,nkj->nj", bc, pv[gf[tri]]).astype(np.float32)
+        r = scene.compute_closest_points(o3d.core.Tensor(p))
+        pid = r["primitive_ids"].numpy().astype(np.int64)
+        pu = r["primitive_uvs"].numpy().astype(np.float64)  # point = (1-u-v) a + u b + v c
+        far.append(np.linalg.norm(r["points"].numpy() - p, axis=1))
+        w = np.stack([1 - pu.sum(1), pu[:, 0], pu[:, 1]], 1)
+        return sample(np.einsum("nk,nkj->nj", w, corners[pid]))
+
+    new = _fill(lay["W"], lay["H"], lay["uv"][lay["faces"]], colour, padding)
+    t_bake = time.time()
+    _write(dst, lay["vertices"], lay["faces"], lay["uv"], new)
+    d = np.concatenate(far) if far else np.zeros(1)
+    size = float(np.linalg.norm(np.ptp(pv, axis=0)))
+    info = {"pieces_now": k, "pieces": lay["pieces"], "recut": lay["recut"], "size": [lay["W"], lay["H"]],
+            "used": round(lay["used"], 2), "faces": len(gf),
+            # how much of the surface is new (more than 0.5% of the model's size from the old one)
+            "new_surface": round(float((d > 0.005 * size).mean()), 3),
+            "seconds": {"layout": round(t_lay - t0, 1), "bake": round(t_bake - t_lay, 1)}}
+    log.info("texture carried over: %d pieces, %dx%d, %.0f%% new surface, %.0f s", lay["pieces"], lay["W"], lay["H"],
+             100 * info["new_surface"], time.time() - t0)
     return info
 
 
@@ -489,29 +553,42 @@ def _grow(img: np.ndarray, hit: np.ndarray, rings: int) -> None:
         hit |= ring
 
 
-def bake(old: np.ndarray, uv_from: np.ndarray, uv_to: np.ndarray, W: int, H: int, padding: int = 4) -> np.ndarray:
-    """Copy a texture across layouts: every texel of the new (W x H) image inside a triangle takes
-    the old texture's colour at the same point of that triangle. uv_from / uv_to: (F, 3, 2)."""
+def _sampler(old: np.ndarray, corners: np.ndarray):
+    """Bilinear lookups in a texture (coordinates v up), its pieces first grown into their
+    background so a lookup at an edge does not pick the background up. corners: (F, 3, 2)."""
     oh, ow = old.shape[:2]
-    # first grow the old pieces into their background, so sampling at an edge does not pick it up
     old = old.copy()
     covered = np.zeros((oh, ow), bool)
-    for _, px, py, _ in _raster(uv_from, ow, oh):
+    for _, px, py, _ in _raster(corners, ow, oh):
         covered[py, px] = True
     _grow(old, covered, 3)
-    out = np.zeros((H, W, 3), np.float32)
-    hit = np.zeros((H, W), bool)
-    S = np.stack([uv_from[..., 0] * ow - 0.5, (1 - uv_from[..., 1]) * oh - 0.5], -1)  # old texel coords
-    for tri, px, py, bc in _raster(uv_to, W, H):
-        q = np.einsum("nk,nkj->nj", bc, S[tri])
-        x = np.clip(q[:, 0], 0, ow - 1.001)
-        y = np.clip(q[:, 1], 0, oh - 1.001)
+
+    def sample(q: np.ndarray) -> np.ndarray:
+        x = np.clip(q[:, 0] * ow - 0.5, 0, ow - 1.001)
+        y = np.clip((1 - q[:, 1]) * oh - 0.5, 0, oh - 1.001)
         x0, y0 = x.astype(np.int64), y.astype(np.int64)
         fx, fy = (x - x0)[:, None], (y - y0)[:, None]
-        out[py, px] = (old[y0, x0] * (1 - fx) * (1 - fy) + old[y0, x0 + 1] * fx * (1 - fy)
-                       + old[y0 + 1, x0] * (1 - fx) * fy + old[y0 + 1, x0 + 1] * fx * fy)
+        return (old[y0, x0] * (1 - fx) * (1 - fy) + old[y0, x0 + 1] * fx * (1 - fy)
+                + old[y0 + 1, x0] * (1 - fx) * fy + old[y0 + 1, x0 + 1] * fx * fy)
+
+    return sample
+
+
+def _fill(W: int, H: int, uv: np.ndarray, colour, padding: int = 4) -> np.ndarray:
+    """A W x H texture: every texel inside a triangle (uv: (F, 3, 2), v up) gets colour(triangle,
+    barycentric); then a margin around every piece, filled from its edge, so filtering shows no seams."""
+    out = np.zeros((H, W, 3), np.float32)
+    hit = np.zeros((H, W), bool)
+    for tri, px, py, bc in _raster(uv, W, H):
+        out[py, px] = colour(tri, bc)
         hit[py, px] = True
-    # a margin around every piece, filled from its edge: no seams when the texture is filtered
     _grow(out, hit, padding + 2)
     out[~hit] = 128
     return np.clip(out + 0.5, 0, 255).astype(np.uint8)
+
+
+def bake(old: np.ndarray, uv_from: np.ndarray, uv_to: np.ndarray, W: int, H: int, padding: int = 4) -> np.ndarray:
+    """Copy a texture across layouts of the same triangles: every texel of the new (W x H) image
+    takes the old texture's colour at the same point of its triangle. uv_from / uv_to: (F, 3, 2)."""
+    sample = _sampler(old, uv_from)
+    return _fill(W, H, uv_to, lambda tri, bc: sample(np.einsum("nk,nkj->nj", bc, uv_from[tri])), padding)

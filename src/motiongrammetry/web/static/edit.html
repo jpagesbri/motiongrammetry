@@ -112,6 +112,11 @@
       </div>
       <div id="modeNote" class="note"></div>
       <div id="modeWarn" class="warn" hidden></div>
+      <div id="editTex" hidden>
+        <div class="btns"><button class="btn primary" id="texEdits" title="run the texture step on your edited mesh: the photos projected again (about a minute on the GPU)">Texture my edits</button>
+          <button class="btn" id="carryTex" title="no photos: your edited mesh gets its own layout, coloured from the nearest point of this texture (seconds)">Carry the texture over</button></div>
+        <div class="note" id="texInfo"></div>
+      </div>
     </section>
     <section>
       <h2>Tools</h2>
@@ -567,11 +572,16 @@ function renderModeInfo() {
   let warn = '';
   if (m === 'sculpt' && c.mesh_outdated)
     warn = 'This custom mesh was made from an older clean mesh (clean ran again since), so texture will not use it. Save it again to use it, or delete it.';
-  else if (m === 'paint' && c.mesh && !c.mesh_outdated && (!c.texture || c.texture_from !== 'custom' || c.texture_stale))
-    warn = 'This textured model is of the pipeline mesh, not your edited one: re-run texture on the Generate screen to project the photos onto your edit, then paint (paint saved now would be replaced).';
+  const edited = m === 'paint' && c.mesh && !c.mesh_outdated && (!c.texture || c.texture_from !== 'custom' || c.texture_stale);
+  if (edited)
+    warn = 'This textured model is from before your sculpt edits: pieces you removed still show and holes you closed are missing. '
+      + (wsState.can_texture ? 'Texture your edits from the photos, or carry this texture over to the edited mesh (quick, no photos; closed holes take the colour around them).'
+        : 'Carry this texture over to the edited mesh (no photos: this scan has no OpenMVS scene to texture from; closed holes take the colour around them).')
+      + ' Paint saved before that would be replaced.';
   else if (m === 'paint' && !c.texture && (wsState.stale || []).includes('texture'))
     warn = 'The textured model is older than the clean mesh: re-run texture first.';
   $('modeWarn').hidden = !warn; $('modeWarn').textContent = warn;
+  $('editTex').hidden = !edited; $('texEdits').hidden = !wsState.can_texture;
 }
 document.querySelectorAll('[data-layout]').forEach((b) => b.addEventListener('click', () => {
   layout = b.dataset.layout;
@@ -1867,6 +1877,43 @@ $('saveBtn').addEventListener('click', doSave);
 $('discardBtn').addEventListener('click', () => {
   if (!anyDirty() || confirm('Throw away the unsaved edits?')) { S.dirty = P.dirty = false; location.reload(); }
 });
+// ---- the textured model after sculpting: textured again from the photos (the texture step, run
+// here), or this texture carried over to the edited mesh (atlas.transfer)
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+$('texEdits').addEventListener('click', async () => {
+  if (P.dirty && !confirm('Throw away the unsaved paint and texture your edited mesh?')) return;
+  $('texEdits').disabled = $('carryTex').disabled = true;
+  try {
+    await api(`/api/workspaces/${ws}/run`, { method: 'POST', body: JSON.stringify({ stages: ['texture'], options: {} }) });
+    let j;
+    const t0 = Date.now();
+    do {  // OpenMVS's longest step (choosing a photo per face) reports no progress: the time it has taken
+      await sleep(1500);
+      j = await api(`/api/workspaces/${ws}/job?since=1000000000`);
+      const t = j.stages?.texture || {}, s = Math.round((Date.now() - t0) / 1000);
+      $('texInfo').textContent = `texturing your edits from the photos (about a minute on the GPU)… ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
+        + (t.step ? ` · ${t.step}` : '');
+    } while (j.status === 'running');
+    if (j.status !== 'done') throw new Error(`the texture step ${j.status}: see its log on the Generate screen`);
+    await reloadPaint();
+    $('texInfo').textContent = '';
+    flash('your edited mesh is textured from the photos');
+  } catch (e) { $('texInfo').textContent = ''; fail(e); }
+  $('texEdits').disabled = $('carryTex').disabled = false;
+});
+$('carryTex').addEventListener('click', async () => {
+  if (P.dirty && !confirm('Throw away the unsaved paint and carry the texture over to your edited mesh?')) return;
+  $('texEdits').disabled = $('carryTex').disabled = true; $('texInfo').textContent = 'carrying the texture over (seconds to half a minute)…';
+  try {
+    const r = await api(`/api/workspaces/${ws}/edit/transfer`, { method: 'POST', body: '{}' });
+    await reloadPaint();
+    $('texInfo').textContent = '';
+    flash(`texture carried over to your edited mesh: ${r.pieces.toLocaleString()} pieces`
+      + (r.new_surface > 0.001 ? `, ${(100 * r.new_surface).toFixed(1)}% new surface coloured from around it` : '') + ' · Undo layout goes back');
+  } catch (e) { $('texInfo').textContent = ''; fail(e); }
+  $('texEdits').disabled = $('carryTex').disabled = false;
+});
+
 // ---- texture layout (atlas.py): the texture's pieces rebuilt by the model's sides
 const lyParams = () => ({ angle: Number($('lyAngle').value), min_size: Number($('lyMin').value) / 10 });
 function lyLabels() {

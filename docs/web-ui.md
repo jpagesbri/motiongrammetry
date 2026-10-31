@@ -75,7 +75,9 @@ mg ui --root ~/scans --port 9000
   restore original, blur, smudge, clone, lighten, darken, saturate, desaturate, colour picker; clone
   on the model copies by place on the surface; **Rebuild layout** re-cuts the texture by the model's
   sides with an angle and a minimum piece size, or **Edit seams…** with the seams drawn on the
-  model, cut along mesh edges and joined with a brush; see `atlas.py`),
+  model, cut along mesh edges and joined with a brush; see `atlas.py`; after a sculpt, **Texture
+  my edits** runs the texture stage on the edited mesh and **Carry the texture over** transfers the
+  old texture to it by nearest point, `atlas.transfer`),
   with undo. Edits are saved as a **custom version** in `mesh/custom/` and never change the
   pipeline's files: a sculpt writes `custom/mesh_clean.ply`, its GLB and a custom print STL; the
   texture stage then projects the photos onto the custom mesh (when it is newer than the clean

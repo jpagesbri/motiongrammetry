@@ -261,7 +261,12 @@ under the print file and on the clean stage card, each with the option that chan
 <h2 id="edit">Edit &amp; paint</h2>
 <p>Edits are saved as a <b>custom version</b> (in <code>mesh/custom/</code>); the pipeline's files are never changed and
 <b>Delete custom version</b> goes back to them. Texture uses your edited mesh when it is newer than the clean mesh, so the
-order is: <b>sculpt → re-run texture → paint</b>.</p>
+order is: <b>sculpt → texture the edit → paint</b>. After a sculpt, paint mode says its textured model is from before the
+edit (removed pieces still show, closed holes are missing) and offers two ways: <b>Texture my edits</b> runs the texture
+step on your edited mesh from here (the photos projected again, about a minute on the GPU; surface no camera saw, like a
+closed underside, comes out grey), and <b>Carry the texture over</b> gives the edited mesh its own layout coloured from the
+nearest point of the old texture (seconds, no photos, also for scans made with VGGT, which have no scene to texture from;
+closed holes take the colour of the surface around them). <b>Undo layout</b> goes back from a carry-over.</p>
 <h3 id="sculpt">Sculpt</h3>
 <p>Left-drag on the mesh to use the tool, off it (or right-drag) to orbit, middle-drag to pan, wheel to zoom. The example: the
 shoe sat on a stool, so its underside was never filmed and the scan is open there, with a loose scrap

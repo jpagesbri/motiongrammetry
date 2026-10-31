@@ -155,3 +155,28 @@ def test_rebuilding_a_rebuilt_layout_keeps_its_size_and_pieces(tmp_path):
     second = atlas.relayout(tmp_path / "a.ply", tmp_path / "b.ply")
     assert second["pieces_now"] == second["pieces"] == first["pieces"] == 6
     assert second["size"] == first["size"]
+
+
+def test_texture_carried_over_to_an_edited_mesh_keeps_its_colours(tmp_path):
+    src = scattered_box(tmp_path)
+    old = trimesh.load(str(src), process=False)
+    # the "sculpted" mesh: other triangles (welded and subdivided), and the top side removed
+    welded = trimesh.Trimesh(old.vertices, old.faces, process=True)
+    edited = trimesh.Trimesh(*trimesh.remesh.subdivide(welded.vertices, welded.faces), process=False)
+    edited.update_faces(edited.triangles_center[:, 1] < 0.5 - 1e-6)
+    edited.remove_unreferenced_vertices()
+    edited.export(str(tmp_path / "edited.ply"))
+    info = atlas.transfer(src, tmp_path / "edited.ply", tmp_path / "carried.ply")
+    out = trimesh.load(str(tmp_path / "carried.ply"), process=False)
+    assert info["pieces"] == 5 == pieces_in(tmp_path / "carried.ply") and info["new_surface"] == 0
+    assert len(out.faces) == len(edited.faces) and np.asarray(out.vertices)[:, 1].max() < 0.5 + 1e-6
+    # the same 3D points have the same colour as on the old model (the front: a gradient)
+    rng = np.random.default_rng(0)
+    front = np.flatnonzero(old.triangles_center[:, 2] > 0.5 - 1e-6)
+    faces, w = rng.choice(front, 300), rng.dirichlet([4, 4, 4], 300)
+    pts = (w[:, :, None] * np.asarray(old.vertices)[np.asarray(old.faces)[faces]]).sum(1)
+    tri = np.array([np.argmin(np.linalg.norm(trimesh.triangles.closest_point(out.triangles, np.repeat(p[None], len(out.faces), 0)) - p, axis=1))
+                    for p in pts])
+    bc = trimesh.triangles.points_to_barycentric(out.triangles[tri], pts)
+    diff = np.abs(colours_at(old, faces, w) - colours_at(out, tri, bc)).mean(1)
+    assert np.median(diff) < 3 and np.mean(diff) < 6

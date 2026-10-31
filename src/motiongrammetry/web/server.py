@@ -35,6 +35,7 @@ Preview data is served in the raw SfM frame together with one 4x4 "scene" transf
   POST /api/workspaces/<ws>/edit/layout?seams=1&from=pipeline|custom[&preview=1]  one byte per face (seam
                                             bits) -> the same, pieces enclosed by seams drawn in the editor
   POST /api/workspaces/<ws>/edit/layout     {"undo": true} -> back to the layout before the last rebuild
+  POST /api/workspaces/<ws>/edit/transfer   the texture carried over to the custom (sculpted) mesh, no photos
   POST /api/workspaces/<ws>/export          {"items":[{"content","format"}],"source","options"} -> .ui/exports/
   GET  /api/workspaces/<ws>/exports/<file>  download it
   GET  /api/workspaces/<ws>/preview.jpg     scan thumbnail (3D snapshot, else a keyframe)
@@ -370,6 +371,7 @@ class App:
             "stale": self.stale(ws),
             "disk": self.disk(ws),
             "outputs": self.outputs(ws),
+            "can_texture": (ws.mvs / "scene_dense.mvs").exists(),  # the texture stage needs OpenMVS's scene
             "exportable": {v: [k for k, p in self.export_sources(ws, v == "custom").items() if p]
                            for v in ("pipeline", "custom")},
             "cameras": ws.cameras_from(),
@@ -942,7 +944,6 @@ class App:
         import base64
 
         from .. import atlas
-        from ..clean import export_glb, workspace_alignment
 
         if body.get("undo"):
             return self.undo_layout(ws)
@@ -972,11 +973,38 @@ class App:
             finally:
                 shutil.rmtree(look, ignore_errors=True)
             return {**out, "source": source, "image": "data:image/png;base64," + png}
+        out = self._new_texture(ws, lambda dst: atlas.relayout(src, dst, angle, min_size, seams=seams),
+                                # the pipeline's textured model laid out anew is still of its mesh
+                                None if info["texture"] else "clean")
+        return {**out, "source": source}
+
+    def transfer_texture(self, ws: Workspace) -> dict:
+        """The texture carried over to the custom (sculpted) mesh without the photos (atlas.transfer):
+        removed parts go, closed holes take the colour of the surface around them."""
+        from .. import atlas
+
+        self._editable(ws)
+        c, info = ws.mesh / "custom", self.custom_info(ws)
+        mesh = c / "mesh_clean.ply"
+        if not mesh.exists():
+            raise FileNotFoundError("no edited mesh: sculpt and save first")
+        src = c / "textured.ply" if info["texture"] else ws.mesh / "textured.ply"
+        if not src.exists():
+            raise FileNotFoundError("textured.ply: run texture first")
+        return {**self._new_texture(ws, lambda dst: atlas.transfer(src, mesh, dst), "custom"),
+                "source": "custom" if info["texture"] else "pipeline"}
+
+    def _new_texture(self, ws: Workspace, make, textured_from: str | None) -> dict:
+        """Install a texture make(dst) writes as the custom textured model, keeping the one it replaces
+        aside (undo_layout). textured_from: what its geometry is, when it changes ("clean", "custom")."""
+        from ..clean import export_glb, workspace_alignment
+
+        c, info = ws.mesh / "custom", self.custom_info(ws)
         work, prev = c / ".layout", c / LAYOUT_PREVIOUS
         shutil.rmtree(work, ignore_errors=True)
         work.mkdir(parents=True)
         try:
-            out = atlas.relayout(src, work / "textured.ply", angle, min_size, seams=seams)
+            out = make(work / "textured.ply")
             shutil.rmtree(prev, ignore_errors=True)  # keep what it replaces: one step back
             prev.mkdir(parents=True)
             if info["texture"]:
@@ -990,13 +1018,13 @@ class App:
                 p.replace(c / p.name)
         finally:
             shutil.rmtree(work, ignore_errors=True)
-        if not info["texture"]:
-            self._custom_meta(ws, textured_from="clean")  # the pipeline's textured model, laid out anew
+        if textured_from:
+            self._custom_meta(ws, textured_from=textured_from)
         from_custom = self.custom_info(ws)["texture_from"] == "custom" and (c / "mesh_clean.ply").exists()
         export_glb(c / "textured.ply", c / "model.glb",
                    workspace_alignment(ws, c / "mesh_clean.ply" if from_custom else ws.mesh / "mesh_clean.ply"))
         (prev / "after").write_text(str((c / "textured.ply").stat().st_mtime_ns))
-        return {**out, "source": source}
+        return out
 
     def undo_layout(self, ws: Workspace) -> dict:
         """Back to the texture layout the last rebuild replaced (the pipeline's, or the custom one)."""
@@ -1490,6 +1518,8 @@ def make_handler(app: App):
                                                        q.get("from", ["pipeline"])[0]))
                 if what == "delete":
                     return self._json(app.delete_custom(ws, self._body().get("what", "")))
+                if what == "transfer":
+                    return self._json(app.transfer_texture(ws))
                 if what == "layout":
                     if q.get("seams"):
                         return self._json(app.relayout_texture(ws, {"seams": self._raw(), "from": q.get("from", [""])[0],
