@@ -1,0 +1,68 @@
+{
+ "reference": "gpu",
+ "mm_per_unit": 85.22675739241664,
+ "runs": {
+  "gpu": {
+   "cameras": 149,
+   "common_cameras": 149,
+   "camera_misfit_pct_of_orbit": 0.0,
+   "faces": 201050,
+   "vertices": 100969,
+   "area_cm2_at_print": 654.6,
+   "holes": 1,
+   "largest_hole_edges": 886,
+   "pieces": 1,
+   "mean_edge_mm": 0.85
+  },
+  "cpu": {
+   "cameras": 149,
+   "common_cameras": 149,
+   "camera_misfit_pct_of_orbit": 0.046,
+   "faces": 205789,
+   "vertices": 103364,
+   "area_cm2_at_print": 669.8,
+   "holes": 2,
+   "largest_hole_edges": 931,
+   "pieces": 2,
+   "mean_edge_mm": 0.833,
+   "to_reference_mm": {
+    "mean": 2.581,
+    "median": 0.334,
+    "p90": 1.787,
+    "p99": 83.343,
+    "within_0.25mm_pct": 39.9,
+    "within_1mm_pct": 81.6
+   },
+   "reference_to_it_mm": {
+    "mean": 0.632,
+    "median": 0.321,
+    "p90": 1.391,
+    "p99": 5.263,
+    "within_0.25mm_pct": 41.1,
+    "within_1mm_pct": 84.2
+   }
+  }
+ },
+ "orientation": "automatic",
+ "focus": {
+  "centre": [
+   -0.20022686535177958,
+   0.5866702140242277,
+   -0.02358673428287833
+  ],
+  "size": 3.433588237152901
+ },
+ "focus_top": {
+  "centre": [
+   0.2762274434841744,
+   0.9973439493638578,
+   -0.11524835031860448
+  ],
+  "size": 2.126928571283705
+ },
+ "front": [
+  0.9483371515768617,
+  0.0,
+  0.3172643171538272
+ ]
+}
