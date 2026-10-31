@@ -3,6 +3,9 @@
 #   docker compose -p motiongrammetry -f docker/compose.yml [-f docker/compose.nvidia.yml] --env-file ~/motiongrammetry/.env up -d
 services:
   motiongrammetry:
+    # the container is named after the project (install.sh: one per data folder), not Compose's
+    # <project>-<service>-1: "motiongrammetry", or e.g. "motiongrammetry-shots" for a test setup
+    container_name: ${MG_CONTAINER:-motiongrammetry}
     image: ${MG_IMAGE:-motiongrammetry:nvidia}
     build:
       context: ..

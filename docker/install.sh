@@ -91,7 +91,7 @@ build() {  # build() TITLE docker-build-args...: the full log goes to DATA/build
 compose() {
   local files=(-f "$here/compose.yml")
   [ "$(sed -n 's/^MG_GPU=//p' "$envfile" 2>/dev/null)" = nvidia ] && files+=(-f "$here/compose.nvidia.yml")
-  docker compose -p "$project" "${files[@]}" --env-file "$envfile" "$@"
+  MG_CONTAINER="$project" docker compose -p "$project" "${files[@]}" --env-file "$envfile" "$@"
 }
 
 case "$cmd" in

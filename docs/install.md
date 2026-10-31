@@ -42,7 +42,8 @@ Python packages are locked in `docker/requirements-nvidia.txt` (from `requiremen
 - **Licenses**: the image contains OpenMVS (AGPL-3.0) built unchanged, with its source and VCGLib's in
   `/usr/share/doc/openmvs`, and NVIDIA's CUDA runtime and cuDNN under NVIDIA's terms; `/about` in the
   app lists everything. VGGT is only in the `-vggt` layer, added on request.
-- `mg doctor` (inside: `docker compose ... exec motiongrammetry mg doctor`) and the About page say
+- `mg doctor` (inside: `docker exec motiongrammetry mg doctor`; the container is named after the
+  data folder's project, so a second setup in `~/test` is `motiongrammetry-test`) and the About page say
   which steps run on the GPU.
 
 ## Install directly (development, without Docker)
