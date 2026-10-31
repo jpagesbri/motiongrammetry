@@ -64,6 +64,12 @@ vggt_given=$([ -n "$vggt" ] && echo 1 || echo 0)
 vggt="${vggt:-$(saved MG_VGGT)}"; vggt="${vggt:-0}"
 vggt_accepted="$(saved MG_VGGT_ACCEPTED)"
 gpu_wanted="$gpu"
+build() {  # build() TITLE docker-build-args...: the full log goes to DATA/build.log, its end shown on failure
+  local title="$1"; shift
+  local log="$data/build.log"
+  echo "  $title (log: $log)"
+  if ! docker build "$@" >"$log" 2>&1; then tail -25 "$log" | sed 's/^/    /'; die "the build failed: $log"; fi
+}
 compose() {
   local files=(-f "$here/compose.yml")
   [ "$(sed -n 's/^MG_GPU=//p' "$envfile" 2>/dev/null)" = nvidia ] && files+=(-f "$here/compose.nvidia.yml")
@@ -142,8 +148,7 @@ ok "$data (scans: $workspaces, videos you can open by path: $videos → /videos)
 
 bold "Image"
 if [ "$build" = 1 ] || [ "$cmd" = update ] || ! docker image inspect "$image" >/dev/null 2>&1; then
-  echo "  building $image (the first time takes 30-60 minutes: OpenMVS compiles with CUDA)"
-  docker build -f "$here/Dockerfile" -t "$image" "$here/.." || die "the build failed (see above)"
+  build "building $image (the first time takes 30-60 minutes: OpenMVS compiles with CUDA)" -f "$here/Dockerfile" -t "$image" "$here/.."
 fi
 ok "$image ($(docker image inspect "$image" --format '{{.Size}}' | awk '{printf "%.1f GB", $1/1e9}'))"
 run_image="$image"
@@ -155,8 +160,7 @@ if [ "$vggt" = 1 ]; then
   base_t="$(docker image inspect "$image" --format '{{.Created}}')"
   vggt_t="$(docker image inspect "$run_image" --format '{{.Created}}' 2>/dev/null || true)"
   if [ "$build" = 1 ] || [ "$cmd" = update ] || [ -z "$vggt_t" ] || [[ "$vggt_t" < "$base_t" ]]; then
-    echo "  building $run_image (PyTorch and VGGT: about 10 minutes, mostly downloading)"
-    docker build -f "$here/Dockerfile.vggt" --build-arg BASE="$image" -t "$run_image" "$here/.." || die "the VGGT build failed (see above)"
+    build "building $run_image (PyTorch and VGGT: about 10 minutes the first time)" -f "$here/Dockerfile.vggt" --build-arg BASE="$image" -t "$run_image" "$here/.."
   fi
   ok "$run_image ($(docker image inspect "$run_image" --format '{{.Size}}' | awk '{printf "%.1f GB", $1/1e9}'))"
   # weights this machine already downloaded (e.g. a direct install) need no second 5 GB download

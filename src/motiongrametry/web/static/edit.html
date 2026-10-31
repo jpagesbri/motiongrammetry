@@ -172,7 +172,7 @@
   <main class="view" id="view">
     <div class="bar"><span class="seg" id="layoutSeg">
       <button data-layout="3d">3D</button><button data-layout="split">3D + texture</button><button data-layout="uv">Texture</button></span>
-      <span class="seg"><button id="fitBtn">Fit</button></span></div>
+      <span class="seg" id="fitTexSeg"><button id="fitBtn" title="frame the flat texture (the 3D view: the button next to the view cube)">Fit texture</button></span></div>
     <div class="label2d" id="label2d" hidden>texture</div>
     <svg class="lines" id="lines"><line id="planeLine" stroke="#f0b429" stroke-width="2" stroke-dasharray="6 4" visibility="hidden"/></svg>
     <div class="planebar" id="planeBar" hidden>Plane cut
@@ -415,6 +415,7 @@ function draw() {
   renderer.setScissorTest(true);
   controls.enabled = !!v3;
   if (vcube) vcube.el.hidden = !v3;
+  $('fitTexSeg').style.display = uv ? '' : 'none';  // only while the flat texture is shown
   if (v3) {
     renderer.setViewport(v3.x, 0, v3.w, v3.h); renderer.setScissor(v3.x, 0, v3.w, v3.h);
     renderer.setClearColor(0x0f1115); renderer.clear();
@@ -550,7 +551,7 @@ document.querySelectorAll('[data-layout]').forEach((b) => b.addEventListener('cl
   resize(); fit2d();
 }));
 document.querySelector(`[data-layout=${layout}]`).classList.add('on');
-$('fitBtn').addEventListener('click', () => { fitView(mode === 'sculpt' ? S.mesh : P.group); fit2d(); });
+$('fitBtn').addEventListener('click', () => { fit2d(); requestRender(); });  // the 3D view: the view cube's frame button
 // view cube (static/viewcube.js), above the status line; only while the 3D view is shown
 let vcube = null;
 import('/viewcube.js').then(({ addViewCube }) => {

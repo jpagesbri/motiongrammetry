@@ -484,7 +484,7 @@
                 <label title="edges that border a single triangle: holes, openings and torn spots"><input type="checkbox" id="holesChk"> Highlight holes</label>
                 <div class="muted" id="holesInfo" style="font-size:11px;max-width:210px"></div>
                 <label class="row" style="margin:0">Point size <input type="range" id="ptSize" min="0.3" max="4" step="0.1" value="1"></label>
-                <div class="btns" style="margin-top:4px"><button class="btn" id="fitBtn">Fit view</button>
+                <div class="btns" style="margin-top:4px">
                   <button class="btn" id="orientBtn" title="turn and move the model so it stands the right way: used by every export">Orient…</button></div>
               </div>
             </div>
@@ -865,7 +865,6 @@ $('ptSize').addEventListener('input', () => {
   ['sparse', 'dense'].forEach((k) => { if (layerObj[k]) layerObj[k].material.size = extent * 0.003 * +$('ptSize').value; });
   render();
 });
-$('fitBtn').addEventListener('click', fitView);
 // view cube (static/viewcube.js): which way the camera looks, click to look from a side, frame button
 const viewCube = (host, opts) => import('/viewcube.js').then(({ addViewCube }) => addViewCube(host, opts)).catch(() => null);
 viewCube(view, { projection: proj, controls, render, fit: () => (placed ? viewFront() : fitView()) }).then((c) => { mainCube = c; });
