@@ -5,5 +5,6 @@ work*/
 *.mp4
 !examples/*.mp4
 workspaces/
+datasets/
 .pytest_cache/
 .shots/
