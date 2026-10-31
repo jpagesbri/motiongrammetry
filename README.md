@@ -1,20 +1,20 @@
-# motiongrametry
+# motiongrammetry
 
 Turn a phone video of an object, walking around it, into a clean, textured 3D model and a
 print-ready file, on your own computer.
 
 <table>
   <tr>
-    <td width="50%"><img src="src/motiongrametry/web/static/help/preview-raw.jpg" alt="The raw reconstruction: the shoe, the stool and the room"><br>
+    <td width="50%"><img src="src/motiongrammetry/web/static/help/preview-raw.jpg" alt="The raw reconstruction: the shoe, the stool and the room"><br>
       <sub>What the camera saw: the shoe, the stool and the room…</sub></td>
-    <td width="50%"><img src="src/motiongrametry/web/static/help/preview.jpg" alt="The cleaned, textured shoe"><br>
+    <td width="50%"><img src="src/motiongrammetry/web/static/help/preview.jpg" alt="The cleaned, textured shoe"><br>
       <sub>…and the model you get: just the shoe, cleaned and textured.</sub></td>
   </tr>
 </table>
 
 ## What it is
 
-motiongrametry is a photogrammetry pipeline with a web interface. You film a short video walking
+motiongrammetry is a photogrammetry pipeline with a web interface. You film a short video walking
 around something, and it finds the cameras, reconstructs the surface, cuts the subject out of the
 room it was filmed in, textures it with the photos and writes files for 3D viewers and 3D printers.
 A guided mode explains every step and checks each result, so you don't need to know photogrammetry
@@ -47,7 +47,7 @@ video ─► keyframes ─► masks ─► camera positions ─► raw mesh ─�
          by motion    model    (or VGGT)           (or VGGT)    the masks                 OBJ, PLY
 ```
 
-- **`src/motiongrametry/`** is a Python package with a command line, `mg`, for every stage. Each
+- **`src/motiongrammetry/`** is a Python package with a command line, `mg`, for every stage. Each
   stage is wrapped with checks before it runs (inputs, disk, memory) and after (blurry frames,
   cameras that didn't connect, masks that missed the subject), with a hint for each problem.
 - **`mg ui`** serves the web interface. It runs the stages as subprocesses, and adds the assistant,
@@ -74,21 +74,21 @@ defaults) and [docs/web-ui.md](docs/web-ui.md) (the interface, feature by featur
 
 <table>
   <tr>
-    <td width="50%"><img src="src/motiongrametry/web/static/help/assist-stage.jpg" alt="The assisted run on a stage page"><br>
+    <td width="50%"><img src="src/motiongrammetry/web/static/help/assist-stage.jpg" alt="The assisted run on a stage page"><br>
       <sub>The assisted run: each step explained, its result checked.</sub></td>
-    <td width="50%"><img src="src/motiongrametry/web/static/help/frames.jpg" alt="The frame viewer with a mask overlay"><br>
+    <td width="50%"><img src="src/motiongrammetry/web/static/help/frames.jpg" alt="The frame viewer with a mask overlay"><br>
       <sub>Every keyframe and its mask.</sub></td>
   </tr>
   <tr>
-    <td><img src="src/motiongrametry/web/static/help/edit-plane.jpg" alt="A plane cut across the toe in the editor"><br>
+    <td><img src="src/motiongrammetry/web/static/help/edit-plane.jpg" alt="A plane cut across the toe in the editor"><br>
       <sub>The editor: a plane cut takes off a scrap under the toe…</sub></td>
-    <td><img src="src/motiongrametry/web/static/help/edit-sole-below.jpg" alt="The shoe closed with a curved sole"><br>
+    <td><img src="src/motiongrammetry/web/static/help/edit-sole-below.jpg" alt="The shoe closed with a curved sole"><br>
       <sub>…and Close all holes gives the open bottom a sole that follows its edge.</sub></td>
   </tr>
   <tr>
-    <td><img src="src/motiongrametry/web/static/help/orient.jpg" alt="The shoe standing on its sole in the orientation tool"><br>
+    <td><img src="src/motiongrammetry/web/static/help/orient.jpg" alt="The shoe standing on its sole in the orientation tool"><br>
       <sub>Setting which way is up.</sub></td>
-    <td><img src="src/motiongrametry/web/static/help/export.jpg" alt="The Export window building a 3D print file"><br>
+    <td><img src="src/motiongrammetry/web/static/help/export.jpg" alt="The Export window building a 3D print file"><br>
       <sub>Exporting a watertight print file.</sub></td>
   </tr>
 </table>
@@ -101,14 +101,14 @@ and these commands inside WSL). For the GPU, an NVIDIA card with driver 580 or n
 without them everything runs on the CPU, more slowly.
 
 ```bash
-git clone <this repository> motiongrametry && cd motiongrametry
+git clone <this repository> motiongrammetry && cd motiongrammetry
 ./install.sh
 ```
 
 The script checks Docker and the GPU and says what to install when something is missing, asks
 whether you want the optional VGGT step (it shows its license first), builds the image (30–60
 minutes the first time), starts the app and opens http://127.0.0.1:8765. Your scans and the
-downloaded AI models go to `~/motiongrametry`. The settings are remembered, so later you only need:
+downloaded AI models go to `~/motiongrammetry`. The settings are remembered, so later you only need:
 
 ```bash
 ./install.sh update                   # after `git pull`: rebuild and restart, same settings
@@ -145,7 +145,7 @@ mg logs work/ --list                  # what ran, how long it took, the warnings
 
 ## License
 
-motiongrametry is licensed under the [Apache License 2.0](LICENSE) (Copyright 2026 Joan Pagès; see
+motiongrammetry is licensed under the [Apache License 2.0](LICENSE) (Copyright 2026 Joan Pagès; see
 [NOTICE](NOTICE)). It builds on third-party software and models under their own licenses, among them
 OpenMVS (AGPL-3.0, run as separate programs, its source shipped in the Docker image) and the optional
 VGGT, whose weights are non-commercial. The About page lists every component with its license text;

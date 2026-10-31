@@ -60,7 +60,7 @@ def compute_masks(
     try:
         from rembg import new_session, remove
     except ImportError as e:  # pragma: no cover - depends on optional extra
-        raise RuntimeError("masking needs the 'mask' extra: uv pip install 'motiongrametry[mask]'") from e
+        raise RuntimeError("masking needs the 'mask' extra: uv pip install 'motiongrammetry[mask]'") from e
     from PIL import Image
 
     model_name, gpu = resolve_model(model), use_gpu()

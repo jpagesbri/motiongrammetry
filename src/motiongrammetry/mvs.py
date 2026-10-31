@@ -21,7 +21,7 @@ from .workspace import Workspace
 
 log = logging.getLogger(__name__)
 
-DOCKER_IMAGE = os.environ.get("MG_OPENMVS_IMAGE", "motiongrametry/openmvs:2.3.0")
+DOCKER_IMAGE = os.environ.get("MG_OPENMVS_IMAGE", "motiongrammetry/openmvs:2.3.0")
 
 
 class OpenMVS:

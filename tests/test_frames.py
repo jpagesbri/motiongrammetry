@@ -3,7 +3,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from motiongrametry.frames import FrameStats, choose_keyframes, extract_keyframes
+from motiongrammetry.frames import FrameStats, choose_keyframes, extract_keyframes
 
 
 def _make_video(path: Path, blurred: set[int], pause: range, n: int = 120) -> None:

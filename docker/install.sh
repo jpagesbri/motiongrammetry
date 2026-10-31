@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Set up and start motiongrametry in Docker: checks Docker and the GPU, prepares the data folder,
+# Set up and start motiongrammetry in Docker: checks Docker and the GPU, prepares the data folder,
 # builds (or reuses) the image, starts the web UI and opens it.
 #
-#   docker/install.sh                      detect the GPU, data in ~/motiongrametry, port 8765
+#   docker/install.sh                      detect the GPU, data in ~/motiongrammetry, port 8765
 #   docker/install.sh --gpu none           CPU only (every step still works, slower)
 #   docker/install.sh --workspaces DIR     use an existing folder of scans
 #   docker/install.sh --with-vggt          add the optional VGGT step (asks you to accept its licenses)
@@ -16,7 +16,7 @@ set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # empty = not given: the remembered value, else the default
-cmd=up gpu="" data="$HOME/motiongrametry" workspaces="" videos="" port="" image="" vggt=""
+cmd=up gpu="" data="$HOME/motiongrammetry" workspaces="" videos="" port="" image="" vggt=""
 build=0 open_ui=1 yes=0 accept_vggt=0
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -52,14 +52,31 @@ abspath() { case "$1" in /*) printf '%s\n' "${1%/}" ;; *) printf '%s\n' "$PWD/${
 data="$(abspath "$data")"
 envfile="$data/.env"
 # one Docker project per data folder: a second setup (a test, another folder) never replaces yours
-if [ "$data" = "$HOME/motiongrametry" ]; then project=motiongrametry
-else project="motiongrametry-$(basename "$data" | tr -c 'a-z0-9_-' '-' | sed 's/-*$//')"; fi
+if [ "$data" = "$HOME/motiongrammetry" ]; then project=motiongrammetry
+else project="motiongrammetry-$(basename "$data" | tr -c 'a-z0-9_-' '-' | sed 's/-*$//')"; fi
+# Until 2026-10-31 the project was spelled "motiongrametry". Containers of that old service which use
+# this data folder are removed (they hold the port), and the old default data folder moves, once.
+retire_old() {
+  local c
+  for c in $(docker ps -aq --filter label=com.docker.compose.service=motiongrametry 2>/dev/null); do
+    docker inspect -f '{{range .Mounts}}{{println .Source}}{{end}}' "$c" 2>/dev/null | grep -qxF -- "$1" || continue
+    docker rm -f "$c" >/dev/null && ok "removed the old motiongrametry container"
+  done
+}
+legacy="$HOME/motiongrametry"
+if [ "$data" = "$HOME/motiongrammetry" ] && [ ! -e "$data" ] && [ -d "$legacy" ]; then
+  retire_old "$legacy"
+  mv "$legacy" "$data" && ok "moved $legacy to $data (the new spelling)"
+  [ -f "$envfile" ] && sed -i "s#^MG_DATA=$legacy\$#MG_DATA=$data#; s#=$legacy/#=$data/#; s#motiongrametry:#motiongrammetry:#g" "$envfile"
+fi
+retire_old "$data"
+[ -f "$envfile" ] && sed -i 's#motiongrametry:#motiongrammetry:#g' "$envfile"
 saved() { [ -f "$envfile" ] || return 0; sed -n "s/^$1=//p" "$envfile" | tail -1; }  # nothing on a first install
 gpu="${gpu:-$(saved MG_GPU_WANTED)}"; gpu="${gpu:-auto}"
 workspaces="${workspaces:-$(saved MG_WORKSPACES)}"
 videos="${videos:-$(saved MG_VIDEOS)}"
 port="${port:-$(saved MG_PORT)}"; port="${port:-8765}"
-image="${image:-$(saved MG_BASE_IMAGE)}"; image="${image:-motiongrametry:nvidia}"
+image="${image:-$(saved MG_BASE_IMAGE)}"; image="${image:-motiongrammetry:nvidia}"
 vggt_given=$([ -n "$vggt" ] && echo 1 || echo 0)
 vggt="${vggt:-$(saved MG_VGGT)}"; vggt="${vggt:-0}"
 vggt_accepted="$(saved MG_VGGT_ACCEPTED)"
@@ -202,6 +219,6 @@ compose up -d --force-recreate --quiet-pull >/dev/null 2>&1 || { compose up -d; 
 url="http://127.0.0.1:$port"
 for _ in $(seq 60); do curl -fs "$url/api/options" >/dev/null 2>&1 && break; sleep 1; done
 curl -fs "$url/api/options" >/dev/null 2>&1 || die "it did not come up: docker/install.sh logs"
-ok "motiongrametry is running at $url"
+ok "motiongrammetry is running at $url"
 echo "    stop: docker/install.sh stop · logs: docker/install.sh logs · rebuild after an update: docker/install.sh update"
 if [ "$open_ui" = 1 ]; then (xdg-open "$url" || open "$url") >/dev/null 2>&1 || true; fi

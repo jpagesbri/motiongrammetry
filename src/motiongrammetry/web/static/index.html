@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>motiongrametry</title>
+<title>motiongrammetry</title>
 <style>
   :root {
     --bg: #0f1115; --panel: #161a21; --panel2: #1c212a; --line: #262c37; --text: #d8dee9;
@@ -400,7 +400,7 @@
 </div>
 <div class="app">
   <header>
-    <b>motiongrametry</b><span class="muted" id="wsTitle">video → 3D mesh</span>
+    <b>motiongrammetry</b><span class="muted" id="wsTitle">video → 3D mesh</span>
     <nav class="screens"><a class="on">Generate</a><a id="toEditor" title="sculpt the clean mesh and paint the texture">Edit &amp; paint</a><a href="/help" target="_blank" title="the full how-to">Help</a><a href="/about" target="_blank" title="the open-source software it builds on, and their licenses">About</a></nav>
     <span style="margin-left:auto" class="muted" id="jobStatus"></span>
   </header>
@@ -2275,7 +2275,7 @@ function feedTrack(tr, line) {
   if (t != null) { tr.t = t; for (const s of tr.steps) if (s.st === 'run' && s.t0 == null) s.t0 = t; }
   if (tr.status === 'pending') { tr.status = 'run'; if (tr.steps[0]?.d.start === 'stage') enter(tr, 0, tr.t); }
   const o = /options: (.*)$/.exec(line);
-  if (o && /motiongrametry\.pipeline/.test(line)) o[1].split(', ').forEach((kv) => { const [k, v] = kv.split('='); tr.opts[k] = v; });
+  if (o && /motiongrammetry\.pipeline/.test(line)) o[1].split(', ').forEach((kv) => { const [k, v] = kv.split('='); tr.opts[k] = v; });
   const nf = /(?:extracting SIFT features from|segmenting|VGGT on) (\d+) frames/.exec(line);
   if (nf) tr.ctx.frames = +nf[1];
   const steps = plan(tr);

@@ -8,8 +8,8 @@ import pytest
 import open3d as o3d
 import trimesh
 
-from motiongrametry.clean import boundary_loops
-from motiongrametry.meshops import (cap, decode_mesh, encode_mesh, keep_pieces, local_merge, plane_cut, restore, run,
+from motiongrammetry.clean import boundary_loops
+from motiongrammetry.meshops import (cap, decode_mesh, encode_mesh, keep_pieces, local_merge, plane_cut, restore, run,
                                     voxel_remesh)
 
 
@@ -143,7 +143,7 @@ def test_local_merge_fills_a_hole_and_keeps_the_rest_exactly():
 
 
 def test_local_merge_closes_an_opening_it_only_partly_covers_but_not_the_scan_edge():
-    from motiongrametry.clean import boundary_loops
+    from motiongrammetry.clean import boundary_loops
 
     v, f, c = _holed_sphere(open_bottom=True)
     assert len(boundary_loops(f)) == 2

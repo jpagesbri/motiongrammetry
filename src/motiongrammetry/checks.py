@@ -225,7 +225,7 @@ def _pre_mask(ws, o, video):
         return [error("no-frames", "no keyframes yet", "run frames first")]
     if not (has_module("rembg") and has_module("onnxruntime")):
         return [error("missing-dependency", "rembg/onnxruntime not installed",
-                      "uv pip install 'motiongrametry[mask]'")]
+                      "uv pip install 'motiongrammetry[mask]'")]
     d = _stale_input(ws, "mask", [])
     from .mask import resolve_model
 

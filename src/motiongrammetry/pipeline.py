@@ -32,7 +32,7 @@ from .diagnostics import (EXIT_CANCELLED, EXIT_CRASH, EXIT_GATE, EXIT_OK, EXIT_P
 from .options import for_stage
 from .workspace import STAGES, Workspace
 
-log = logging.getLogger("motiongrametry.pipeline")
+log = logging.getLogger("motiongrammetry.pipeline")
 
 
 # ---- stage bodies ---------------------------------------------------------------------------
@@ -201,7 +201,7 @@ def run_stage(ws: Workspace, stage: str, o: dict, video: str | None = None, capt
         file_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s", "%H:%M:%S"))
         logging.getLogger().addHandler(file_handler)
         if logging.getLogger().level > logging.INFO or logging.getLogger().level == logging.NOTSET:
-            logging.getLogger("motiongrametry").setLevel(logging.INFO)
+            logging.getLogger("motiongrammetry").setLevel(logging.INFO)
     with ctx:
         log.info("=== %s  (log: %s)", stage, log_path)
         relevant = {opt.name: o[opt.name] for opt in for_stage(stage)}

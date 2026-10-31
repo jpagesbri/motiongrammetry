@@ -7,10 +7,10 @@ import numpy as np
 import open3d as o3d
 import pycolmap
 
-from motiongrametry.clean import clean_mesh, restore_holes
-from motiongrametry.sfm import _loop_pairs
-from motiongrametry.splat import _undistorted_masks
-from motiongrametry.workspace import Workspace
+from motiongrammetry.clean import clean_mesh, restore_holes
+from motiongrammetry.sfm import _loop_pairs
+from motiongrammetry.splat import _undistorted_masks
+from motiongrammetry.workspace import Workspace
 
 W, H, F = 320, 240, 300.0
 
@@ -114,7 +114,7 @@ def test_carving_holes_from_bad_masks_are_filled_from_the_raw_mesh(tmp_path):
 def test_close_holes_caps_every_opening():
     import trimesh
 
-    from motiongrametry.clean import boundary_loops, close_holes
+    from motiongrammetry.clean import boundary_loops, close_holes
 
     sphere = o3d.geometry.TriangleMesh.create_sphere(0.5, 30)
     v, t = np.asarray(sphere.vertices), np.asarray(sphere.triangles)
@@ -129,7 +129,7 @@ def test_close_holes_caps_every_opening():
 
 
 def test_print_mesh_is_z_up_sized_and_flat_based(tmp_path):
-    from motiongrametry.clean import print_mesh
+    from motiongrammetry.clean import print_mesh
 
     # A tall cone along SfM +z with an open base, and a transform taking +z to glTF +Y.
     cone = o3d.geometry.TriangleMesh.create_cone(0.5, 2.0, 40)
@@ -149,7 +149,7 @@ def test_print_mesh_is_z_up_sized_and_flat_based(tmp_path):
 
 
 def test_gravity_alignment_maps_world_up_to_gltf_y():
-    from motiongrametry.clean import gravity_alignment
+    from motiongrammetry.clean import gravity_alignment
 
     rec = _orbit_reconstruction()
     verts = np.asarray(o3d.geometry.TriangleMesh.create_sphere(0.5, 20).translate((0, 0, 0.5)).vertices)
@@ -160,7 +160,7 @@ def test_gravity_alignment_maps_world_up_to_gltf_y():
 
 
 def test_ground_plane_fit_and_removal(tmp_path):
-    from motiongrametry.clean import fit_ground_plane
+    from motiongrammetry.clean import fit_ground_plane
 
     rec = _orbit_reconstruction()
     rng = np.random.default_rng(0)
@@ -232,7 +232,7 @@ def _mm(m):
 def test_solidify_turns_crossing_surfaces_into_one_clean_solid():
     import trimesh
 
-    from motiongrametry.clean import solidify
+    from motiongrammetry.clean import solidify
 
     a = o3d.geometry.TriangleMesh.create_sphere(10, 30).translate((0, 0, 10))
     b = o3d.geometry.TriangleMesh.create_sphere(10, 30).translate((8, 0, 10))
@@ -251,7 +251,7 @@ def test_solidify_turns_crossing_surfaces_into_one_clean_solid():
 def test_solidify_adds_a_stand_when_the_model_would_topple():
     from scipy.spatial import Delaunay
 
-    from motiongrametry.clean import solidify
+    from motiongrammetry.clean import solidify
 
     post = o3d.geometry.TriangleMesh.create_cylinder(1.5, 30, 20).translate((0, 0, 15))
     ball = o3d.geometry.TriangleMesh.create_sphere(8, 20).translate((9, 0, 30))  # heavy, off to one side
@@ -269,7 +269,7 @@ def test_solidify_adds_a_stand_when_the_model_would_topple():
 def test_shell_grows_behind_the_scanned_surface_and_keeps_it_in_place():
     import trimesh
 
-    from motiongrametry.clean import solidify
+    from motiongrammetry.clean import solidify
 
     s = o3d.geometry.TriangleMesh.create_sphere(15, 60)
     v, f = _mm(s)
@@ -287,7 +287,7 @@ def test_shell_grows_behind_the_scanned_surface_and_keeps_it_in_place():
 
 
 def test_thin_walls_thicken_behind_the_scanned_side_only():
-    from motiongrametry.clean import solidify
+    from motiongrammetry.clean import solidify
 
     # an open sheet (a flap whose back was never seen), normals up, 0 mm thick
     sheet = o3d.geometry.TriangleMesh.create_box(30, 30, 1).subdivide_midpoint(2)
@@ -304,7 +304,7 @@ def test_thin_walls_thicken_behind_the_scanned_side_only():
 
 
 def test_normals_outward_asks_the_cameras(tmp_path):
-    from motiongrametry.clean import normals_outward
+    from motiongrammetry.clean import normals_outward
 
     ws = Workspace(tmp_path / "w")
     rec = _orbit_reconstruction()
@@ -324,7 +324,7 @@ def test_normals_outward_asks_the_cameras(tmp_path):
 
 
 def test_print_report_flags_a_mostly_invented_print(tmp_path):
-    from motiongrametry.clean import print_mesh
+    from motiongrammetry.clean import print_mesh
 
     s = o3d.geometry.TriangleMesh.create_sphere(1.0, 30)
     v, f = _mm(s)

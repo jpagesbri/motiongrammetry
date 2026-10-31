@@ -1,11 +1,11 @@
-# Optional VGGT layer on top of the motiongrametry image: a second Python environment (/opt/vggt)
+# Optional VGGT layer on top of the motiongrammetry image: a second Python environment (/opt/vggt)
 # with PyTorch and VGGT, which the vggt step runs in (MG_VGGT_PYTHON); everything else stays in
 # /opt/venv. Built by docker/install.sh --with-vggt after the license terms are accepted:
 #   VGGT code: Meta's VGGT License; facebook/VGGT-1B weights (downloaded on first use, not in the
 #   image): CC BY-NC 4.0, non-commercial; PyTorch's CUDA libraries: NVIDIA's license.
 #
-#   docker build -f docker/Dockerfile.vggt --build-arg BASE=motiongrametry:nvidia -t motiongrametry:nvidia-vggt .
-ARG BASE=motiongrametry:nvidia
+#   docker build -f docker/Dockerfile.vggt --build-arg BASE=motiongrammetry:nvidia -t motiongrammetry:nvidia-vggt .
+ARG BASE=motiongrammetry:nvidia
 ARG CUDA=13.2.0
 ARG UBUNTU=24.04
 
@@ -27,6 +27,6 @@ COPY --from=torch /opt/vggt /opt/vggt
 COPY pyproject.toml README.md LICENSE NOTICE /src/app/
 COPY src /src/app/src
 RUN VIRTUAL_ENV=/opt/vggt uv pip install -q --no-cache --no-deps /src/app && rm -rf /src/app \
- && /opt/vggt/bin/python -c "import torch, vggt, motiongrametry.feedforward, motiongrametry.pipeline; print('vggt layer ok, torch', torch.__version__)"
+ && /opt/vggt/bin/python -c "import torch, vggt, motiongrammetry.feedforward, motiongrammetry.pipeline; print('vggt layer ok, torch', torch.__version__)"
 ENV MG_VGGT_PYTHON=/opt/vggt/bin/python
 LABEL org.opencontainers.image.description="Video to clean, textured 3D models (nvidia variant, with the optional VGGT stage)"

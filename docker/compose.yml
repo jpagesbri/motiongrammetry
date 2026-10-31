@@ -1,9 +1,9 @@
-# motiongrametry as a service: the web UI on http://127.0.0.1:${MG_PORT}, your scans and the
+# motiongrammetry as a service: the web UI on http://127.0.0.1:${MG_PORT}, your scans and the
 # downloaded AI models in ${MG_DATA}. install.sh writes the .env this reads; by hand:
-#   docker compose -p motiongrametry -f docker/compose.yml [-f docker/compose.nvidia.yml] --env-file ~/motiongrametry/.env up -d
+#   docker compose -p motiongrammetry -f docker/compose.yml [-f docker/compose.nvidia.yml] --env-file ~/motiongrammetry/.env up -d
 services:
-  motiongrametry:
-    image: ${MG_IMAGE:-motiongrametry:nvidia}
+  motiongrammetry:
+    image: ${MG_IMAGE:-motiongrammetry:nvidia}
     build:
       context: ..
       dockerfile: docker/Dockerfile

@@ -4,8 +4,8 @@ import cv2
 import numpy as np
 import pycolmap
 
-from motiongrametry.feedforward import _target_size, _tsdf_fuse, _unproject, _write_colmap
-from motiongrametry.workspace import Workspace
+from motiongrammetry.feedforward import _target_size, _tsdf_fuse, _unproject, _write_colmap
+from motiongrammetry.workspace import Workspace
 
 
 def test_target_size_is_patch_aligned():

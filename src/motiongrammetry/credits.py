@@ -71,7 +71,7 @@ CONTENT = [
      "role": "the objects in the help page's screenshots and in benchmarks/",
      "url": "https://uco3d.github.io", "copyright": "Meta Platforms, Inc."},
 ]
-PROJECT = {"name": "motiongrametry", "license": "Apache-2.0", "copyright": "Copyright 2026 Joan Pagès"}
+PROJECT = {"name": "motiongrammetry", "license": "Apache-2.0", "copyright": "Copyright 2026 Joan Pagès"}
 
 
 def _present(kind: str, ident: str) -> bool:
@@ -94,7 +94,7 @@ def _project_license() -> str:
     """LICENSE and NOTICE, from the installed package or the source tree."""
     texts = []
     try:
-        d = md.distribution("motiongrametry")
+        d = md.distribution("motiongrammetry")
         texts = [Path(d.locate_file(f)).read_text() for f in (d.files or []) if f.name in ("LICENSE", "NOTICE")]
     except md.PackageNotFoundError:
         pass
@@ -159,12 +159,12 @@ def python_packages() -> list[dict]:
     dists = {}
     for d in md.distributions():
         dists.setdefault(_key(d.metadata["Name"]), d)
-    core = _closure(["motiongrametry"], dists) - {"motiongrametry"}
-    groups = {extra: _closure(["motiongrametry"], dists, {"motiongrametry": {extra}}) - core - {"motiongrametry"}
+    core = _closure(["motiongrammetry"], dists) - {"motiongrammetry"}
+    groups = {extra: _closure(["motiongrammetry"], dists, {"motiongrammetry": {extra}}) - core - {"motiongrammetry"}
               for extra in EXTRAS}
     out = []
     for key, d in sorted(dists.items()):
-        if key == "motiongrametry":
+        if key == "motiongrammetry":
             continue
         group = "required" if key in core else next((f"optional: {EXTRAS[e]}" for e, g in groups.items() if key in g), "installed alongside")
         m = d.metadata
@@ -197,7 +197,7 @@ def license_text(kind: str, ident: str) -> str:
 
 def about() -> dict:
     try:
-        version = md.version("motiongrametry")
+        version = md.version("motiongrammetry")
     except md.PackageNotFoundError:
         version = "dev"
     mark = lambda kind, items: [{**it, "present": _present(kind, it["id"])} for it in items]  # noqa: E731
@@ -208,7 +208,7 @@ def about() -> dict:
 def notices() -> str:
     """THIRD_PARTY_NOTICES: every component with its license text, for redistribution."""
     a = about()
-    out = [f"motiongrametry {a['version']}: third-party software notices", "", f"{PROJECT['copyright']}. Licensed under "
+    out = [f"motiongrammetry {a['version']}: third-party software notices", "", f"{PROJECT['copyright']}. Licensed under "
            "the Apache License, Version 2.0 (LICENSE). It uses the components below; each is the work of its authors and "
            "is used under its own license, reproduced in full in this file.", ""]
     for it in a["content"]:

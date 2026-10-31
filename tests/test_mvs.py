@@ -5,8 +5,8 @@ from collections import namedtuple
 
 import pytest
 
-from motiongrametry import mvs
-from motiongrametry.workspace import Workspace
+from motiongrammetry import mvs
+from motiongrammetry.workspace import Workspace
 from test_geometry import H, W, _orbit_reconstruction
 
 Usage = namedtuple("Usage", "total used free")

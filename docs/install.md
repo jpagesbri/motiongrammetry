@@ -1,4 +1,4 @@
-# Installing motiongrametry
+# Installing motiongrammetry
 
 The [README](../README.md#setup) has the short version. This page has every option of the Docker
 install and the direct install for development.
@@ -25,7 +25,7 @@ Python packages are locked in `docker/requirements-nvidia.txt` (from `requiremen
   COLMAP and the masks choose the GPU only when one is really there. AMD GPUs run on the CPU for now.
 - **Size**: the image is about 9 GB (most of it NVIDIA's CUDA and cuDNN); the first build takes
   30-60 minutes, later ones only rebuild the app layer.
-- **Data**: `~/motiongrametry` (or `--data DIR`) holds the scans (`workspaces/`, or `--workspaces DIR`
+- **Data**: `~/motiongrammetry` (or `--data DIR`) holds the scans (`workspaces/`, or `--workspaces DIR`
   for an existing folder), the downloaded AI models and `.env` with these settings. Files are written
   as your user. Videos in `videos/` (or `--videos DIR`) can be opened by path as `/videos/...`.
 - **Port**: `--port N` (default 8765, bound to 127.0.0.1 only).
@@ -42,7 +42,7 @@ Python packages are locked in `docker/requirements-nvidia.txt` (from `requiremen
 - **Licenses**: the image contains OpenMVS (AGPL-3.0) built unchanged, with its source and VCGLib's in
   `/usr/share/doc/openmvs`, and NVIDIA's CUDA runtime and cuDNN under NVIDIA's terms; `/about` in the
   app lists everything. VGGT is only in the `-vggt` layer, added on request.
-- `mg doctor` (inside: `docker compose ... exec motiongrametry mg doctor`) and the About page say
+- `mg doctor` (inside: `docker compose ... exec motiongrammetry mg doctor`) and the About page say
   which steps run on the GPU.
 
 ## Install directly (development, without Docker)
@@ -74,7 +74,7 @@ sudo usermod -aG docker "$USER"
 ### 2. Install the Python package
 
 ```bash
-cd motiongrametry
+cd motiongrammetry
 uv venv -p 3.12                          # downloads Python 3.12 if needed
 uv pip install -e '.[mask,dev]'          # core + segmentation + tests
 # optional: the exact versions this was tested with
@@ -85,7 +85,7 @@ source .venv/bin/activate                # puts `mg` on your PATH (fish: .venv/b
 ### 3. Build the OpenMVS image (once, ~20 min)
 
 ```bash
-docker build -f docker/openmvs.Dockerfile -t motiongrametry/openmvs:2.3.0 docker/
+docker build -f docker/openmvs.Dockerfile -t motiongrammetry/openmvs:2.3.0 docker/
 ```
 
 The image on Docker Hub (`openmvs/openmvs-ubuntu`) is from 2019 and cannot texture a cleaned mesh,
@@ -100,7 +100,7 @@ mg doctor          # which backends are available
 pytest             # ~75 tests, a few minutes, no network needed
 ```
 
-`mg doctor` should show `ok` for pycolmap, OpenMVS (`docker (motiongrametry/openmvs:2.3.0)`) and
+`mg doctor` should show `ok` for pycolmap, OpenMVS (`docker (motiongrammetry/openmvs:2.3.0)`) and
 rembg. The `torch` / `vggt` lines are optional.
 
 ### 5. First run

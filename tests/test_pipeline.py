@@ -7,10 +7,10 @@ import time
 
 import pytest
 
-from motiongrametry import pipeline
-from motiongrametry.diagnostics import EXIT_CANCELLED, EXIT_CRASH, EXIT_GATE, EXIT_OK, EXIT_PREFLIGHT
-from motiongrametry.options import resolve
-from motiongrametry.workspace import Workspace
+from motiongrammetry import pipeline
+from motiongrammetry.diagnostics import EXIT_CANCELLED, EXIT_CRASH, EXIT_GATE, EXIT_OK, EXIT_PREFLIGHT
+from motiongrammetry.options import resolve
+from motiongrammetry.workspace import Workspace
 from test_frames import _make_video
 
 
@@ -106,16 +106,16 @@ def test_options_precedence():
 
 def test_cli_exit_code_and_logs_command(ws):
     env = dict(os.environ, PYTHONPATH="src")
-    r = subprocess.run([sys.executable, "-m", "motiongrametry.cli", "sfm", str(ws.root)], capture_output=True,
+    r = subprocess.run([sys.executable, "-m", "motiongrammetry.cli", "sfm", str(ws.root)], capture_output=True,
                        text=True, env=env)
     assert r.returncode == EXIT_PREFLIGHT
-    r = subprocess.run([sys.executable, "-m", "motiongrametry.cli", "logs", str(ws.root)], capture_output=True,
+    r = subprocess.run([sys.executable, "-m", "motiongrammetry.cli", "logs", str(ws.root)], capture_output=True,
                        text=True, env=env)
     assert r.returncode == 0 and "sfm preflight-failed" in r.stdout and "no-frames" in r.stdout
 
 
 def test_openmvs_watchdog_detects_silence():
-    from motiongrametry.mvs import _stream_progress
+    from motiongrammetry.mvs import _stream_progress
 
     proc = subprocess.Popen(["sleep", "30"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     t0 = time.time()
@@ -127,7 +127,7 @@ def test_openmvs_watchdog_detects_silence():
 
 
 def test_openmvs_exit_explanations(tmp_path):
-    from motiongrametry.mvs import _explain_exit
+    from motiongrammetry.mvs import _explain_exit
 
     assert _explain_exit("DensifyPointCloud", 137, [], tmp_path / "x.log").code == "out-of-memory"
     assert _explain_exit("TextureMesh", 139, [], tmp_path / "x.log").code == "openmvs-crashed"
@@ -145,7 +145,7 @@ def test_failed_rerun_drops_completion_stamp(ws, monkeypatch):
 def test_sigterm_unwinds_despite_glog_handlers():
     # pycolmap's glog kills the process on SIGTERM unless our handler wins.
     code = ("import time, sys\n"
-            "from motiongrametry.pipeline import install_signal_handlers\n"
+            "from motiongrammetry.pipeline import install_signal_handlers\n"
             "install_signal_handlers()\n"
             "print('ready', flush=True)\n"
             "try:\n    time.sleep(30)\n"

@@ -1,5 +1,5 @@
 [project]
-name = "motiongrametry"
+name = "motiongrammetry"
 version = "0.1.0"
 description = "Turn a walk-around video of a person or object into a cleaned, textured 3D mesh."
 readme = "README.md"
@@ -25,7 +25,7 @@ vggt = ["torch>=2.3", "torchvision>=0.18", "huggingface_hub>=0.23", "einops", "s
 dev = ["pytest>=8"]
 
 [project.scripts]
-mg = "motiongrametry.cli:main"
+mg = "motiongrammetry.cli:main"
 
 [build-system]
 requires = ["hatchling"]

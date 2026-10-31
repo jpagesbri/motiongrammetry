@@ -1,8 +1,8 @@
-# motiongrametry in one image: the app and web UI, COLMAP (pycolmap), OpenMVS and the mask models'
+# motiongrammetry in one image: the app and web UI, COLMAP (pycolmap), OpenMVS and the mask models'
 # runtime. VARIANT=nvidia builds OpenMVS with CUDA and installs the GPU builds of COLMAP and ONNX
 # Runtime; every step still runs on the CPU when no GPU is passed in.
 #
-#   docker build -f docker/Dockerfile -t motiongrametry:nvidia .        (from the project root)
+#   docker build -f docker/Dockerfile -t motiongrammetry:nvidia .        (from the project root)
 #
 # Usually through docker/install.sh, which also sets up the data folder and starts it. AI model
 # weights are not in the image: they download on first use into /data/models.
@@ -82,8 +82,8 @@ COPY pyproject.toml README.md LICENSE NOTICE /src/app/
 COPY src /src/app/src
 # the app itself; its dependencies are the locked ones above (with the GPU builds)
 RUN uv pip install -q --no-cache --no-deps /src/app && rm -rf /src/app \
- && /opt/venv/bin/python -c "import motiongrametry.clean, motiongrametry.meshops, motiongrametry.pipeline, motiongrametry.mask, \
-motiongrametry.sfm, motiongrametry.mvs, motiongrametry.frames, motiongrametry.credits, motiongrametry.web.server, rembg; print('app imports ok')"
+ && /opt/venv/bin/python -c "import motiongrammetry.clean, motiongrammetry.meshops, motiongrammetry.pipeline, motiongrammetry.mask, \
+motiongrammetry.sfm, motiongrammetry.mvs, motiongrammetry.frames, motiongrammetry.credits, motiongrammetry.web.server, rembg; print('app imports ok')"
 # The GPU builds must find every library they link (CUDA, cuDNN, cuBLAS from the base image or their
 # own CUDA wheels); only the driver (libcuda) comes from the host at run time.
 RUN set -e; for so in /opt/venv/lib/python3.12/site-packages/onnxruntime/capi/libonnxruntime_providers_cuda.so \
@@ -94,7 +94,7 @@ RUN set -e; for so in /opt/venv/lib/python3.12/site-packages/onnxruntime/capi/li
 ENV PATH=/opt/venv/bin:/opt/openmvs/bin:$PATH \
     HOME=/data/home U2NET_HOME=/data/models/u2net HF_HOME=/data/models/huggingface \
     MG_IN_CONTAINER=1 MG_OPENMVS_CUDA=1 PYTHONUNBUFFERED=1
-LABEL org.opencontainers.image.title="motiongrametry" \
+LABEL org.opencontainers.image.title="motiongrammetry" \
       org.opencontainers.image.description="Video to clean, textured 3D models (nvidia variant)" \
       org.opencontainers.image.licenses="see /about in the app; OpenMVS AGPL-3.0, source in /usr/share/doc/openmvs"
 VOLUME /data

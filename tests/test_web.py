@@ -14,8 +14,8 @@ import numpy as np
 import pycolmap
 import pytest
 
-from motiongrametry.web.server import App, make_handler
-from motiongrametry.workspace import Workspace
+from motiongrammetry.web.server import App, make_handler
+from motiongrammetry.workspace import Workspace
 from test_geometry import _orbit_reconstruction
 
 
@@ -202,7 +202,7 @@ def test_clean_follows_the_raw_mesh_it_used(tmp_path):
 def test_terminal_runs_replace_a_finished_ui_job(tmp_path):
     import time
 
-    from motiongrametry.web.server import Job
+    from motiongrammetry.web.server import Job
 
     app = App(tmp_path / "root")
     ws = Workspace(app.root / "j")
@@ -234,8 +234,8 @@ def _sfm_workspace(root, name="src"):
 
 
 def test_vggt_refuses_to_replace_sfm_cameras(tmp_path):
-    from motiongrametry import checks
-    from motiongrametry.options import resolve
+    from motiongrammetry import checks
+    from motiongrammetry.options import resolve
 
     ws = _sfm_workspace(tmp_path)
     assert ws.cameras_from() == "sfm"
@@ -334,7 +334,7 @@ def test_editor_saves_a_custom_mesh_and_leaves_the_pipeline_files_alone(server):
     with urllib.request.urlopen(base + "/api/workspaces/e/download?path=mesh/custom/print.stl") as r:
         assert 'filename="e-custom-print.stl"' in r.headers["Content-Disposition"]
 
-    from motiongrametry.clean import texture_source
+    from motiongrammetry.clean import texture_source
     assert texture_source(ws)[1] == "custom"  # texture would project onto the edit
     old = time.time() - 60
     os.utime(c / "mesh_clean.ply", (old, old))  # ...unless clean has run again since
@@ -479,7 +479,7 @@ def test_export_window_builds_files_with_their_own_settings(server):
 
 
 def test_advice_reads_the_results_and_suggests_what_to_change(server):
-    from motiongrametry.advice import advise
+    from motiongrammetry.advice import advise
 
     base, app = server
     call(base + "/api/workspaces", "POST", {"name": "a"})
@@ -610,7 +610,7 @@ def test_shared_page_modules_are_served(server):
 def test_about_lists_third_party_software_with_licenses(server):
     base, _ = server
     with urllib.request.urlopen(base + "/about") as r:
-        assert b"About motiongrametry" in r.read()
+        assert b"About motiongrammetry" in r.read()
     status, a = call(base + "/api/about")
     assert status == 200
     names = {x["id"] for x in a["external"]} | {x["id"] for x in a["models"]}
@@ -624,7 +624,7 @@ def test_about_lists_third_party_software_with_licenses(server):
             assert needle.lower() in r.read().decode().lower()
     assert call(base + "/api/about/license?kind=external&id=nope")[0] == 404
     assert a["license"] == "Apache-2.0" and a["content"] and all("present" in x for x in a["external"])
-    with urllib.request.urlopen(f"{base}/api/about/license?kind=project&id=motiongrametry") as r:
+    with urllib.request.urlopen(f"{base}/api/about/license?kind=project&id=motiongrammetry") as r:
         assert "Apache License" in r.read().decode()
     with urllib.request.urlopen(base + "/api/about/notices.txt") as r:
         assert 'THIRD_PARTY_NOTICES.txt' in r.headers["Content-Disposition"]

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>About motiongrametry</title>
+<title>About motiongrammetry</title>
 <style>
   :root {
     --bg: #0f1115; --panel: #161a21; --panel2: #1c212a; --line: #262c37; --text: #d8dee9;
@@ -52,13 +52,13 @@
 </head>
 <body>
 <header>
-  <b>motiongrametry</b>
+  <b>motiongrammetry</b>
   <a href="/">Generate</a><a href="/edit">Edit &amp; paint</a><a href="/help">Help</a><a class="on">About</a>
 </header>
 <main>
-<h1>About motiongrametry</h1>
+<h1>About motiongrammetry</h1>
 <p class="lead" id="lead"></p>
-<p>motiongrametry turns a phone video walking around something into a clean, textured 3D model, a 3D-print file and more.
+<p>motiongrammetry turns a phone video walking around something into a clean, textured 3D model, a 3D-print file and more.
 It is free software under the Apache License 2.0, and it builds on the open-source projects, AI models and content
 listed below, each used under its own license.</p>
 
@@ -85,8 +85,8 @@ listed below, each used under its own license.</p>
 <table id="devT"><tr><th>Package</th><th>Version</th><th>License</th><th>Why it is installed</th><th></th></tr></table></details>
 
 <h2 id="distribute">For distributors</h2>
-<details><summary>What redistributing motiongrametry (for example its Docker image) involves</summary>
-<p>motiongrametry's own code is under the Apache License 2.0: keep <code>LICENSE</code> and <code>NOTICE</code> with any copy.
+<details><summary>What redistributing motiongrammetry (for example its Docker image) involves</summary>
+<p>motiongrammetry's own code is under the Apache License 2.0: keep <code>LICENSE</code> and <code>NOTICE</code> with any copy.
 The third-party parts keep their licenses:</p>
 <ul id="distList"></ul>
 <p>Every license text is in one file:</p>
@@ -115,7 +115,7 @@ document.addEventListener('click', async (e) => {
   else { b.insertAdjacentHTML('afterend', `<pre style="margin-top:8px">${esc(text)}</pre>`); b.remove(); }
 });
 fetch('/api/about').then((r) => r.json()).then((a) => {
-  $('lead').innerHTML = `version ${esc(a.version)} · ${esc(a.copyright)} · ${esc(a.license)} <button class="show" data-kind="project" data-id="motiongrametry">license</button>`;
+  $('lead').innerHTML = `version ${esc(a.version)} · ${esc(a.copyright)} · ${esc(a.license)} <button class="show" data-kind="project" data-id="motiongrammetry">license</button>`;
   const sy = a.system || {};
   $('sysInfo').textContent = `${sy.container ? 'Docker image' : 'installed directly'} · GPU: ${sy.gpu || 'none usable'}`;
   $('sysT').insertAdjacentHTML('beforeend', Object.entries(sy.steps || {}).map(([k, [dev, note]]) =>

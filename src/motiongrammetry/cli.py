@@ -13,7 +13,7 @@ from pathlib import Path
 
 from .workspace import Workspace
 
-log = logging.getLogger("motiongrametry")
+log = logging.getLogger("motiongrammetry")
 
 
 def cmd_doctor(_: argparse.Namespace) -> int:
@@ -30,7 +30,7 @@ def cmd_doctor(_: argparse.Namespace) -> int:
     backend = mvs.available()
     rows.append(("OpenMVS", backend is not None, backend or
                  f"docker build -f docker/openmvs.Dockerfile -t {mvs.DOCKER_IMAGE} docker/"))
-    rows.append(("rembg (masks)", has("rembg"), "" if has("rembg") else "uv pip install 'motiongrametry[mask]'"))
+    rows.append(("rembg (masks)", has("rembg"), "" if has("rembg") else "uv pip install 'motiongrammetry[mask]'"))
     cuda = False
     if has("torch"):
         import torch
@@ -216,7 +216,7 @@ def _add_options(sp: argparse.ArgumentParser, stages: list[str]) -> None:
 def build_parser() -> argparse.ArgumentParser:
     from .workspace import STAGES
 
-    p = argparse.ArgumentParser(prog="mg", description="Video -> 3D mesh (motiongrametry). "
+    p = argparse.ArgumentParser(prog="mg", description="Video -> 3D mesh (motiongrammetry). "
                                 "Exit codes: 0 ok, 1 failed, 2 quality gate failed, 3 pre-flight failed, 130 cancelled.")
     p.add_argument("-v", "--verbose", action="store_true")
     sub = p.add_subparsers(dest="cmd", required=True)

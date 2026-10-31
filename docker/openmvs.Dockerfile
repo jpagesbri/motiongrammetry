@@ -2,7 +2,7 @@
 # (openmvs/openmvs-ubuntu:latest) dates from 2019 and lacks `TextureMesh --mesh-file`,
 # which the pipeline needs to texture the cleaned mesh.
 #
-#   docker build -f docker/openmvs.Dockerfile -t motiongrametry/openmvs:2.3.0 docker/
+#   docker build -f docker/openmvs.Dockerfile -t motiongrammetry/openmvs:2.3.0 docker/
 FROM ubuntu:24.04 AS build
 
 # v2.4 needs OpenCV >= 4.11 (JPEG-XL), newer than Ubuntu 24.04 ships; v2.3 has everything we use.

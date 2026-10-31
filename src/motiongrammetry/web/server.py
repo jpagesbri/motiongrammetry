@@ -139,7 +139,7 @@ class Job:
     def _cmd(self, stage: str) -> list[str]:
         # the vggt step may have its own Python environment (Docker image with the VGGT layer)
         python = os.environ.get("MG_VGGT_PYTHON") if stage == "vggt" else None
-        cmd = [python if python and Path(python).exists() else sys.executable, "-m", "motiongrametry.cli", stage]
+        cmd = [python if python and Path(python).exists() else sys.executable, "-m", "motiongrammetry.cli", stage]
         if stage == "frames":
             cmd.append(self.video or "")
         cmd.append(str(self.ws.root))
@@ -1078,7 +1078,7 @@ def _copy_tree(src: Path, dst: Path) -> None:
 
 def make_handler(app: App):
     class Handler(BaseHTTPRequestHandler):
-        server_version = "motiongrametry"
+        server_version = "motiongrammetry"
 
         def log_message(self, fmt, *args):  # quiet: the UI polls every second
             log.debug(fmt, *args)
@@ -1366,7 +1366,7 @@ def serve(root: Path, host: str = "127.0.0.1", port: int = 8765) -> None:
     app = App(root)
     httpd = ThreadingHTTPServer((host, port), make_handler(app))
     httpd.daemon_threads = True
-    print(f"motiongrametry UI on http://{host}:{port}  (workspaces in {app.root})", flush=True)
+    print(f"motiongrammetry UI on http://{host}:{port}  (workspaces in {app.root})", flush=True)
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
