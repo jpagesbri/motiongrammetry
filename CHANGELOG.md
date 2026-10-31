@@ -26,6 +26,10 @@ the image with that version, and the About page and `mg --version` show it.
   the layout with exactly those pieces (one that cannot lie flat is cut further, and says so).
   The pieces show in colours as you draw; **Preview** / **Preview texture** show the new texture
   at low resolution without saving; **Undo layout** goes back; the editor updates in place.
+- **Editor, mesh density**: **Adaptive detail** (tick box) adds vertices around each dab where
+  the mesh is too coarse to shape (longest-edge bisection, no cracks; the stroke and its new
+  vertices undo together), and the **Decimate** brush (E) merges edges shorter than the Detail
+  size where you brush, without folds, keeping open edges. Saving a sculpt takes about a second.
 - **Exports on request**: the pipeline and the editor keep only their working files; GLB, OBJ,
   STL, 3MF, ... are made when asked (Export window, new `mg export`) and reused until what they
   come from changes (then marked outdated). Clean runs and sculpt saves are about a minute
