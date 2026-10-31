@@ -71,7 +71,8 @@ CONTENT = [
      "role": "the objects in the help page's screenshots and in benchmarks/",
      "url": "https://uco3d.github.io", "copyright": "Meta Platforms, Inc."},
 ]
-PROJECT = {"name": "motiongrammetry", "license": "Apache-2.0", "copyright": "Copyright 2026 Joan Pagès"}
+PROJECT = {"name": "motiongrammetry", "license": "Apache-2.0", "copyright": "Copyright 2026 Joan Pagès",
+           "url": "https://github.com/jpagesbri/motiongrammetry"}
 
 
 def _present(kind: str, ident: str) -> bool:
@@ -196,10 +197,7 @@ def license_text(kind: str, ident: str) -> str:
 
 
 def about() -> dict:
-    try:
-        version = md.version("motiongrammetry")
-    except md.PackageNotFoundError:
-        version = "dev"
+    from . import __version__ as version
     mark = lambda kind, items: [{**it, "present": _present(kind, it["id"])} for it in items]  # noqa: E731
     return {**PROJECT, "version": version, "external": mark("external", EXTERNAL), "models": mark("model", MODELS),
             "content": CONTENT, "python": python_packages()}

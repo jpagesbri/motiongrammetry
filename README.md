@@ -101,7 +101,7 @@ and these commands inside WSL). For the GPU, an NVIDIA card with driver 580 or n
 without them everything runs on the CPU, more slowly.
 
 ```bash
-git clone <this repository> motiongrammetry && cd motiongrammetry
+git clone https://github.com/jpagesbri/motiongrammetry.git && cd motiongrammetry
 ./install.sh
 ```
 
@@ -142,6 +142,11 @@ mg run capture.mp4 work/              # the whole pipeline
 mg check work/ --video capture.mp4    # what would fail, and why, without running anything
 mg logs work/ --list                  # what ran, how long it took, the warnings
 ```
+
+## Versions
+
+The current version is in `pyproject.toml`, shown by `mg --version` and on the About page; what
+changed in each one is in [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 

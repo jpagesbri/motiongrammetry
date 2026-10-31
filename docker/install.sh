@@ -81,6 +81,7 @@ vggt_given=$([ -n "$vggt" ] && echo 1 || echo 0)
 vggt="${vggt:-$(saved MG_VGGT)}"; vggt="${vggt:-0}"
 vggt_accepted="$(saved MG_VGGT_ACCEPTED)"
 gpu_wanted="$gpu"
+version="$(sed -n 's/^version = "\(.*\)"/\1/p' "$here/../pyproject.toml" | head -1)"
 build() {  # build() TITLE docker-build-args...: the full log goes to DATA/build.log, its end shown on failure
   local title="$1"; shift
   local log="$data/build.log"
@@ -165,7 +166,7 @@ ok "$data (scans: $workspaces, videos you can open by path: $videos → /videos)
 
 bold "Image"
 if [ "$build" = 1 ] || [ "$cmd" = update ] || ! docker image inspect "$image" >/dev/null 2>&1; then
-  build "building $image (the first time takes 30-60 minutes: OpenMVS compiles with CUDA)" -f "$here/Dockerfile" -t "$image" "$here/.."
+  build "building $image (the first time takes 30-60 minutes: OpenMVS compiles with CUDA)" -f "$here/Dockerfile" --build-arg VERSION="$version" -t "$image" "$here/.."
 fi
 ok "$image ($(docker image inspect "$image" --format '{{.Size}}' | awk '{printf "%.1f GB", $1/1e9}'))"
 run_image="$image"
@@ -219,6 +220,6 @@ compose up -d --force-recreate --quiet-pull >/dev/null 2>&1 || { compose up -d; 
 url="http://127.0.0.1:$port"
 for _ in $(seq 60); do curl -fs "$url/api/options" >/dev/null 2>&1 && break; sleep 1; done
 curl -fs "$url/api/options" >/dev/null 2>&1 || die "it did not come up: docker/install.sh logs"
-ok "motiongrammetry is running at $url"
+ok "motiongrammetry $version is running at $url"
 echo "    stop: docker/install.sh stop · logs: docker/install.sh logs · rebuild after an update: docker/install.sh update"
 if [ "$open_ui" = 1 ]; then (xdg-open "$url" || open "$url") >/dev/null 2>&1 || true; fi

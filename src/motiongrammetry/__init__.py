@@ -1,3 +1,8 @@
 """motiongrammetry: video -> keyframes -> masks -> camera poses -> dense mesh -> cleaned mesh."""
 
-__version__ = "0.1.0"
+from importlib import metadata as _md
+
+try:  # the version lives in pyproject.toml only
+    __version__ = _md.version("motiongrammetry")
+except _md.PackageNotFoundError:
+    __version__ = "dev"

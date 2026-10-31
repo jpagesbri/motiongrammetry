@@ -115,7 +115,8 @@ document.addEventListener('click', async (e) => {
   else { b.insertAdjacentHTML('afterend', `<pre style="margin-top:8px">${esc(text)}</pre>`); b.remove(); }
 });
 fetch('/api/about').then((r) => r.json()).then((a) => {
-  $('lead').innerHTML = `version ${esc(a.version)} · ${esc(a.copyright)} · ${esc(a.license)} <button class="show" data-kind="project" data-id="motiongrammetry">license</button>`;
+  $('lead').innerHTML = `version ${esc(a.version)} · ${esc(a.copyright)} · ${esc(a.license)} <button class="show" data-kind="project" data-id="motiongrammetry">license</button>`
+    + (a.url ? ` · <a href="${esc(a.url)}" target="_blank" rel="noopener">source code</a>` : '');
   const sy = a.system || {};
   $('sysInfo').textContent = `${sy.container ? 'Docker image' : 'installed directly'} · GPU: ${sy.gpu || 'none usable'}`;
   $('sysT').insertAdjacentHTML('beforeend', Object.entries(sy.steps || {}).map(([k, [dev, note]]) =>

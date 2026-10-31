@@ -24,6 +24,11 @@ mask = ["rembg>=2.0.60", "onnxruntime>=1.18"]
 vggt = ["torch>=2.3", "torchvision>=0.18", "huggingface_hub>=0.23", "einops", "safetensors"]  # plus: uv pip install --no-deps git+https://github.com/facebookresearch/vggt
 dev = ["pytest>=8"]
 
+[project.urls]
+Homepage = "https://github.com/jpagesbri/motiongrammetry"
+Repository = "https://github.com/jpagesbri/motiongrammetry"
+Changelog = "https://github.com/jpagesbri/motiongrammetry/blob/main/CHANGELOG.md"
+
 [project.scripts]
 mg = "motiongrammetry.cli:main"
 

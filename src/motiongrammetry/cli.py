@@ -11,6 +11,7 @@ import sys
 import time
 from pathlib import Path
 
+from . import __version__
 from .workspace import Workspace
 
 log = logging.getLogger("motiongrammetry")
@@ -219,6 +220,7 @@ def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="mg", description="Video -> 3D mesh (motiongrammetry). "
                                 "Exit codes: 0 ok, 1 failed, 2 quality gate failed, 3 pre-flight failed, 130 cancelled.")
     p.add_argument("-v", "--verbose", action="store_true")
+    p.add_argument("--version", action="version", version=f"motiongrammetry {__version__}")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     sub.add_parser("doctor", help="check installed backends").set_defaults(fn=cmd_doctor)

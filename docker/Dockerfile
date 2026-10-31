@@ -94,7 +94,10 @@ RUN set -e; for so in /opt/venv/lib/python3.12/site-packages/onnxruntime/capi/li
 ENV PATH=/opt/venv/bin:/opt/openmvs/bin:$PATH \
     HOME=/data/home U2NET_HOME=/data/models/u2net HF_HOME=/data/models/huggingface \
     MG_IN_CONTAINER=1 MG_OPENMVS_CUDA=1 PYTHONUNBUFFERED=1
+ARG VERSION=dev
 LABEL org.opencontainers.image.title="motiongrammetry" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.source="https://github.com/jpagesbri/motiongrammetry" \
       org.opencontainers.image.description="Video to clean, textured 3D models (nvidia variant)" \
       org.opencontainers.image.licenses="see /about in the app; OpenMVS AGPL-3.0, source in /usr/share/doc/openmvs"
 VOLUME /data
