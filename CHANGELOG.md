@@ -14,6 +14,9 @@ the image with that version, and the About page and `mg --version` show it.
   dense point cloud, cameras) and each one's format; several come as one zip. New formats:
   3MF for prints, OBJ for the clean and raw meshes, the dense cloud as PLY and the COLMAP
   camera model. The Preview's file list is replaced by a short summary and the print check.
+- **Editor, clone on the model**: copies by place on the surface instead of by texture offset,
+  which jumped to unrelated texels at every texture seam; strokes keep their alignment until a
+  new source is picked.
 
 ## 0.1.0 — 2026-10-31
 

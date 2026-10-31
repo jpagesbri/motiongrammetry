@@ -232,7 +232,7 @@ const TOOLS = {
     ['restore', 'Restore', 'E', 'paint back the original photo texture'],
     ['blur', 'Blur', 'U', 'soften the texture'],
     ['smudge', 'Smudge', 'M', 'drag colour along the stroke'],
-    ['clone', 'Clone', 'K', 'Ctrl+click to set the source, then paint a copy of it'],
+    ['clone', 'Clone', 'K', 'Ctrl+click to set the source, then paint a copy of it: on the model the copy follows the surface, and later strokes keep the same alignment until you pick a new source'],
     ['lighten', 'Lighten', 'L', 'brighten'],
     ['darken', 'Darken', 'N', 'darken'],
     ['saturate', 'Saturate', 'T', 'more colourful'],
@@ -379,6 +379,10 @@ cloneMark.visible = false; cloneMark.position.z = 1; uvScene.add(cloneMark);
 const cursor3d = new THREE.Mesh(new THREE.RingGeometry(0.93, 1, 48),
   new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: .75, depthTest: false, depthWrite: false, side: THREE.DoubleSide }));
 cursor3d.renderOrder = 10; cursor3d.visible = false; scene.add(cursor3d);
+// where the clone copies from, on the model (it follows the brush during a stroke)
+const cloneMark3d = new THREE.Mesh(new THREE.RingGeometry(0.85, 1, 48),
+  new THREE.MeshBasicMaterial({ color: 0xf0b429, transparent: true, opacity: .9, depthTest: false, depthWrite: false, side: THREE.DoubleSide }));
+cloneMark3d.renderOrder = 10; cloneMark3d.visible = false; scene.add(cloneMark3d);
 
 function rects() {
   const w = view.clientWidth, h = view.clientHeight;
@@ -419,6 +423,7 @@ function draw() {
     renderer.setClearColor(0x0f1115); renderer.clear();
     proj.resize(v3.w / v3.h);
     syncOverlays(v3.h);
+    cloneMark3d.visible = mode === 'paint' && !!P.clone?.point;
     renderer.render(scene, camera);
   }
   if (uv) {
@@ -1220,7 +1225,7 @@ $('piecesBtn').addEventListener('click', () => meshOp('pieces', { keep: 0.1 }, '
 
 // ================================================================ PAINT
 const P = { ready: false, group: new THREE.Group(), meshes: [], layers: [], depthRT: null, depthStale: true,
-  undo: [], redo: [], pool: [], stroke: null, clone: null, unlit: true };
+  undo: [], redo: [], pool: [], stroke: null, clone: null, unlit: true, uvScene: new THREE.Scene(), uvRT: null };
 P.group.visible = false; root.add(P.group);
 
 const quadGeo = new THREE.PlaneGeometry(2, 2);
@@ -1255,6 +1260,8 @@ const paintMat = new THREE.ShaderMaterial({
     uViewProj: { value: new THREE.Matrix4() }, uCamPos: { value: new THREE.Vector3() }, uTexel: { value: new THREE.Vector2() },
     uOffset: { value: new THREE.Vector2() }, uBlur: { value: 2 }, uNear: { value: .01 }, uFar: { value: 100 },
     uOrtho: { value: 0 }, uDir: { value: new THREE.Vector3() },
+    uClone3d: { value: 0 }, uCloneXf: { value: new THREE.Matrix4() }, uViewMat: { value: new THREE.Matrix4() },
+    uUVBuf: { value: null }, uLayerId: { value: 1 }, uCloneTol: { value: 1 },
   },
   vertexShader: `
     uniform int uSpace; uniform mat4 uViewProj;
@@ -1266,8 +1273,9 @@ const paintMat = new THREE.ShaderMaterial({
       gl_Position = vec4(uv * 2. - 1., 0., 1.);
     }`,
   fragmentShader: `
-    uniform sampler2D uPrev, uOrig, uDepth; uniform int uTool, uSpace; uniform vec3 uColor, uCamPos;
+    uniform sampler2D uPrev, uOrig, uDepth, uUVBuf; uniform int uTool, uSpace, uClone3d; uniform vec3 uColor, uCamPos;
     uniform vec2 uCenter, uView, uTexel, uOffset; uniform float uRadius, uHard, uStrength, uBlur, uNear, uFar, uOrtho; uniform vec3 uDir;
+    uniform mat4 uCloneXf, uViewMat, uViewProj; uniform float uLayerId, uCloneTol;
     varying vec4 vClip; varying vec3 vWorld; varying vec3 vN; varying vec2 vUv;
     float lin(float d) { if (uOrtho > .5) return uNear + d * (uFar - uNear);
       float z = d * 2. - 1.; return 2. * uNear * uFar / (uFar + uNear - z * (uFar - uNear)); }
@@ -1299,6 +1307,16 @@ const paintMat = new THREE.ShaderMaterial({
           s += texture2D(uPrev, vUv + vec2(i, j) * uTexel * uBlur).rgb * wgt; k += wgt;
         }
         target = s / k;
+      }
+      else if (uTool == 4 && uClone3d == 1) {  // the surface point the stroke's transform maps this texel to
+        vec3 y = (uCloneXf * vec4(vWorld, 1.)).xyz;
+        vec4 c = uViewProj * vec4(y, 1.);
+        if (c.w <= 0.) discard;
+        vec2 q = c.xy / c.w * .5 + .5;
+        if (any(lessThan(q, vec2(0.))) || any(greaterThan(q, vec2(1.)))) discard;           // off screen
+        vec4 src = texture2D(uUVBuf, q);                                                      // uv, layer, depth seen there
+        if (abs(src.b - uLayerId) > .5 || abs(src.a + (uViewMat * vec4(y, 1.)).z) > uCloneTol) discard;  // not on that surface
+        target = texture2D(uPrev, src.rg).rgb;
       }
       else if (uTool == 3 || uTool == 4) target = texture2D(uPrev, vUv + uOffset).rgb;
       else if (uTool == 5) target = mix(prev, vec3(1.), .35);
@@ -1369,6 +1387,9 @@ async function loadPaint() {
         sc.add(proxy);
       }
       layer.mats.push(disp);
+      const uvProxy = new THREE.Mesh(geo, uvBufMat(layer.index));  // for cloning on the model
+      uvProxy.matrixAutoUpdate = false; uvProxy.matrixWorldAutoUpdate = false; uvProxy.frustumCulled = false;
+      uvProxy.userData.disp = disp; P.uvScene.add(uvProxy);
     }
     renderer.setRenderTarget(layer.mask); renderer.setClearColor(0x000000); renderer.clear(); renderer.render(layer.maskScene, orthoCam);
     P.layers.push(layer);
@@ -1410,6 +1431,54 @@ function refreshDepth(r) {
   renderer.setRenderTarget(P.depthRT); renderer.setClearColor(0x000000); renderer.clear(); renderer.render(scene, camera);
   cursor3d.visible = vis; P.depthStale = false;
 }
+// ---- clone on the model: the source is a place on the surface, not an offset in the atlas.
+// A texture atlas is cut into many charts, so one texture offset lands on unrelated texels as
+// soon as the brush crosses a chart's edge. On the model, every texel under the brush is moved
+// instead by the rigid transform that takes the stroke's first point, with its surface frame,
+// onto the source point and its frame (normal, and the screen's up), and takes the texel seen
+// there: flat side A copied onto flat side B goes corner to corner, whatever the charts.
+const uvBufMat = (index) => new THREE.ShaderMaterial({ side: THREE.DoubleSide, uniforms: { uLayer: { value: index + 1 } },
+  vertexShader: 'varying vec2 vUv; varying float vDepth; void main() { vUv = uv; vec4 mv = modelViewMatrix * vec4(position, 1.); vDepth = -mv.z; gl_Position = projectionMatrix * mv; }',
+  fragmentShader: 'uniform float uLayer; varying vec2 vUv; varying float vDepth; void main() { gl_FragColor = vec4(vUv, uLayer, vDepth); }' });
+function refreshUVBuf(r) {  // per pixel of the 3D view: texture coordinate, layer and depth of the surface seen
+  const pr = renderer.getPixelRatio(), w = Math.round(r.w * pr), h = Math.round(r.h * pr);
+  if (!P.uvRT || P.uvRT.width !== w || P.uvRT.height !== h) {
+    P.uvRT?.dispose();
+    P.uvRT = new THREE.WebGLRenderTarget(w, h, { type: THREE.FloatType, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter });
+  }
+  for (const o of P.uvScene.children) o.matrixWorld.copy(o.userData.disp.matrixWorld);
+  proj.resize(r.w / r.h);
+  renderer.setRenderTarget(P.uvRT); renderer.setClearColor(0x000000, 0); renderer.clear(); renderer.render(P.uvScene, camera);
+  renderer.setClearColor(0x000000, 1);
+}
+const _cn = new THREE.Vector3(), _cp = new THREE.Vector3();
+// Area-weighted normal of the surface within radius (world) of a hit, facing the camera. Only
+// triangles within 45 degrees of the one hit count, so a click at a corner takes the side it is on.
+function surfaceNormal(hit, radius) {
+  const o = hit.object, inv = new THREE.Matrix4().copy(o.matrixWorld).invert(), ref = hit.face.normal;
+  const c = hit.point.clone().applyMatrix4(inv), r = radius / o.matrixWorld.getMaxScaleOnAxis();
+  const sph = new THREE.Sphere(c, r), sum = new THREE.Vector3();
+  o.geometry.boundsTree.shapecast({
+    intersectsBounds: (box) => box.intersectsSphere(sph),
+    intersectsTriangle: (tri) => {
+      if (tri.closestPointToPoint(c, _cp).distanceTo(c) > r) return false;
+      tri.getNormal(_cn);
+      if (_cn.dot(ref) > 0.7) sum.addScaledVector(_cn, tri.getArea());
+      return false;
+    },
+  });
+  if (sum.lengthSq() < 1e-20) sum.copy(hit.face.normal);
+  const n = sum.transformDirection(o.matrixWorld);
+  const toCam = camera.isOrthographicCamera ? camera.getWorldDirection(_cp).negate() : _cp.copy(camera.position).sub(hit.point);
+  return n.dot(toCam) < 0 ? n.negate() : n;
+}
+function surfaceFrame(point, n) {  // x right, y up as on screen, z the normal
+  const up = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
+  const y = up.addScaledVector(n, -up.dot(n));
+  if (y.lengthSq() < 1e-8) y.set(1, 0, 0).applyQuaternion(camera.quaternion).addScaledVector(n, -n.dot(y));
+  y.normalize();
+  return new THREE.Matrix4().makeBasis(new THREE.Vector3().crossVectors(y, n), y, n).setPosition(point);
+}
 function swapLayer(layer) {
   [layer.cur, layer.other] = [layer.other, layer.cur];
   for (const d of layer.mats) d.material.map = layer.cur.texture;
@@ -1425,6 +1494,11 @@ function paintDab(layer, space, center, radius, offset) {
   u.uHard.value = brush.hardness; u.uStrength.value = P.stroke.t === 'clone' || P.stroke.t === 'restore' ? Math.min(1, brush.strength * 1.5) : brush.strength;
   u.uTexel.value.set(1 / layer.W, 1 / layer.H); u.uOffset.value.copy(offset || new THREE.Vector2());
   u.uBlur.value = Math.max(1, P.stroke.radiusTex * 0.12);
+  u.uClone3d.value = space === 0 && P.stroke.cloneXf ? 1 : 0;
+  if (u.uClone3d.value) {
+    u.uCloneXf.value.copy(P.stroke.cloneXf); u.uViewMat.value.copy(camera.matrixWorldInverse);
+    u.uUVBuf.value = P.uvRT.texture; u.uLayerId.value = layer.index + 1; u.uCloneTol.value = P.stroke.cloneTol;
+  }
   if (space === 0) {
     u.uView.value.copy(P.stroke.view);
     u.uViewProj.value.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
@@ -1484,9 +1558,9 @@ function paintAt(at, first) {
 }
 function paintDabAt(at) {
   const st = P.stroke;
-  let layer, space, center, radius, uvp;
+  let layer, space, center, radius, uvp, hit;
   if (at.name === '3d') {
-    const hit = pick(at, P.meshes);
+    hit = pick(at, P.meshes);
     if (!hit) { st.lastUV = null; return; }
     const h = hitUV(hit); layer = h.layer; uvp = h.uv;
     const pr = renderer.getPixelRatio();
@@ -1501,8 +1575,22 @@ function paintDabAt(at) {
   let offset = null;
   if (st.t === 'clone') {
     if (!P.clone) { fail(new Error('Ctrl+click to set the clone source first')); return; }
-    if (!st.cloneOffset) st.cloneOffset = P.clone.uv.clone().sub(uvp);
-    offset = st.cloneOffset;
+    // aligned: the first stroke after picking the source fixes where it copies from, later strokes
+    // keep that alignment (so a side can be filled in several strokes) until a new source is picked
+    if (space === 0 && P.clone.point) {  // on the model: follow the surface (see surfaceFrame)
+      const rw = worldRadius(brush.radius, hit.point, at.r);
+      if (!P.clone.xf) {
+        const dst = surfaceFrame(hit.point, surfaceNormal(hit, rw)), src = surfaceFrame(P.clone.point, P.clone.normal);
+        P.clone.xf = src.multiply(dst.invert());
+      }
+      st.cloneXf = P.clone.xf; st.cloneTol = rw * 1.5;
+      const at3 = hit.point.clone().applyMatrix4(st.cloneXf);
+      cloneMark3d.position.copy(at3); cloneMark3d.scale.setScalar(rw);
+      cloneMark3d.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), P.clone.normal);
+    } else {
+      if (!P.clone.offset) P.clone.offset = P.clone.uv.clone().sub(uvp);
+      offset = P.clone.offset;
+    }
   } else if (st.t === 'smudge') {
     offset = st.lastUV ? st.lastUV.clone().sub(uvp) : null;
     if (!offset) { st.lastUV = uvp; return; }
@@ -1524,6 +1612,12 @@ function paintStart(e, at) {
     if (at.name === '3d' && !h) return false;
     const uvp = h ? hitUV(h).uv : display2dToUV(at);
     P.clone = { uv: uvp };
+    if (h) {  // on the model: also where it is and which way the surface faces there
+      const rw = worldRadius(brush.radius, h.point, at.r);
+      P.clone.point = h.point.clone(); P.clone.normal = surfaceNormal(h, rw);
+      cloneMark3d.position.copy(h.point); cloneMark3d.scale.setScalar(rw);
+      cloneMark3d.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), P.clone.normal);
+    }
     cloneMark.visible = true; cloneMark.position.set(uvp.x * uv2d.aspect, 1 - uvp.y, 1);
     cloneMark.scale.setScalar(0.01);
     $('cloneInfo').textContent = `clone source ${uvp.x.toFixed(3)}, ${uvp.y.toFixed(3)}`;
@@ -1534,6 +1628,7 @@ function paintStart(e, at) {
   if (at.name === '3d') {
     if (!pick(at, P.meshes)) return false;
     if (P.depthStale) refreshDepth(at.r);
+    if (tool.paint === 'clone' && P.clone?.point) refreshUVBuf(at.r);
   }
   P.stroke = { t: tool.paint, snap: new Map(), lastUV: null, lastPx: null, radiusTex: 10 };
   paintAt(at, true);
