@@ -725,12 +725,6 @@ def print_kwargs(opts: dict) -> dict:
     return {names[k]: v for k, v in opts.items() if k in names and v is not None}
 
 
-def workspace_print_stl(ws: Workspace, up: str = "auto", **kw) -> dict:
-    """The print STL for a workspace's current clean mesh (for workspaces cleaned before it existed)."""
-    src = ws.mesh / "mesh_clean.ply"
-    return export_print_stl(src, ws.mesh / "print.stl", workspace_alignment(ws, src, up=up), ws=ws, **kw)
-
-
 def texture_source(ws: Workspace) -> tuple[Path, str]:
     """The mesh texture projects the photos onto: the custom (edited) mesh from the editor when it
     is newer than the clean mesh, else the clean mesh. An older custom mesh was made from a clean
@@ -799,8 +793,9 @@ def workspace_alignment(ws: Workspace, mesh_path: Path, ground=None, up: str = "
 
 
 def clean_workspace_mesh(ws: Workspace, mesh_path: Path, use_masks: bool = True,
-                         remove_ground: bool = True, up: str = "auto", print_height: float = 100.0,
-                         print_base: float = 0.02, print_opts: dict | None = None, **kw) -> dict:
+                         remove_ground: bool = True, **kw) -> dict:
+    """mesh_clean.ply, in the SfM frame (OpenMVS texturing needs it). Exports (GLB, the 3D print,
+    ...) are made from it when asked (exports.py)."""
     from .sfm import load_reconstruction
 
     try:
@@ -820,9 +815,6 @@ def clean_workspace_mesh(ws: Workspace, mesh_path: Path, use_masks: bool = True,
                       ground=ground if remove_ground else None, **kw)
     info["support_plane"] = ground is not None
     info["masks_used"] = masks is not None
-    # mesh_clean.ply stays in the SfM frame (OpenMVS texturing needs it); the GLB is Y-up.
-    align = workspace_alignment(ws, out, ground, up)
-    export_glb(out, ws.mesh / "mesh_clean.glb", align)
-    info.update(export_print_stl(out, ws.mesh / "print.stl", align, ws=ws, height_mm=print_height, base=print_base,
-                                 **print_kwargs(print_opts or {})))
+    for old in ("mesh_clean.glb", "print.stl"):  # written by earlier versions: exports are made on request now
+        (ws.mesh / old).unlink(missing_ok=True)
     return info

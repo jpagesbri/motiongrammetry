@@ -526,8 +526,8 @@ async function openWorkspace() {
   if (sc) root.matrix.set(...sc.transform[0], ...sc.transform[1], ...sc.transform[2], ...sc.transform[3]);
   else root.matrix.identity();
   root.updateMatrixWorld(true); rootInv.copy(root.matrixWorld).invert();
-  const outs = new Set((wsState.outputs || []).map((o) => o.path));
-  const canSculpt = outs.has('mesh/mesh_clean.ply'), canPaint = outs.has('mesh/textured.ply');
+  const has = wsState.exportable || {}, pipe = has.pipeline || [], mine = has.custom || [];
+  const canSculpt = pipe.includes('mesh'), canPaint = pipe.includes('textured') || mine.includes('textured');
   document.querySelector('[data-mode=sculpt]').disabled = !canSculpt;
   document.querySelector('[data-mode=paint]').disabled = !canPaint;
   if (!canSculpt && !canPaint) { $('center').textContent = 'No clean mesh in this scan yet: run the pipeline up to clean.'; return; }
@@ -1076,7 +1076,7 @@ async function saveSculpt() {
   const body = encodeMesh();
   const r = await api(`/api/workspaces/${ws}/edit/mesh`, { method: 'POST', body, headers: { 'Content-Type': 'application/octet-stream' } });
   S.dirty = !!S.spheres.length;
-  flash(`saved as your custom mesh: ${r.faces.toLocaleString()} faces · custom print STL ${r.print_size_mm.join(' × ')} mm${r.print_watertight ? '' : ' (not watertight)'} · the pipeline mesh is unchanged · re-run texture to texture your edit`
+  flash(`saved as your custom mesh: ${r.faces.toLocaleString()} faces · the pipeline mesh is unchanged · in Paint, texture your edit (or carry the texture over) · Export makes its files when you ask`
     + (S.spheres.length ? ` · the Fill (${S.spheres.length} spheres) is not merged yet, so it was not saved` : ''));
 }
 

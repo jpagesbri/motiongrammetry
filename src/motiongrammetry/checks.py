@@ -344,14 +344,14 @@ def _pre_texture(ws, o, video):
         return [error("no-clean-mesh", "no clean mesh yet", "run clean first")]
     if not (ws.mvs / "scene_dense.mvs").exists():
         return [error("no-mvs-scene", "texturing uses the OpenMVS scene, which the VGGT path does not create",
-                      "use mesh_clean.glb (vertex colours), or run sfm + mvs")]
+                      "export the clean mesh (vertex colours), carry a texture over in the editor, or run sfm + mvs")]
     d = _stale_input(ws, "texture", ["clean", "mvs"])
     from .clean import texture_source
 
     custom = ws.mesh / "custom" / "mesh_clean.ply"
     if texture_source(ws)[1] == "custom":
         d.append(info("custom-mesh", "texturing your custom (edited) mesh: the result is the custom textured model",
-                      "the pipeline's own model.glb is left as it is"))
+                      "the pipeline's own textured model is left as it is"))
     elif custom.exists():
         d.append(warn("custom-mesh-outdated", "the custom (edited) mesh was made from an older clean mesh, "
                       "so texture uses the new clean mesh", "edit and save the mesh again to texture your edits"))
@@ -457,14 +457,11 @@ def _gate_clean(ws, r, o):
     if not r.get("support_plane") and not o["keep_ground"]:
         d.append(info("no-support-plane", "no trustworthy desk/floor plane found: none was cut, "
                       "orientation falls back to the camera up-vector"))
-    level = {"info": info, "warning": warn, "error": error}
-    for i in r.get("print_issues", []):  # from the print STL export (clean.print_report)
-        d.append(level[i["level"]](i["code"], i["message"], i["hint"]))
     return d
 
 
 def _gate_texture(ws, r, o):
-    glb = Path(r.get("glb") or ws.mesh / "model.glb")
-    if not glb.exists():
-        return [error("no-output", f"texturing produced no {glb.name}")]
+    ply = Path(r.get("ply") or ws.mesh / "textured.ply")
+    if not ply.exists():
+        return [error("no-output", f"texturing produced no {ply.name}")]
     return []

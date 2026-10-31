@@ -73,7 +73,8 @@ OPTIONS: list[Opt] = [
     Opt("ground_margin", float, 0.03, "height above the plane cut away, as a fraction of the subject height",
         ("clean",), group="advanced"),
     Opt("target_faces", int, None, "decimate the clean mesh to this many faces", ("clean",), group="advanced"),
-    Opt("print_height", float, 100.0, "height of the 3D-print STL (print.stl) in mm", ("clean",)),
+    # The print settings: the Export window's defaults for this scan's 3D print (exports.py)
+    Opt("print_height", float, 100.0, "height of the 3D print in mm (the Export window's default)", ("clean",)),
     Opt("print_mode", str, "auto", "3D print: a closed solid (openings capped with lids), only the scanned "
         "surface as a shell (invents nothing), or auto: shell when lids would invent over a third of it",
         ("clean",), ("auto", "solid", "shell")),
@@ -85,8 +86,9 @@ OPTIONS: list[Opt] = [
         "scanned detail exactly where it was measured", ("clean",), ("inward", "outward", "both"), group="advanced"),
     Opt("print_base", float, 0.02, "flatten this fraction of the print's height at the bottom so it stands",
         ("clean",), group="advanced"),
-    Opt("up", str, "auto", "how to orient the GLB: support plane, camera up-vector, or leave as SfM",
-        ("clean", "texture"), ("auto", "plane", "camera", "none"), group="advanced"),
+    Opt("up", str, "auto", "how exports stand the model up when no orientation is set: support plane, camera "
+        "up-vector, or leave as SfM (the Export window's default)", ("clean", "texture"), ("auto", "plane", "camera", "none"),
+        group="advanced"),
     # texture
     Opt("texture_resolution", int, 0, "texture image resolution level (0 full, 1 half)", ("texture",),
         (0, 1, 2), group="advanced"),

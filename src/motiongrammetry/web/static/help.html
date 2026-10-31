@@ -79,7 +79,7 @@ other options without starting over. A stage whose input changed after it ran is
   <tr><td><code>sfm</code></td><td>Structure from motion: works out where the camera was for every keyframe.</td><td>1–3 min</td></tr>
   <tr><td><code>mvs</code></td><td>Multi-view stereo: a depth map per keyframe, fused into a dense cloud and a raw mesh (background included).</td><td>5–30 min</td></tr>
   <tr><td><code>vggt</code></td><td>Optional AI alternative to sfm + mvs (needs a GPU). Faster, less detailed; replaces the camera positions.</td><td>1–2 min</td></tr>
-  <tr><td><code>clean</code></td><td>Carves away what the masks call background, removes the floor or table, fills holes, keeps the main piece, writes the print file.</td><td>~1 min</td></tr>
+  <tr><td><code>clean</code></td><td>Carves away what the masks call background, removes the floor or table, fills holes, keeps the main piece.</td><td>~1 min</td></tr>
   <tr><td><code>texture</code></td><td>Projects the photos onto the clean mesh: the coloured model.</td><td>1–5 min</td></tr>
 </table>
 
@@ -198,8 +198,8 @@ is wrong, <b>Orient…</b> (or the assisted run's last step) fixes it: <b>Click 
 the floor (a curved base, like a sole, settles onto the points it would really rest on, so it stands
 without a stand); <b>Turn 90°</b> about any axis; orbit until you face the model's front and press <b>This view is the front</b>;
 or free <b>Rotate</b> / <b>Move</b> handles. <b>Centre</b> and <b>Drop to floor</b> tidy up; turns do it for you. <b>Save</b> and every
-export uses it: the GLBs, the print STL, the Export window and texture re-runs (the GLB and STL files are rebuilt in the
-background, about a minute). <b>Reset to automatic</b> forgets it. Nothing is re-run and the meshes are not changed. If you
+export uses it; files exported before are marked outdated in the Export window and made again when you ask.
+<b>Reset to automatic</b> forgets it. Nothing is re-run and the meshes are not changed. If you
 re-run sfm, the cameras change and your orientation no longer applies: set it again.</p>
 <h3 id="frames">Preview: frames and masks</h3>
 <figure><img src="/help/frames.jpg" alt="The frame viewer" loading="lazy">
@@ -221,7 +221,9 @@ the Run panel, in the assisted run, or on the command line as <code>--option-nam
 <div id="presetsRef"><p class="muted">loading…</p></div>
 
 <h2 id="outputs">Export</h2>
-<p>Tick what you want to take out of a scan and pick each one's format; several come as one zip, a folder each (every file
+<p>Files are made when you ask for them, not by the pipeline: each is kept, so asking again takes no time (the row says
+<b>ready</b>), until something it is made from changes (the mesh, the texture, the orientation) or you change its settings,
+and then it says <b>outdated</b> and is made again. Tick what you want to take out of a scan and pick each one's format; several come as one zip, a folder each (every file
 is also downloadable on its own).</p>
 <table>
   <tr><th>Content</th><th>Formats</th><th>Use it for</th></tr>
@@ -256,7 +258,10 @@ on a ~0.3 mm grid, which removes self-intersections and thickens walls thinner t
   <tr><td>Flat base</td><td>The bottom share of the height is flattened so a solid stands without wobbling.</td></tr>
 </table>
 <p>Whatever could still go wrong (invented share, stand, thin walls, separate pieces, overhangs needing supports) is listed
-under the print file and on the clean stage card, each with the option that changes it.</p>
+with the exported print and, in the Preview's Export panel, as the <b>print check</b> of the last print exported (marked
+outdated once the mesh or the orientation changes), each with the option that changes it. A scan's print settings
+(<code>print_height</code>, <code>print_mode</code>, …, set by the assisted run from what you filmed) are where the Export
+window starts.</p>
 
 <h2 id="edit">Edit &amp; paint</h2>
 <p>Edits are saved as a <b>custom version</b> (in <code>mesh/custom/</code>); the pipeline's files are never changed and
@@ -285,8 +290,8 @@ hanging under the toe. Two tools and a save give it a sole.</p>
   <figcaption>4. <b>Close all holes</b>: the lid follows the scan's bottom edge, flat where it is flat and curving up to the toe
   and the heel, like a real sole.</figcaption></figure>
 <figure><img src="/help/edit-saved.jpg" alt="The edited shoe saved" loading="lazy">
-  <figcaption>5. <b>Save</b> (<kbd>Ctrl+S</kbd>): a custom version with its own print file. Then re-run texture so the
-  photos cover the new mesh.</figcaption></figure>
+  <figcaption>5. <b>Save</b> (<kbd>Ctrl+S</kbd>): a custom version, saved in a second or two. Then texture it (or carry the
+  texture over) in Paint, and export it from "your edits".</figcaption></figure>
 <p><b>Display</b> (<kbd>W</kbd>) and <b>highlight holes</b> work as in the Preview: <b>Solid + wires</b> after <b>Merge</b> shows
 how fine the new mesh is; holes update as you cut and fill.</p>
 <table>

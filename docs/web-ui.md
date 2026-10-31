@@ -79,9 +79,9 @@ mg ui --root ~/scans --port 9000
   my edits** runs the texture stage on the edited mesh and **Carry the texture over** transfers the
   old texture to it by nearest point, `atlas.transfer`),
   with undo. Edits are saved as a **custom version** in `mesh/custom/` and never change the
-  pipeline's files: a sculpt writes `custom/mesh_clean.ply`, its GLB and a custom print STL; the
+  pipeline's files: a sculpt writes `custom/mesh_clean.ply` (its exports are made when asked); the
   texture stage then projects the photos onto the custom mesh (when it is newer than the clean
-  mesh) into `custom/model.glb`, which you can paint; painting the pipeline's textured model copies
+  mesh) into `custom/textured.ply`, which you can paint; painting the pipeline's textured model copies
   it into `custom/` first. Export offers both versions, the viewer has a **Custom
   (edited)** layer, and **Delete custom version** goes back to the pipeline's.
 - **Keyframes**: thumbnail strip with optional mask overlay; click one to view from its camera,
@@ -95,8 +95,8 @@ mg ui --root ~/scans --port 9000
   on the floor, turn in 90° steps, "this view is the front", free rotate / move handles, centre,
   drop to floor. Saved as `orientation.json` (the SfM → Y-up transform plus the SfM model it was set
   against: re-running SfM makes it lapse). `workspace_alignment(up="auto")` returns it, so every
-  export, GLB, print STL and later clean / texture run uses it; saving rebuilds the files that have
-  it baked in (GLBs, print STLs) in the background. Meshes stay in the SfM frame; nothing re-runs.
+  export uses it; exports made with an older one are outdated and made again when asked. Meshes
+  stay in the SfM frame; nothing re-runs.
 - **3D preview** (three.js): camera frusta, sparse points, dense cloud, raw / clean / textured
   mesh, all in one Y-up frame. **Display** (`W`): colours, solid grey, wireframe, or solid + wires
   (fading out where triangles are under a few pixels); **Highlight holes** draws the open edges in

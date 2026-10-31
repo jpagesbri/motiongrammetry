@@ -10,11 +10,11 @@ machine it runs on, and turns their raw output (subject + floor + walls + floate
 into just the subject.
 
 ```
-video ──► frames ──► mask ──► poses ──────────► dense mesh ──► clean ──► texture ──► model.glb
+video ──► frames ──► mask ──► poses ──────────► dense mesh ──► clean ──► texture ──► textured.ply
           motion-    BiRefNet/ COLMAP 4 /          OpenMVS        silhouette  OpenMVS
           aware      IS-Net    GLOMAP + loop       ── or ──       carving,
           keyframes            closure             VGGT + TSDF    floaters,
-                               ── or ──            ── or ──       manifold, Y-up GLB
+                               ── or ──            ── or ──       manifold
                                VGGT (feed-forward) 2DGS (GPU)
 ```
 
@@ -27,7 +27,8 @@ video ──► frames ──► mask ──► poses ────────�
 | `mg vggt` | **VGGT** feed-forward cameras + depth fused with a TSDF (numpy + marching cubes) — no SfM/MVS at all; robust to blur and low texture. Also writes a COLMAP model so every later stage works. |
 | `mg export-2dgs` | Self-contained **2D Gaussian Splatting** dataset + run script for a CUDA host (`--masked` trains on the subject only). |
 | `mg clean` | **Silhouette carving** with the masks (removes floor/walls by visual-hull reasoning, tolerant to per-view mask mistakes), **support-plane removal** (desk/floor found by RANSAC on background points of the dense cloud, validated against the subject), floater removal, manifold repair, optional decimation. GLB is **gravity-aligned** (Y-up from the desk normal, else the mean camera up-vector) and centred. |
-| `mg texture` | OpenMVS texturing of the *cleaned* mesh → `model.glb`. |
+| `mg texture` | OpenMVS texturing of the *cleaned* mesh → `textured.ply` + PNG. |
+| `mg export` | The files to take out (GLB, OBJ, PLY, the 3D print as STL / 3MF, the dense cloud, the COLMAP cameras), made when asked and reused until the scan changes (`exports.py`; the web UI's Export window). |
 | `mg doctor` | Which backends are usable on this machine. |
 
 ## Command line
@@ -142,8 +143,9 @@ All options (and their help) are in `options.py`; `mg <stage> --help` lists the 
   it off) and only disputed by the masks (background in at most half its views on average) is
   put back from the raw mesh. Real gaps, e.g. between arm and body, are background in most views
   and stay carved. Holes the raw mesh never had geometry for are not filled.
-- **3D printing (`mesh/print.stl`)** needs one closed, upright, real-size solid that balances, which
-  a scan is not. Clean writes one (Z-up, scaled to `--print-height` mm, bottom 2% flattened) and
+- **3D printing (`mg export WS print`, the Export window)** needs one closed, upright, real-size solid
+  that balances, which a scan is not. The export makes one (Z-up, scaled to `--print-height` mm,
+  bottom 2% flattened) and
   rebuilds it on a ~0.3 mm voxel grid: inside is what a flood fill from outside cannot reach, so
   surfaces that cross each other (a lid cutting through the scan made 2,483 crossings on a
   test scan, and a 6x8x10 cm head "weighed" 18 cm3) cannot confuse it, and walls thinner than

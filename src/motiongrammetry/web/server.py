@@ -22,7 +22,6 @@ Preview data is served in the raw SfM frame together with one 4x4 "scene" transf
   GET  /api/workspaces/<ws>/image/<frames|masks>/<file>   full size, for the frame viewer
   GET  /api/workspaces/<ws>/frame-stats     per keyframe: sharpness, mask coverage, has a camera
   POST /api/workspaces/<ws>/orientation     {"transform": 4x4 | null} -> set / reset the orientation
-  GET  /api/workspaces/<ws>/download?path=<rel>   an output file (see App.outputs), or mesh.zip
   POST /api/workspaces/<ws>/duplicate       {"name", "reconstruction": bool} -> copy to try other settings
   GET  /api/workspaces/<ws>/size            bytes on disk, and the video if it lives outside the scan
   POST /api/workspaces/<ws>/delete          {"confirm": <name>} -> the scan's folder and everything in it
@@ -37,6 +36,8 @@ Preview data is served in the raw SfM frame together with one 4x4 "scene" transf
   POST /api/workspaces/<ws>/edit/layout     {"undo": true} -> back to the layout before the last rebuild
   POST /api/workspaces/<ws>/edit/transfer   the texture carried over to the custom (sculpted) mesh, no photos
   POST /api/workspaces/<ws>/export          {"items":[{"content","format"}],"source","options"} -> .ui/exports/
+                                            (built on request, reused until an input changes: exports.py)
+  POST /api/workspaces/<ws>/export/status   the same body -> which files are ready, outdated or not built
   GET  /api/workspaces/<ws>/exports/<file>  download it
   GET  /api/workspaces/<ws>/preview.jpg     scan thumbnail (3D snapshot, else a keyframe)
   GET  /api/workspaces/<ws>/advice?subject= what to change next (advice.py), for assisted mode
@@ -70,6 +71,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 import numpy as np
 
+from .. import exports
 from ..diagnostics import EXIT_CANCELLED, EXIT_GATE, EXIT_PREFLIGHT
 from ..workspace import RAW_MESH, STAGES, UPSTREAM, Workspace
 
@@ -80,24 +82,6 @@ MAX_POINTS = {"sparse": 200_000, "dense": 600_000}
 NAME_RE = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 # What a duplicate copies per stage. Frames and masks always; the reconstruction on request.
 STAGE_DIRS = {"frames": ["frames"], "mask": ["masks"], "sfm": ["colmap", "dense"], "mvs": ["mvs"], "vggt": ["vggt"]}
-# Downloadable results, most useful first: (path in the workspace, label, stage that writes it).
-# Any other file in mesh/ is offered too, under its own name.
-OUTPUTS = [
-    ("mesh/model.glb", "Textured model (GLB, Y-up)", "texture"),
-    ("mesh/mesh_clean.glb", "Clean mesh, vertex colours (GLB, Y-up)", "clean"),
-    ("mesh/print.stl", "3D print (STL: watertight, Z-up, sized in mm)", "clean"),
-    ("mesh/textured.ply", "Textured mesh (PLY, SfM frame; needs its PNG)", "texture"),
-    ("mesh/mesh_clean.ply", "Clean mesh (PLY, SfM frame)", "clean"),
-    ("mvs/scene_mesh.ply", "Raw mesh before cleanup (PLY)", "mvs"),
-    ("mvs/scene_dense.ply", "Dense point cloud (PLY)", "mvs"),
-    ("vggt/tsdf_mesh.ply", "Raw VGGT mesh (PLY)", "vggt"),
-    ("mesh/custom/model.glb", "Custom textured model (edited, GLB, Y-up)", "custom"),
-    ("mesh/custom/print.stl", "Custom 3D print (edited, STL)", "custom"),
-    ("mesh/custom/mesh_clean.glb", "Custom mesh (edited, GLB, Y-up)", "custom"),
-    ("mesh/custom/mesh_clean.ply", "Custom mesh (edited, PLY, SfM frame)", "custom"),
-    ("mesh/custom/textured.ply", "Custom textured mesh (PLY; needs its PNG)", "custom"),
-]
-STL = "mesh/print.stl"
 LAYOUT_PREVIOUS = ".layout-previous"  # in mesh/custom/: the texture layout the last rebuild replaced
 
 # Progress patterns found in stage output (mg logging, COLMAP glog, OpenMVS).
@@ -273,7 +257,6 @@ class App:
         self.root.mkdir(parents=True, exist_ok=True)
         self.jobs: dict[str, Job] = {}
         self.cache_lock = threading.Lock()
-        self.reorienting: set[str] = set()  # scans whose exports are being rebuilt (set_orientation)
 
     # ---- workspaces -------------------------------------------------------------------
     def job(self, ws: Workspace) -> Job | None:
@@ -326,7 +309,7 @@ class App:
             "preview": pv.stat().st_mtime if pv.exists() else (0 if ws.frames.is_dir() and any(ws.frames.glob("*.jpg")) else None),
             "frames": frames,
             "faces": m.get("clean", {}).get("faces_out"),
-            "textured": (ws.mesh / "model.glb").exists(),
+            "textured": (ws.mesh / "textured.ply").exists(),
             "custom": (ws.mesh / "custom" / "mesh_clean.ply").exists() or (ws.mesh / "custom" / "textured.ply").exists(),
             "last_run": hist[-1]["started"] + (hist[-1].get("duration") or 0) if hist else None,
             "last_status": hist[-1]["status"] if hist else None,
@@ -370,9 +353,10 @@ class App:
             "layers": self.layers(ws),
             "stale": self.stale(ws),
             "disk": self.disk(ws),
-            "outputs": self.outputs(ws),
+            "print_check": exports.print_check(ws),  # the last 3D-print export's report, per version
+            "export_defaults": exports.defaults(ws),  # the scan's print_* / up options
             "can_texture": (ws.mvs / "scene_dense.mvs").exists(),  # the texture stage needs OpenMVS's scene
-            "exportable": {v: [k for k, p in self.export_sources(ws, v == "custom").items() if p]
+            "exportable": {v: [k for k, p in exports.sources_of(ws, v == "custom").items() if p]
                            for v in ("pipeline", "custom")},
             "cameras": ws.cameras_from(),
             "raw_meshes": [s for s, rel in RAW_MESH.items() if (ws.root / rel).exists()],
@@ -461,83 +445,11 @@ class App:
         job = self.jobs.get(name)
         if job and job.status == "running":
             raise RuntimeError("a run is using this scan: stop it first")
-        if name in self.reorienting:
-            raise RuntimeError("the scan's files are being updated: try again in a moment")
         info = self.size(ws)
         shutil.rmtree(ws.root)
         self.jobs.pop(name, None)
         log.info("deleted scan %s (%d files, %.1f MB)", name, info["files"], info["bytes"] / 1e6)
         return {"deleted": name, **info}
-
-    def outputs(self, ws: Workspace) -> list[dict]:
-        stale = set(self.stale(ws))
-        known = {rel: (label, stage) for rel, label, stage in OUTPUTS}
-        extra = sorted(str(p.relative_to(ws.root)) for p in [*ws.mesh.glob("*"), *ws.mesh.glob("custom/*")]
-                       if p.is_file() and p.name != "info.json") if ws.mesh.is_dir() else []
-        custom = self.custom_info(ws)
-        cinfo = ws.mesh / "custom" / "info.json"
-        notes = {"pipeline": ws.load_manifest().get("clean", {}).get("print_issues", []),
-                 "custom": json.loads(cinfo.read_text()).get("print_issues", []) if cinfo.exists() else []}
-        out = []
-        for rel in [r for r, _, _ in OUTPUTS] + [r for r in extra if r not in known]:
-            p = ws.root / rel
-            label, stage = known.get(rel, (p.name, "texture" if p.name.startswith("textured") else "clean"))
-            if rel == STL and self._stl_outdated(ws):  # older workspaces: converted on download
-                out.append({"path": rel, "label": label, "size": None, "stale": stage in stale})
-                continue
-            if not p.is_file():
-                continue
-            if rel.startswith("mesh/custom/") and rel not in known:
-                label = f"Custom {p.name}"
-            is_stale = stage in stale or (rel.startswith("mesh/custom/") and custom["texture_stale"]
-                                          and ("textured" in p.name or p.name == "model.glb"))
-            entry = {"path": rel, "label": label, "size": p.stat().st_size, "stale": is_stale}
-            if p.name == "print.stl":  # what may still go wrong when printing (clean.print_report)
-                entry["issues"] = notes["custom" if rel.startswith("mesh/custom/") else "pipeline"]
-            out.append(entry)
-        return out
-
-    @staticmethod
-    def _stl_outdated(ws: Workspace) -> bool:
-        from ..clean import ORIENTATION
-
-        src, stl, orient = ws.root / "mesh/mesh_clean.ply", ws.root / STL, ws.root / ORIENTATION
-        return src.is_file() and (not stl.is_file() or stl.stat().st_mtime < src.stat().st_mtime
-                                  or orient.exists() and stl.stat().st_mtime < orient.stat().st_mtime)
-
-    def output_file(self, ws: Workspace, rel: str) -> Path:
-        """Only the files listed by outputs() are served, plus a zip of mesh/."""
-        if rel in (STL, "mesh.zip") and self._stl_outdated(ws):
-            from ..clean import workspace_print_stl
-
-            with self.cache_lock:
-                if self._stl_outdated(ws):
-                    info = workspace_print_stl(ws, **self._print_opts(ws))
-                    manifest = ws.load_manifest()
-                    manifest.setdefault("clean", {}).update(info)
-                    ws._write_manifest(manifest)
-        if rel == "mesh.zip":
-            return self._mesh_zip(ws)
-        if rel not in {o["path"] for o in self.outputs(ws)}:
-            raise FileNotFoundError(rel)
-        return ws.root / rel
-
-    def _mesh_zip(self, ws: Workspace) -> Path:
-        import zipfile
-
-        files = sorted(p for p in [*ws.mesh.glob("*"), *ws.mesh.glob("custom/*")]
-                       if p.is_file() and p.name != "info.json") if ws.mesh.is_dir() else []
-        if not files:
-            raise FileNotFoundError("mesh/")
-
-        def build(out: Path) -> None:
-            # PNG and GLB are already compressed; deflate only pays off for the PLYs.
-            with zipfile.ZipFile(out, "w") as z:
-                for p in files:
-                    z.write(p, f"{ws.root.name}/{p.relative_to(ws.mesh)}",
-                            zipfile.ZIP_STORED if p.suffix in (".png", ".jpg", ".glb") else zipfile.ZIP_DEFLATED)
-
-        return self._cached(ws, "mesh.zip", files, build)
 
     def layers(self, ws: Workspace) -> dict[str, bool]:
         stale = set(self.stale(ws))
@@ -570,8 +482,6 @@ class App:
         name = ws.root.name
         if name in self.jobs and self.jobs[name].status == "running":
             raise RuntimeError("a run is already in progress for this scan")
-        if name in self.reorienting:
-            raise RuntimeError("the export files are being updated for the new orientation: try again in a moment")
         bad = [s for s in stages if s not in STAGES]
         if bad or not stages:
             raise ValueError(f"unknown stages {bad}")
@@ -669,18 +579,16 @@ class App:
     def orientation(self, ws: Workspace) -> dict:
         from ..clean import ORIENTATION, user_orientation
 
-        return {"user": user_orientation(ws) is not None, "updating": ws.root.name in self.reorienting,
+        return {"user": user_orientation(ws) is not None,
                 # set against cameras that were re-run since: no longer applies
                 "lapsed": (ws.root / ORIENTATION).exists() and user_orientation(ws) is None}
 
     def set_orientation(self, ws: Workspace, T) -> dict:
-        """Save the orientation (SfM frame -> Y-up, like gravity_alignment) or drop it (None), then
-        rebuild the files that have an orientation baked in (GLBs, print STLs) in the background."""
+        """Save the orientation (SfM frame -> Y-up, like gravity_alignment) or drop it (None). Nothing is
+        rebuilt: exports made with the old one are outdated (exports.py) and built again when asked."""
         from ..clean import ORIENTATION
 
         self._editable(ws)
-        if ws.root.name in self.reorienting:
-            raise RuntimeError("still updating the files for the last orientation: try again in a moment")
         p, cams = ws.root / ORIENTATION, ws.sparse / "images.bin"
         if T is None:
             p.unlink(missing_ok=True)
@@ -696,38 +604,7 @@ class App:
             tmp = p.with_suffix(".tmp")
             tmp.write_text(json.dumps({"transform": T.tolist(), "cameras": cams.stat().st_mtime_ns}))
             tmp.replace(p)
-        self.reorienting.add(ws.root.name)
-        threading.Thread(target=self._reexport, args=(ws,), daemon=True).start()
         return self.orientation(ws)
-
-    def _reexport(self, ws: Workspace) -> None:
-        from ..clean import export_glb, export_print_stl, workspace_alignment, workspace_print_stl
-
-        m, c = ws.mesh, ws.mesh / "custom"
-        try:
-            textured_from_custom = self.custom_info(ws)["texture_from"] == "custom" and (c / "mesh_clean.ply").exists()
-            # (source, file with the orientation baked in, geometry the automatic orientation is fitted to)
-            for src, dst, geometry in [(m / "mesh_clean.ply", m / "mesh_clean.glb", m / "mesh_clean.ply"),
-                                       (m / "textured.ply", m / "model.glb", m / "mesh_clean.ply"),
-                                       (c / "mesh_clean.ply", c / "mesh_clean.glb", c / "mesh_clean.ply"),
-                                       (c / "textured.ply", c / "model.glb",
-                                        c / "mesh_clean.ply" if textured_from_custom else m / "mesh_clean.ply")]:
-                if src.exists() and dst.exists() and geometry.exists():
-                    export_glb(src, dst, workspace_alignment(ws, geometry))
-            if (m / "mesh_clean.ply").exists():
-                with self.cache_lock:
-                    info = workspace_print_stl(ws, **self._print_opts(ws))
-                    manifest = ws.load_manifest()
-                    manifest.setdefault("clean", {}).update(info)
-                    ws._write_manifest(manifest)
-            if (c / "mesh_clean.ply").exists() and (c / "print.stl").exists():
-                dst = c / "mesh_clean.ply"
-                info = export_print_stl(dst, c / "print.stl", workspace_alignment(ws, dst), ws=ws, **self._print_opts(ws))
-                self._custom_meta(ws, print_issues=info["print_issues"])
-        except Exception:
-            log.exception("re-exporting %s for its new orientation", ws.root.name)
-        finally:
-            self.reorienting.discard(ws.root.name)
 
     # ---- frame viewer -------------------------------------------------------------------------
     def image(self, ws: Workspace, kind: str, name: str) -> Path:
@@ -854,14 +731,6 @@ class App:
         used = ws.load_manifest().get("clean", {}).get("input")
         return Path(used) if used and Path(used).exists() else ws.raw_mesh()
 
-    @staticmethod
-    def _print_opts(ws: Workspace) -> dict:
-        """The print settings of the scan's last clean run (defaults if it predates them)."""
-        from ..clean import print_kwargs
-
-        last = next((h for h in reversed(ws.history()) if h["stage"] == "clean" and h["status"] in ("ok", "warning")), {})
-        return print_kwargs({k: v for k, v in (last.get("options") or {}).items() if k.startswith("print_")})
-
     def _editable(self, ws: Workspace) -> None:
         job = self.job(ws)
         if job and job.status == "running":
@@ -875,10 +744,11 @@ class App:
         p.write_text(json.dumps(info))
 
     def save_mesh(self, ws: Workspace, data: bytes) -> dict:
-        """Body: see meshops.decode_mesh. Written as the custom mesh (+ its GLB and print STL)."""
+        """Body: see meshops.decode_mesh. Written as the custom mesh; its exports (GLB, print, ...) are
+        made when asked (exports.py)."""
         import open3d as o3d
 
-        from ..clean import _make_manifold, export_glb, export_print_stl, workspace_alignment
+        from ..clean import _make_manifold
         from ..meshops import decode_mesh
 
         self._editable(ws)
@@ -901,17 +771,13 @@ class App:
         tmp = dst.with_suffix(".tmp.ply")
         o3d.io.write_triangle_mesh(str(tmp), mesh)
         tmp.replace(dst)
-        align = workspace_alignment(ws, dst)
-        export_glb(dst, c / "mesh_clean.glb", align)
-        info = export_print_stl(dst, c / "print.stl", align, ws=ws, **self._print_opts(ws))
-        self._custom_meta(ws, print_issues=info["print_issues"])
-        return {"faces": len(mesh.triangles), "nonmanifold_vertices_removed": fixed, **info}
+        for old in ("mesh_clean.glb", "print.stl"):  # written by earlier versions: exports are made on request now
+            (c / old).unlink(missing_ok=True)
+        return {"faces": len(mesh.triangles), "nonmanifold_vertices_removed": fixed}
 
     def save_texture(self, ws: Workspace, index: int, data: bytes, source: str) -> dict:
         """A painted texture image. ``source`` is the model the editor painted: the pipeline's
         textured model (copied into custom/ on the first save) or the custom one."""
-        from ..clean import export_glb, workspace_alignment
-
         self._editable(ws)
         if not data.startswith(b"\x89PNG\r\n\x1a\n"):
             raise ValueError("texture upload must be a PNG")
@@ -931,10 +797,7 @@ class App:
         tmp = png.with_suffix(".tmp.png")
         tmp.write_bytes(data)
         tmp.replace(png)
-        os.utime(ply)  # the viewer's cached GLB of textured.ply follows its mtime
-        from_custom = self.custom_info(ws)["texture_from"] == "custom" and (c / "mesh_clean.ply").exists()
-        geometry = c / "mesh_clean.ply" if from_custom else ws.mesh / "mesh_clean.ply"
-        export_glb(ply, c / "model.glb", workspace_alignment(ws, geometry))
+        os.utime(ply)  # the viewer's cached GLB and the exports of textured.ply follow its mtime
         return {"texture": f"custom/{png.name}", "bytes": len(data)}
 
     def relayout_texture(self, ws: Workspace, body: dict) -> dict:
@@ -997,8 +860,6 @@ class App:
     def _new_texture(self, ws: Workspace, make, textured_from: str | None) -> dict:
         """Install a texture make(dst) writes as the custom textured model, keeping the one it replaces
         aside (undo_layout). textured_from: what its geometry is, when it changes ("clean", "custom")."""
-        from ..clean import export_glb, workspace_alignment
-
         c, info = ws.mesh / "custom", self.custom_info(ws)
         work, prev = c / ".layout", c / LAYOUT_PREVIOUS
         shutil.rmtree(work, ignore_errors=True)
@@ -1020,9 +881,6 @@ class App:
             shutil.rmtree(work, ignore_errors=True)
         if textured_from:
             self._custom_meta(ws, textured_from=textured_from)
-        from_custom = self.custom_info(ws)["texture_from"] == "custom" and (c / "mesh_clean.ply").exists()
-        export_glb(c / "textured.ply", c / "model.glb",
-                   workspace_alignment(ws, c / "mesh_clean.ply" if from_custom else ws.mesh / "mesh_clean.ply"))
         (prev / "after").write_text(str((c / "textured.ply").stat().st_mtime_ns))
         return out
 
@@ -1063,174 +921,8 @@ class App:
             raise FileNotFoundError(f"no custom {what}")
         return {"deleted": gone}
 
-    # ---- export window: pick the contents, each in a format that suits it ----------------------
-    # content: (label, formats; the first is the default)
-    EXPORT_CONTENTS = {
-        "textured": ("Textured model", ("glb", "obj")),
-        "mesh": ("Clean mesh, vertex colours", ("glb", "ply", "obj")),
-        "print": ("3D print", ("stl", "3mf")),
-        "raw": ("Raw mesh before cleanup", ("ply", "obj", "glb")),
-        "cloud": ("Dense point cloud", ("ply",)),
-        "cameras": ("Cameras and sparse points", ("colmap",)),
-    }
-    LEGACY_FORMATS = {"stl": ("print", "stl"), "glb_textured": ("textured", "glb"), "glb_mesh": ("mesh", "glb"),
-                      "obj": ("textured", "obj"), "ply": ("mesh", "ply")}
-    PRINT_SETTINGS = {"height_mm": float, "base": float, "mode": ("auto", "solid", "shell"), "stand": ("auto", "none"),
-                      "min_wall": float, "shell": float, "shell_side": ("inward", "outward", "both")}
-
-    def export_sources(self, ws: Workspace, custom: bool) -> dict[str, Path | None]:
-        """What each content is made from, None when this scan (or version) does not have it."""
-        c = ws.mesh / "custom"
-        mesh = c / "mesh_clean.ply" if custom else ws.mesh / "mesh_clean.ply"
-        textured = c / "textured.ply" if custom else ws.mesh / "textured.ply"
-        used = ws.load_manifest().get("clean", {}).get("input")
-        raws = [ws.root / RAW_MESH[p] for p in [ws.mesh_producer(used), "mvs", "vggt"] if p]
-        have = lambda p: p if p is not None and p.exists() else None  # noqa: E731
-        return {"textured": have(textured), "mesh": have(mesh), "print": have(mesh),
-                "raw": None if custom else next((p for p in raws if p.exists()), None),
-                "cloud": None if custom else have(ws.root / "mvs/scene_dense.ply"),
-                "cameras": None if custom else have(ws.sparse / "images.bin")}
-
-    def export(self, ws: Workspace, body: dict) -> dict:
-        """Build the chosen contents (each in its format), from the pipeline or custom version, into
-        .ui/exports/: one file, or a zip of them all. A lone {"format"} is one content (older API)."""
-        import zipfile
-
-        source, opts = body.get("source", "pipeline"), body.get("options") or {}
-        items = body.get("items")
-        if items is None and body.get("format") in self.LEGACY_FORMATS:
-            content, fmt = self.LEGACY_FORMATS[body["format"]]
-            items = [{"content": content, "format": fmt}]
-        if not items or source not in ("pipeline", "custom"):
-            raise ValueError("unknown export")
-        items = [(i.get("content"), i.get("format")) for i in items]
-        for content, fmt in items:
-            if content not in self.EXPORT_CONTENTS or fmt not in self.EXPORT_CONTENTS[content][1]:
-                raise ValueError(f"unknown export: {content} as {fmt}")
-        if len({c for c, _ in items}) != len(items):
-            raise ValueError("each content once")
-        up = opts.get("up", "auto")
-        if up not in ("auto", "plane", "camera", "none"):
-            raise ValueError("up: auto, plane, camera or none")
-        print_kw = {}
-        for k, kind in self.PRINT_SETTINGS.items():
-            if opts.get(k) in (None, ""):
-                continue
-            if isinstance(kind, tuple) and opts[k] not in kind:
-                raise ValueError(f"{k}: one of {', '.join(kind)}")
-            print_kw[k] = opts[k] if isinstance(kind, tuple) else float(opts[k])
-        custom = source == "custom"
-        sources = self.export_sources(ws, custom)
-        for content, _ in items:
-            if sources[content] is None:
-                raise FileNotFoundError(f"{'custom ' if custom else ''}{self.EXPORT_CONTENTS[content][0].lower()}")
-        out_dir = ws.root / ".ui" / "exports"
-        out_dir.mkdir(parents=True, exist_ok=True)
-        stem = f"{ws.root.name}-{'custom-' if custom else ''}"
-        files = [self._export_one(ws, content, fmt, sources, custom, up, opts.get("height_mm"), print_kw,
-                                  out_dir, stem) for content, fmt in items]
-        if len(files) == 1:
-            one = files[0]
-            return {**one, "files": files, "source": source, "bundle": False}
-        # several: one zip, each content in its own folder (an OBJ's or COLMAP model's zip unpacked into it)
-        dst = out_dir / f"{stem}export.zip"
-        tmp = dst.with_name("tmp-" + dst.name)
-        with zipfile.ZipFile(tmp, "w") as z:
-            for f in files:
-                p = out_dir / f["file"]
-                if p.suffix == ".zip":
-                    with zipfile.ZipFile(p) as inner:
-                        for n in inner.namelist():
-                            z.writestr(f"{f['content']}/{n}", inner.read(n), zipfile.ZIP_DEFLATED)
-                else:
-                    z.write(p, f"{f['content']}/{p.name}",
-                            zipfile.ZIP_STORED if p.suffix in (".glb", ".3mf") else zipfile.ZIP_DEFLATED)
-        tmp.replace(dst)
-        return {"file": dst.name, "size": dst.stat().st_size, "files": files, "source": source, "bundle": True,
-                "issues": [i for f in files for i in f["issues"]]}
-
-    def _export_one(self, ws: Workspace, content: str, fmt: str, sources: dict, custom: bool, up: str, height,
-                    print_kw: dict, out_dir: Path, stem: str) -> dict:
-        import zipfile
-
-        import trimesh
-
-        from ..clean import export_glb, export_print_stl, workspace_alignment, write_3mf
-
-        src = sources[content]
-        name = {"obj": f"{content}-obj.zip", "colmap": f"{content}-colmap.zip"}.get(fmt, f"{content}.{fmt}")
-        dst = out_dir / (stem + name)
-        tmp = dst.with_name("tmp-" + dst.name)
-        entry = {"content": content, "label": self.EXPORT_CONTENTS[content][0], "format": fmt, "issues": []}
-        if content == "print":
-            stl = dst.with_suffix(".stl") if fmt == "stl" else out_dir / f"{stem}{content}-preview.stl"
-            info = export_print_stl(src, tmp.with_suffix(".stl"), workspace_alignment(ws, src, up=up), ws=ws, **print_kw)
-            tmp.with_suffix(".stl").replace(stl)
-            if fmt == "3mf":
-                write_3mf(trimesh.load(str(stl), force="mesh", process=False), tmp)
-                tmp.replace(dst)
-                entry["preview"] = stl.name  # the browser has no 3MF loader: the same mesh as STL
-            entry.update(issues=info.pop("print_issues"), info=info)
-        elif content == "cameras":  # the COLMAP model as sfm wrote it, in the reconstruction's frame
-            with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as z:
-                for p in sorted(ws.sparse.glob("*.bin")):
-                    z.write(p, f"sparse/0/{p.name}")
-            tmp.replace(dst)
-            entry["info"] = {"frame": "reconstruction"}
-        else:
-            # placed like the clean mesh, so contents exported together line up; a height sets the
-            # real size of the clean model (glTF in metres, the others in millimetres)
-            ref = sources["mesh"] or src
-            if content == "textured" and custom and self.custom_info(ws)["texture_from"] != "custom":
-                ref = ws.mesh / "mesh_clean.ply"  # a custom texture painted on the pipeline model
-            if content in ("raw", "cloud"):
-                ref = ws.mesh / "mesh_clean.ply" if (ws.mesh / "mesh_clean.ply").exists() else src
-            T = workspace_alignment(ws, ref, up=up)
-            T = np.eye(4) if T is None else T
-            if height not in (None, ""):
-                v = np.asarray(trimesh.load(str(ref), force="mesh", process=False).vertices)
-                ext = float(np.ptp(v @ T[:3, :3].T, axis=0)[1])
-                unit = 0.001 if fmt == "glb" else 1.0
-                if ext > 0:
-                    T = np.diag([*(3 * [float(height) * unit / ext]), 1.0]) @ T
-            if fmt == "glb":
-                export_glb(src, tmp.with_suffix(".glb"), T)
-                tmp.with_suffix(".glb").replace(tmp)
-            elif content == "cloud":  # Open3D: OpenMVS adds per-point view lists trimesh cannot read
-                import open3d as o3d
-
-                pc = o3d.io.read_point_cloud(str(src))
-                pc.transform(T)
-                o3d.io.write_point_cloud(str(tmp.with_suffix(".ply")), pc)
-                tmp.with_suffix(".ply").replace(tmp)
-            elif fmt == "ply":
-                m = trimesh.load(str(src), force="mesh", process=False)
-                m.apply_transform(T)
-                m.export(str(tmp), file_type="ply")
-            else:  # OBJ (+ MTL + texture images when textured), zipped
-                from trimesh.exchange.obj import export_obj
-
-                m = trimesh.load(str(src), force="mesh", process=False)
-                m.apply_transform(T)
-                textured = content == "textured"
-                text, extra = export_obj(m, include_texture=textured, include_color=not textured,
-                                         return_texture=True, mtl_name="model.mtl")
-                with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as z:
-                    z.writestr("model.obj", text)
-                    for n, data in extra.items():
-                        z.writestr(n, data)
-            tmp.replace(dst)
-            entry["info"] = {"up": up, "height_mm": height}
-        return {**entry, "file": dst.name, "size": dst.stat().st_size}
-
-    def export_file(self, ws: Workspace, name: str) -> Path:
-        p = ws.root / ".ui" / "exports" / name
-        if "/" in name or name.startswith(("tmp-", ".")) or not p.is_file():
-            raise FileNotFoundError(name)
-        return p
-
     # ---- scan previews: a small snapshot of the 3D view, taken when a run produces a result -----
-    PREVIEW_SOURCES = ["mesh/model.glb", "mesh/mesh_clean.ply", "mesh/custom/model.glb",
+    PREVIEW_SOURCES = ["mesh/textured.ply", "mesh/mesh_clean.ply", "mesh/custom/textured.ply",
                        "mesh/custom/mesh_clean.ply", "mvs/scene_mesh.ply", "vggt/tsdf_mesh.ply"]
 
     def preview_stale(self, ws: Workspace) -> bool:
@@ -1459,15 +1151,8 @@ def make_handler(app: App):
             if what == "log" and "path" in q:
                 p = app.log_file(ws, q["path"][0])
                 return self._file(p, "text/plain; charset=utf-8")
-            if what == "download" and "path" in q:
-                rel = q["path"][0]
-                p = app.output_file(ws, rel)
-                # Self-contained files get the workspace name so downloads from several captures
-                # don't collide; a PLY names its texture PNG, so those two keep their names.
-                name = ("custom-" if rel.startswith("mesh/custom/") else "") + Path(rel).name
-                return self._download(p, f"{ws.root.name}-{name}" if p.suffix in (".glb", ".stl", ".zip") else Path(rel).name)
             if what == "exports" and len(parts) == 5:
-                return self._download(app.export_file(ws, parts[4]), parts[4])
+                return self._download(exports.export_file(ws, parts[4]), parts[4])
             if what == "advice":
                 from ..advice import advise
 
@@ -1509,6 +1194,8 @@ def make_handler(app: App):
                 else:
                     app.set_meta(ws)
                 return self._json(app.state(ws), HTTPStatus.CREATED)
+            if len(parts) == 5 and parts[:2] == ["api", "workspaces"] and parts[3:] == ["export", "status"]:
+                return self._json(exports.status(app.ws(parts[2]), self._body()))
             if len(parts) == 5 and parts[:2] == ["api", "workspaces"] and parts[3] == "edit":
                 ws, what = app.ws(parts[2]), parts[4]
                 if what == "mesh":
@@ -1535,7 +1222,7 @@ def make_handler(app: App):
                 if parts[3] == "preview":
                     return self._json(app.save_preview(ws, self._raw()))
                 if parts[3] == "export":
-                    return self._json(app.export(ws, self._body()))
+                    return self._json(exports.export(ws, self._body()))
                 if parts[3] == "orientation":
                     return self._json(app.set_orientation(ws, self._body().get("transform")))
                 if parts[3] == "run":

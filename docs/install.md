@@ -123,8 +123,8 @@ To try it without a capture of your own, `examples/orbit.mp4` is a 6 s synthetic
 rendered by `tools/synth_orbit.py`): `mg run examples/orbit.mp4 work/ --num 45 --sample-fps 30`
 takes ~7 min on a laptop CPU.
 
-The result is `work/mesh/model.glb` (textured, Y-up) and `work/mesh/mesh_clean.glb`
-(vertex colours). For a quick test of a new capture use `--preset quick-preview`.
+The results are `work/mesh/textured.ply` (+ PNG) and `work/mesh/mesh_clean.ply`; take files out
+with `mg export work/ textured mesh print` (GLB, GLB and STL by default; `mg export --help`). For a quick test of a new capture use `--preset quick-preview`.
 
 ### Optional: VGGT feed-forward path
 

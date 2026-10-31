@@ -26,6 +26,11 @@ the image with that version, and the About page and `mg --version` show it.
   the layout with exactly those pieces (one that cannot lie flat is cut further, and says so).
   The pieces show in colours as you draw; **Preview** / **Preview texture** show the new texture
   at low resolution without saving; **Undo layout** goes back; the editor updates in place.
+- **Exports on request**: the pipeline and the editor keep only their working files; GLB, OBJ,
+  STL, 3MF, ... are made when asked (Export window, new `mg export`) and reused until what they
+  come from changes (then marked outdated). Clean runs and sculpt saves are about a minute
+  faster, orientation changes save at once. The print check comes from the last print export;
+  the scan's print options are the Export window's defaults.
 - **Editor, texture after sculpting**: paint mode offers **Texture my edits** (the texture step on
   the edited mesh, run from the editor) and **Carry the texture over** (no photos: a layout for the
   edited mesh coloured from the nearest point of the old texture; removed pieces go, closed holes

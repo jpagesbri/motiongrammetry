@@ -78,17 +78,12 @@ def _clean(ws, o, video):
 
     mesh = checks._raw_mesh(ws, o)
     return clean_workspace_mesh(ws, mesh, use_masks=not o["no_masks"], remove_ground=not o["keep_ground"],
-                                up=o["up"], bg_tolerance=o["bg_tolerance"], ground_margin=o["ground_margin"],
-                                target_faces=o["target_faces"], fill_holes=o["fill_holes"],
-                                print_height=o["print_height"], print_base=o["print_base"],
-                                print_opts={k: o[k] for k in PRINT_OPTS})
-
-
-PRINT_OPTS = ("print_mode", "print_stand", "print_min_wall", "print_shell", "print_shell_side")
+                                bg_tolerance=o["bg_tolerance"], ground_margin=o["ground_margin"],
+                                target_faces=o["target_faces"], fill_holes=o["fill_holes"])
 
 
 def _texture(ws, o, video):
-    from .clean import export_glb, texture_source, workspace_alignment
+    from .clean import texture_source
     from .mvs import texture
 
     src, source = texture_source(ws)
@@ -99,12 +94,12 @@ def _texture(ws, o, video):
             old.unlink()
     ply = texture(ws, src, out_name="custom/textured" if source == "custom" else "textured",
                   resolution_level=o["texture_resolution"], threads=o["threads"], idle_timeout_min=o["idle_timeout"])
-    glb = export_glb(ply, out / "model.glb", workspace_alignment(ws, src, up=o["up"]))
+    (out / "model.glb").unlink(missing_ok=True)  # written by earlier versions: exports are made on request now
     if source == "custom":
         info_path = out / "info.json"
         meta = json.loads(info_path.read_text()) if info_path.exists() else {}
         info_path.write_text(json.dumps({**meta, "textured_from": "custom"}))
-    return {"ply": str(ply), "glb": str(glb), "source": source}
+    return {"ply": str(ply), "source": source}
 
 
 BODIES = {"frames": _frames, "mask": _mask, "sfm": _sfm, "mvs": _mvs, "vggt": _vggt, "clean": _clean,

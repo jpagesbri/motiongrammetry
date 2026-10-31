@@ -7,7 +7,8 @@ work/
   dense/           undistorted images + sparse model (input for OpenMVS and 2DGS)
   mvs/             OpenMVS intermediates
   vggt/            feed-forward depth maps and fused mesh
-  mesh/            final outputs (mesh_clean.ply, model.glb, ...)
+  mesh/            results (mesh_clean.ply, textured.ply + PNG; custom/: the editor's versions)
+  .ui/exports/     files exported on request (exports.py), each with what it was made from
   logs/            one full log per stage run + history.jsonl
   manifest.json    per-stage stats and diagnostics
 """

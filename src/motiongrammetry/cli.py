@@ -170,6 +170,34 @@ def cmd_export_2dgs(a: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_export(a: argparse.Namespace) -> int:
+    import shutil
+
+    from . import exports
+
+    ws = Workspace(a.work)
+    items = []
+    for spec in a.content:  # content[:format], e.g. print:3mf, textured (its first format)
+        content, _, fmt = spec.partition(":")
+        if content not in exports.CONTENTS:
+            raise SystemExit(f"unknown content {content!r}: one of {', '.join(exports.CONTENTS)}")
+        items.append({"content": content, "format": fmt or exports.CONTENTS[content][1][0]})
+    options = {k: v for k, v in {"up": a.up, "height_mm": a.height, "mode": a.print_mode, "stand": a.print_stand,
+                                 "min_wall": a.print_min_wall, "shell": a.print_shell, "shell_side": a.print_shell_side,
+                                 "base": a.print_base}.items() if v is not None}
+    r = exports.export(ws, {"items": items, "source": "custom" if a.custom else "pipeline", "options": options})
+    src = exports.export_file(ws, r["file"])
+    out = Path(a.out) if a.out else Path.cwd()
+    dst = out / r["file"] if out.is_dir() else out
+    shutil.copyfile(src, dst)
+    for f in r["files"]:
+        print(f"{f['label']} ({f['format']}): {'reused' if f['cached'] else 'made'}, {f['size'] / 1e6:.1f} MB")
+        for i in f.get("issues", []):
+            print(f"  {i['level']}: {i['message']}" + (f" -> {i['hint']}" if i.get("hint") else ""))
+    print(f"-> {dst}")
+    return 0
+
+
 def cmd_ui(a: argparse.Namespace) -> int:
     from .web.server import serve
 
@@ -274,6 +302,23 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--out")
     sp.add_argument("--masked", action="store_true", help="train on the subject only (masks in alpha)")
     sp.set_defaults(fn=cmd_export_2dgs)
+
+    sp = sub.add_parser("export", help="take files out of a scan (as the web UI's Export window): made when "
+                        "asked, reused until the scan changes")
+    sp.add_argument("work")
+    sp.add_argument("content", nargs="+", help="content[:format]: textured[:glb|obj], mesh[:glb|ply|obj], print[:stl|3mf], "
+                    "raw[:ply|obj|glb], cloud, cameras; several make one zip")
+    sp.add_argument("--custom", action="store_true", help="the version edited in the web UI's editor")
+    sp.add_argument("--out", help="file or folder to copy the result to (default: here)")
+    sp.add_argument("--up", choices=["auto", "plane", "camera", "none"])
+    sp.add_argument("--height", type=float, help="real height in mm (GLB in metres); prints default to the scan's print height")
+    sp.add_argument("--print-mode", choices=["auto", "solid", "shell"])
+    sp.add_argument("--print-stand", choices=["auto", "none"])
+    sp.add_argument("--print-min-wall", type=float)
+    sp.add_argument("--print-shell", type=float)
+    sp.add_argument("--print-shell-side", choices=["inward", "outward", "both"])
+    sp.add_argument("--print-base", type=float, help="share of the height flattened at the bottom (0-0.2)")
+    sp.set_defaults(fn=cmd_export)
 
     sp = sub.add_parser("ui", help="local web UI: run stages, follow progress, preview results in 3D")
     sp.add_argument("--root", default="workspaces", help="folder holding one sub-folder per workspace")

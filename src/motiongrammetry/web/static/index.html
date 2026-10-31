@@ -187,6 +187,8 @@
   .ex-item small { display: block; color: var(--muted); font-size: 11px; }
   .ex-item.off label { cursor: default; opacity: .5; }
   .ex-item .stale { color: var(--warn); font-size: 11px; }
+  .ex-item .ex-state { margin-left: 6px; font-size: 11px; }
+  .ex-item .ex-state.ready { color: var(--ok); } .ex-item .ex-state.outdated { color: var(--warn); }
   .ex-item .ex-one { width: 128px; padding-left: 9px; color: var(--muted); font-size: 12px; }
   .ex-item.off .ex-one { opacity: .5; }
   .ex-form .ex-item select { width: 128px; }
@@ -1183,8 +1185,7 @@ function orientUi() {
   $('orState').textContent = OR.dirty ? '· not saved' : o.user ? '· yours' : '· automatic';
   $('orSave').disabled = !OR.dirty; $('orCancel').disabled = !OR.dirty;
   $('orReset').disabled = !o.user;
-  $('orientNote').textContent = o.updating ? 'updating the export files for the new orientation…'
-    : OR.dirty ? 'orientation changed: not saved yet' : o.lapsed ? 'your orientation no longer applies: the cameras were re-run'
+  $('orientNote').textContent = OR.dirty ? 'orientation changed: not saved yet' : o.lapsed ? 'your orientation no longer applies: the cameras were re-run'
     : o.user ? 'using your orientation' : '';
   $('orientBtn').classList.toggle('primary', !$('orientPanel').hidden && !placed);
   if ($('asLooks')) $('asLooks').textContent = OR.dirty ? 'Save and continue' : 'Looks right';
@@ -1913,7 +1914,7 @@ function asPlace(main) {
 }
 function asDone(main) {
   const tips = AS.advice.filter((a) => a.level !== 'ok');
-  main.innerHTML = `<div class="ph"><h3>Your model is ready</h3></div><p>The textured model, the clean mesh and a 3D-print file are under Files in the Preview tab.</p>
+  main.innerHTML = `<div class="ph"><h3>Your model is ready</h3></div><p><b>Export…</b> takes out what you need (the textured model, the clean mesh, a 3D print, …), each file made when you ask for it.</p>
     ${tips.map((a) => `<div class="as-advice ${a.level}"><b>${esc(a.title)}</b>${esc(a.detail)}</div>`).join('')}
     <div class="btns"><button class="btn primary" id="asExport">Export…</button><button class="btn" id="asPreview">Open the Preview</button>
       <a class="btn" href="${editorUrl()}">Touch it up in Edit &amp; paint</a><button class="btn" id="asManual">Switch to Manual</button></div>`;
@@ -2048,12 +2049,50 @@ const EX_CONTENTS = [
 ];
 const EX_FIELDS = { exHeight: 'height_mm', exMode: 'mode', exSide: 'shell_side', exShell: 'shell', exWall: 'min_wall',
                     exStand: 'stand', exBase: 'base', exUp: 'up' };
-const EX_DEFAULTS = { exHeight: '', exMode: 'auto', exSide: 'inward', exShell: 3, exWall: 0.8, exStand: 'auto', exBase: 2, exUp: 'auto' };
+// the scan's own settings (its print_* and up options: the assisted run sets them from what was
+// filmed) until you change them for that scan
+const exDefaults = () => {
+  const d = wsState?.export_defaults || {};
+  return { exHeight: '', exMode: d.mode ?? 'auto', exSide: d.shell_side ?? 'inward', exShell: d.shell ?? 3, exWall: d.min_wall ?? 0.8,
+           exStand: d.stand ?? 'auto', exBase: 100 * (d.base ?? 0.02), exUp: d.up ?? 'auto' };
+};
 let exView = null, exBuilt = [];
 function exSaved() { try { return JSON.parse(localStorage.getItem('mg.export') || '{}'); } catch { return {}; } }
+function exSavedFields() { try { return JSON.parse(localStorage.getItem('mg.export.' + current) || '{}'); } catch { return {}; } }
 function exSave() {
   const items = Object.fromEntries(EX_CONTENTS.map((c) => [c.id, { on: $('exOn-' + c.id).checked, format: $('exFmt-' + c.id).value }]));
-  try { localStorage.setItem('mg.export', JSON.stringify({ items, fields: Object.fromEntries(Object.keys(EX_FIELDS).map((id) => [id, $(id).value])) })); } catch {}
+  try {
+    localStorage.setItem('mg.export', JSON.stringify({ items }));
+    localStorage.setItem('mg.export.' + current, JSON.stringify(Object.fromEntries(Object.keys(EX_FIELDS).map((id) => [id, $(id).value]))));
+  } catch {}
+}
+function exOptions() {
+  const options = {};
+  for (const [id, key] of Object.entries(EX_FIELDS)) {
+    const val = $(id).value;
+    if (val !== '') options[key] = $(id).type === 'number' ? (key === 'base' ? Number(val) / 100 : Number(val)) : val;
+  }
+  return options;
+}
+// Files are made when asked and kept until something they come from changes: each row says whether
+// its file is ready (exporting it again takes no time) or outdated (it is made again).
+let exCheckTimer = 0;
+function exCheck() {
+  clearTimeout(exCheckTimer);
+  exCheckTimer = setTimeout(async () => {
+    const items = exChosen();
+    EX_CONTENTS.forEach((c) => { const el = $('exSt-' + c.id); if (el) el.textContent = ''; });
+    if (!items.length) return;
+    try {
+      const r = await api(`/api/workspaces/${current}/export/status`, { method: 'POST', body: JSON.stringify({ items, source: $('exSource').value, options: exOptions() }) });
+      for (const it of r.items) {
+        const el = $('exSt-' + it.content); if (!el) continue;
+        el.className = 'ex-state ' + it.state;
+        el.textContent = it.state === 'ready' ? `ready · ${exSize(it.size)}` : it.state === 'outdated' ? 'outdated: made again' : '';
+        el.title = it.state === 'ready' ? 'already made from the files as they are now, with these settings' : it.state === 'outdated' ? 'made earlier, from older files or other settings' : '';
+      }
+    } catch { /* the status is a hint: Export still works */ }
+  }, 250);
 }
 function exStale(c, custom) {
   if (custom) return c.id === 'textured' && wsState.custom?.texture_stale;
@@ -2069,14 +2108,14 @@ function exRenderItems() {
     const on = ok && (prev[c.id] ?? saved[c.id]?.on ?? c.id === first);
     return `<div class="ex-item${ok ? '' : ' off'}"><input type="checkbox" id="exOn-${c.id}"${on ? ' checked' : ''}${ok ? '' : ' disabled'}>
       <label for="exOn-${c.id}">${c.label}${exStale(c, custom) ? ' <span class="stale" title="an earlier stage was re-run since">stale</span>' : ''}
-        <small>${ok ? c.about : why}</small></label>
+        <span class="ex-state" id="exSt-${c.id}"></span><small>${ok ? c.about : why}</small></label>
       ${Object.keys(c.formats).length < 2 ? `<span class="ex-one">${c.formats[fmt]}<input type="hidden" id="exFmt-${c.id}" value="${fmt}"></span>`
         : `<select id="exFmt-${c.id}"${ok ? '' : ' disabled'}>${Object.entries(c.formats)
         .map(([v, l]) => `<option value="${v}"${v === fmt ? ' selected' : ''}>${l}</option>`).join('')}</select>`}</div>`;
   }).join('');
   EX_CONTENTS.forEach((c) => {
     $('exOn-' + c.id).addEventListener('change', exFields);
-    $('exFmt-' + c.id).addEventListener('change', exSave);
+    $('exFmt-' + c.id).addEventListener('change', () => { exSave(); exCheck(); });
   });
   exFields();
 }
@@ -2088,11 +2127,12 @@ function exFields() {
   $('exPrint').hidden = !chosen.includes('print');
   $('exUp').closest('label').hidden = $('exHeight').closest('label').hidden = !placed;
   $('exOrient').parentElement.hidden = $('exHeightHelp').hidden = !placed;
-  $('exHeight').placeholder = chosen.includes('print') ? 'as scanned (print: 100)' : 'as scanned';
+  $('exHeight').placeholder = chosen.includes('print') ? `as scanned (print: ${$('exHeight').dataset.print || 100})` : 'as scanned';
   const shellish = $('exMode').value !== 'solid';
   $('exSide').closest('label').hidden = !shellish; $('exShell').closest('label').hidden = !shellish;
   $('exBuild').disabled = !chosen.length;
   $('exBuild').textContent = chosen.length > 1 ? `Export ${chosen.length} as a zip` : 'Export';
+  exCheck();
 }
 function exReset() {
   $('exStatus').textContent = ''; $('exIssues').innerHTML = ''; $('exFiles').innerHTML = ''; $('exDownload').hidden = true;
@@ -2104,8 +2144,9 @@ function openExport() {
   $('exSource').value = hasCustom && (c.mesh || c.texture) ? 'custom' : 'pipeline';
   $('exScan').textContent = '· ' + current;
   $('exUp').querySelector('[value=auto]').textContent = wsState.orientation?.user ? 'your orientation' : 'auto';
-  const saved = exSaved().fields || {};
-  for (const id of Object.keys(EX_FIELDS)) $(id).value = saved[id] ?? EX_DEFAULTS[id];
+  const saved = exSavedFields(), d = exDefaults();
+  for (const id of Object.keys(EX_FIELDS)) $(id).value = saved[id] ?? d[id];
+  $('exHeight').dataset.print = wsState.export_defaults?.height_mm ?? 100;
   $('exItems').innerHTML = '';
   exReset(); exRenderItems();
   $('exportModal').hidden = false;
@@ -2117,15 +2158,12 @@ $('exportModal').addEventListener('click', (e) => { if (e.target === $('exportMo
 addEventListener('keydown', (e) => { if (e.key === 'Escape') { $('exportModal').hidden = true; $('delModal').hidden = true; } });
 $('exSource').addEventListener('change', () => { exRenderItems(); exReset(); });
 $('exMode').addEventListener('change', exFields);
+Object.keys(EX_FIELDS).forEach((id) => $(id).addEventListener('change', exCheck));
 const exUrl = (file) => `/api/workspaces/${current}/exports/${encodeURIComponent(file)}?t=${Date.now()}`;
 const exSize = (b) => b >= 1e9 ? gb(b) : b >= 1e6 ? (b / 1e6).toFixed(1) + ' MB' : (b / 1e3).toFixed(0) + ' kB';
 $('exBuild').addEventListener('click', async () => {
   exSave();
-  const items = exChosen(), options = {};
-  for (const [id, key] of Object.entries(EX_FIELDS)) {
-    const val = $(id).value;
-    if (val !== '') options[key] = $(id).type === 'number' ? (key === 'base' ? Number(val) / 100 : Number(val)) : val;
-  }
+  const items = exChosen(), options = exOptions();
   $('exBuild').disabled = true; exReset();
   $('exStatus').textContent = items.some((i) => i.content === 'print') ? 'exporting (the print is rebuilt as a solid: about half a minute)…' : 'exporting…';
   const t0 = Date.now();
@@ -2133,7 +2171,7 @@ $('exBuild').addEventListener('click', async () => {
     const r = await api(`/api/workspaces/${current}/export`, { method: 'POST', body: JSON.stringify({ items, source: $('exSource').value, options }) });
     $('exDownload').href = exUrl(r.file); $('exDownload').hidden = false; $('exDownload').textContent = `Download ${r.file}`;
     const p = r.files.find((f) => f.content === 'print')?.info || {};
-    $('exStatus').textContent = `${exSize(r.size)} · ${Math.round((Date.now() - t0) / 1000)} s`
+    $('exStatus').textContent = `${exSize(r.size)} · ${r.cached ? 'already made, reused' : Math.round((Date.now() - t0) / 1000) + ' s'}`
       + (p.print_size_mm ? ` · print ${p.print_size_mm.join(' × ')} mm · ${p.print_watertight ? 'watertight' : 'NOT watertight'}` : '')
       + (p.print?.mode ? ` · as ${p.print.mode}` : '');
     if (r.bundle) $('exFiles').innerHTML = '<div class="ex-sec">In the zip (or one by one)</div>' + r.files.map((f) =>
@@ -2143,6 +2181,7 @@ $('exBuild').addEventListener('click', async () => {
     exBuilt = r.files.filter((f) => (f.preview || ['glb', 'stl', 'ply'].includes(f.format)) && (f.preview || f.size < 150e6));
     $('exPick').innerHTML = exBuilt.map((f, i) => `<option value="${i}">${esc(f.label)}</option>`).join('');
     $('exPick').hidden = exBuilt.length < 2;
+    api(`/api/workspaces/${current}/state`).then((st) => { wsState = st; renderOutputs(); exCheck(); }).catch(() => {});  // print check, rows' state
     if (exBuilt.length) await exPreview(exBuilt[0]);
     else exPreview(null, r.files.length > 1 ? 'nothing in this export can be shown here' : 'a zip of several files: no preview');
   } catch (e) { $('exStatus').textContent = 'failed: ' + e.message; }
@@ -2213,10 +2252,11 @@ function renderOutputs() {
     + (mine.length ? ` Your edits: ${esc(names(mine))}.` : '')
     + (stale ? ' <span style="color:var(--warn)">Some are stale: an earlier stage was re-run.</span>' : '');
   // what may still go wrong when printing (clean.print_report), for the version Export starts with
-  const outs = wsState?.outputs || [], custom = mine.includes('print');
-  const stl = outs.find((o) => o.path === (custom ? 'mesh/custom/print.stl' : 'mesh/print.stl'));
-  $('printNotes').innerHTML = (stl?.issues || []).length ? `<div class="ex-sec">Print check${custom ? ' (your edits)' : ''}</div>`
-    + stl.issues.map((d) => `<div class="diag ${d.level}">${esc(d.message)}${d.hint ? `<span class="h">→ ${esc(d.hint)}</span>` : ''}</div>`).join('') : '';
+  const custom = mine.includes('print'), pc = (wsState?.print_check || {})[custom ? 'custom' : 'pipeline'];
+  $('printNotes').innerHTML = !pc ? (pipe.includes('print') ? '<div class="muted" style="font-size:12px;margin-top:4px">Export a 3D print to see what may go wrong when printing.</div>' : '')
+    : `<div class="ex-sec">Print check${custom ? ' (your edits)' : ''}${pc.current ? '' : ' <span style="color:var(--warn)">· outdated: export the print again</span>'}</div>`
+      + (pc.size_mm ? `<div class="muted" style="font-size:12px">${pc.size_mm.join(' × ')} mm · ${pc.watertight ? 'watertight' : 'NOT watertight'}</div>` : '')
+      + pc.issues.map((d) => `<div class="diag ${d.level}">${esc(d.message)}${d.hint ? `<span class="h">→ ${esc(d.hint)}</span>` : ''}</div>`).join('');
   $('outDir').textContent = wsState.root ? 'on disk: ' + wsState.root + '/mesh/' : '';
 }
 
@@ -2303,8 +2343,6 @@ const STEPS = {
              [/silhouette carving removed (\d+)\/(\d+)/, (m) => `removed ${fmt(+m[1])} of ${fmt(+m[2])} vertices`]] },
     { label: 'Remove ground, keep main piece, write', start: /silhouette carving removed/,
       note: [/clean mesh: (\d+) faces/, (m) => fmt(+m[1]) + ' faces'] },
-    { label: 'Export GLB & print STL', start: /clean mesh: \d+ faces/,
-      note: [/print STL: (\S+) mm, \d+ faces, (watertight|NOT watertight)/, (m) => `${m[1].replace(/x/g, ' × ')} mm, ${m[2]}`] },
   ],
   texture: [
     { label: 'Load scene & clean mesh', start: 'stage' },
@@ -2312,7 +2350,7 @@ const STEPS = {
     { label: 'Pick the best view per face', start: null, end: /Assigning the best view to each face completed/ },
     { label: 'Build texture atlas', start: null, end: /Generating texture atlas and image completed/,
       note: [/completed: (\d+) patches, (\d+) image size/, (m) => `${fmt(+m[1])} patches, ${m[2]} px`] },
-    { label: 'Save, orient, export GLB', start: null },
+    { label: 'Save', start: null },
   ],
 };
 const STAGE_START = /=== (\w+)(?:: mg |  \(log:)/, STAGE_END = /=== (\w+) (OK|FAILED|CANCELLED|cancelled|failed)\b/;
@@ -2637,7 +2675,6 @@ async function poll() {
         await refreshState(() => asRefresh()); refreshList();
       } else {
         renderStages(); asTick();
-        if (wsState?.orientation?.updating) await refreshState();  // until the exports are rebuilt
       }
       modeHint();
     } catch (e) { console.warn(e); }

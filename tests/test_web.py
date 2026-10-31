@@ -115,40 +115,9 @@ def test_outputs_older_than_their_inputs_are_stale(tmp_path):
     assert layers["cameras"] and not layers["clean"] and not layers["textured"]
 
 
-def test_outputs_are_listed_and_downloadable(server):
-    import io
-    import zipfile
+def test_exports_are_made_when_asked_and_reused_until_their_inputs_change(server):
+    import os
 
-    base, app = server
-    call(base + "/api/workspaces", "POST", {"name": "d"})
-    ws = Workspace(app.root / "d")
-    assert call(base + "/api/workspaces/d/state")[1]["outputs"] == []
-    assert call(base + "/api/workspaces/d/download?path=mesh.zip")[0] == 404
-    ws.mesh.mkdir()
-    (ws.mesh / "model.glb").write_bytes(b"glb" * 100)
-    (ws.mesh / "textured.ply").write_text("ply")
-    (ws.mesh / "textured0.png").write_bytes(b"png")
-    (ws.root / "manifest.json").write_text("{}")
-
-    outs = call(base + "/api/workspaces/d/state")[1]["outputs"]
-    assert [o["path"] for o in outs] == ["mesh/model.glb", "mesh/textured.ply", "mesh/textured0.png"]
-    assert outs[0]["size"] == 300
-
-    with urllib.request.urlopen(base + "/api/workspaces/d/download?path=mesh/model.glb") as r:
-        assert r.read() == b"glb" * 100
-        assert 'filename="d-model.glb"' in r.headers["Content-Disposition"]
-    with urllib.request.urlopen(base + "/api/workspaces/d/download?path=mesh/textured0.png") as r:
-        assert 'filename="textured0.png"' in r.headers["Content-Disposition"]  # the PLY refers to it by name
-    with urllib.request.urlopen(base + "/api/workspaces/d/download?path=mesh.zip") as r:
-        names = zipfile.ZipFile(io.BytesIO(r.read())).namelist()
-    assert sorted(names) == ["d/model.glb", "d/textured.ply", "d/textured0.png"]
-
-    # only listed outputs are served
-    for bad in ("manifest.json", "mesh/../manifest.json", "../d/manifest.json", "/etc/passwd"):
-        assert call(base + "/api/workspaces/d/download?path=" + urllib.parse.quote(bad))[0] == 404
-
-
-def test_print_stl_is_made_from_the_clean_mesh_on_download(server):
     import open3d as o3d
     import trimesh
 
@@ -159,17 +128,36 @@ def test_print_stl_is_made_from_the_clean_mesh_on_download(server):
     box = o3d.geometry.TriangleMesh.create_box(1, 2, 3).subdivide_midpoint(2)
     box.remove_triangles_by_index([0, 1])  # a hole: the print must still be closed
     o3d.io.write_triangle_mesh(str(ws.mesh / "mesh_clean.ply"), box)
+    state = lambda: call(base + "/api/workspaces/p/state")[1]  # noqa: E731
+    assert "outputs" not in state() and state()["print_check"] == {}  # nothing is made until asked
+    assert state()["export_defaults"]["height_mm"] == 100 and state()["export_defaults"]["up"] == "auto"
+    body = {"items": [{"content": "print", "format": "stl"}, {"content": "mesh", "format": "glb"}]}
+    status = lambda: [i["state"] for i in call(base + "/api/workspaces/p/export/status", "POST", body)[1]["items"]]  # noqa: E731
+    assert status() == ["none", "none"]
 
-    stl = next(o for o in call(base + "/api/workspaces/p/state")[1]["outputs"] if o["path"] == "mesh/print.stl")
-    assert stl["size"] is None  # not made yet
-    with urllib.request.urlopen(base + "/api/workspaces/p/download?path=mesh/print.stl") as r:
-        assert 'filename="p-print.stl"' in r.headers["Content-Disposition"]
-        data = r.read()
-    mesh = trimesh.load(trimesh.util.wrap_as_stream(data), file_type="stl")
-    assert mesh.is_watertight and mesh.volume > 0
-    assert abs(mesh.extents[2] - 100) < 1e-6 and abs(mesh.bounds[0, 2]) < 1e-6  # 100 mm tall, on the plate
-    stl = next(o for o in call(base + "/api/workspaces/p/state")[1]["outputs"] if o["path"] == "mesh/print.stl")
-    assert stl["size"] == len(data)
+    r = call(base + "/api/workspaces/p/export", "POST", body)[1]
+    assert not r["cached"] and [f["cached"] for f in r["files"]] == [False, False]
+    with urllib.request.urlopen(base + "/api/workspaces/p/exports/p-print.stl") as resp:
+        mesh = trimesh.load(trimesh.util.wrap_as_stream(resp.read()), file_type="stl")
+    assert mesh.is_watertight and abs(mesh.extents[2] - 100) < 1e-6  # the scan's print height by default
+    assert status() == ["ready", "ready"]
+    stamp = (ws.root / ".ui" / "exports" / "p-print.stl").stat().st_mtime_ns
+    r = call(base + "/api/workspaces/p/export", "POST", body)[1]  # again: the same files, at once
+    assert r["cached"] and (ws.root / ".ui" / "exports" / "p-print.stl").stat().st_mtime_ns == stamp
+    pc = state()["print_check"]["pipeline"]
+    assert pc["current"] and pc["watertight"] and abs(pc["size_mm"][2] - 100) < 0.5
+
+    # other settings or a changed source: outdated, made again when asked
+    other = {**body, "options": {"height_mm": 50}}
+    assert [i["state"] for i in call(base + "/api/workspaces/p/export/status", "POST", other)[1]["items"]] == ["outdated", "outdated"]
+    t = (ws.mesh / "mesh_clean.ply").stat().st_mtime_ns + 10**9
+    os.utime(ws.mesh / "mesh_clean.ply", ns=(t, t))
+    assert status() == ["outdated", "outdated"] and not state()["print_check"]["pipeline"]["current"]
+    r = call(base + "/api/workspaces/p/export", "POST", body)[1]
+    assert not r["cached"] and status() == ["ready", "ready"] and state()["print_check"]["pipeline"]["current"]
+    # the records next to the files are not served
+    assert call(base + "/api/workspaces/p/exports/p-print.stl.json")[0] == 404
+    assert call(base + "/api/workspaces/p/download?path=mesh/mesh_clean.ply")[0] == 404  # the old file list is gone
 
 
 def test_clean_follows_the_raw_mesh_it_used(tmp_path):
@@ -322,18 +310,15 @@ def test_editor_saves_a_custom_mesh_and_leaves_the_pipeline_files_alone(server):
     body = struct.pack("<II", len(v), len(f)) + v.tobytes() + col.tobytes() + f.tobytes()
     status, r = _post_bytes(base + "/api/workspaces/e/edit/mesh", body)
     assert status == 200, r
-    assert r["faces"] == len(f) and r["print_watertight"]
+    assert r["faces"] == len(f)
     assert (ws.mesh / "mesh_clean.ply").read_bytes() == pipeline_bytes  # untouched
     c = ws.mesh / "custom"
     out = o3d.io.read_triangle_mesh(str(c / "mesh_clean.ply"))
     assert np.isclose(np.asarray(out.vertices)[:, 2].max(), 2.0) and len(out.triangles) == len(f)
-    assert (c / "mesh_clean.glb").exists() and (c / "print.stl").exists()
+    assert not (c / "mesh_clean.glb").exists() and not (c / "print.stl").exists()  # exports: when asked
     state = call(base + "/api/workspaces/e/state")[1]
     assert state["custom"]["mesh"] and not state["custom"]["mesh_outdated"] and state["layers"]["custom"]
-    paths = {o["path"] for o in state["outputs"]}
-    assert {"mesh/mesh_clean.ply", "mesh/custom/mesh_clean.ply", "mesh/custom/print.stl"} <= paths
-    with urllib.request.urlopen(base + "/api/workspaces/e/download?path=mesh/custom/print.stl") as r:
-        assert 'filename="e-custom-print.stl"' in r.headers["Content-Disposition"]
+    assert state["exportable"]["custom"] == ["mesh", "print"]
 
     from motiongrammetry.clean import texture_source
     assert texture_source(ws)[1] == "custom"  # texture would project onto the edit
@@ -383,7 +368,7 @@ def test_editor_saves_a_custom_texture(server):
     c = ws.mesh / "custom"
     assert (c / "textured0.png").read_bytes() == painted and (c / "textured.ply").exists()
     assert (ws.mesh / "textured0.png").read_bytes() == png  # pipeline texture untouched
-    assert (c / "model.glb").exists() and not (ws.mesh / "model.glb").exists()
+    assert not (c / "model.glb").exists()  # its exports are made when asked
     again = b"\x89PNG\r\n\x1a\n" + b"painted twice"
     assert _post_bytes(base + "/api/workspaces/t/edit/texture?i=0&from=custom", again)[0] == 200
     assert (c / "textured0.png").read_bytes() == again
@@ -517,7 +502,7 @@ def test_texture_layout_is_rebuilt_into_the_custom_texture(server):
     status, r = call(url, "POST", {"angle": 45, "min_size": 0.5})
     assert status == 200 and r["pieces"] == 6
     c = ws.mesh / "custom"
-    assert {"textured.ply", "textured0.png", "model.glb"} <= {p.name for p in c.iterdir()} and not (c / ".layout").exists()
+    assert {"textured.ply", "textured0.png"} <= {p.name for p in c.iterdir()} and not (c / ".layout").exists()
     state = call(base + "/api/workspaces/lay/state")[1]
     assert state["custom"]["texture"] and state["custom"]["texture_from"] == "clean"
     # a second rebuild starts from the custom texture; the pipeline's files never change
@@ -644,33 +629,32 @@ def test_orientation_set_by_hand_is_used_by_every_export(server):
     ws.mesh.mkdir()
     box = o3d.geometry.TriangleMesh.create_box(1, 2, 3)
     o3d.io.write_triangle_mesh(str(ws.mesh / "mesh_clean.ply"), box)
-    (ws.mesh / "mesh_clean.glb").write_bytes(b"old")  # baked with the automatic orientation
-    assert call(base + "/api/workspaces/o/state")[1]["orientation"] == {"user": False, "updating": False, "lapsed": False}
+    assert call(base + "/api/workspaces/o/state")[1]["orientation"] == {"user": False, "lapsed": False}
     auto = call(base + "/api/workspaces/o/scene")[1]["auto"]
+    glb_body = {"items": [{"content": "mesh", "format": "glb"}]}
+    assert call(base + "/api/workspaces/o/export", "POST", glb_body)[0] == 200  # made with the automatic one
 
     # its 2 m side up (the automatic orientation stands it on its 1 x 2 face), then moved
     T = np.array([[0, 0, 1, 0.5], [0, 1, 0, 0], [-1, 0, 0, -2.0], [0, 0, 0, 1]])
     status, r = call(base + "/api/workspaces/o/orientation", "POST", {"transform": T.tolist()})
-    assert status == 200 and r["user"]
+    assert status == 200 and r["user"]  # saved at once: nothing is rebuilt
     scene = call(base + "/api/workspaces/o/scene")[1]
     assert scene["user"] and np.allclose(scene["transform"], T) and np.allclose(scene["auto"], auto)
-    for _ in range(600):  # the GLB and the print STL are rebuilt in the background
-        if not call(base + "/api/workspaces/o/state")[1]["orientation"]["updating"]:
-            break
-        time.sleep(0.1)
+    # the file made before is outdated, and the next export uses the new orientation
+    assert call(base + "/api/workspaces/o/export/status", "POST", glb_body)[1]["items"][0]["state"] == "outdated"
     v = np.asarray(box.vertices) @ T[:3, :3].T + T[:3, 3]
     expect = np.array([v.min(0), v.max(0)])
-    glb = trimesh.load(str(ws.mesh / "mesh_clean.glb"), file_type="glb", force="mesh")
-    assert np.allclose(glb.bounds, expect, atol=1e-5)
-    assert (ws.mesh / "print.stl").exists()
-    stl = trimesh.load(str(ws.mesh / "print.stl"))  # Z-up, 100 mm tall: the 2 m side is the height
-    assert abs(stl.extents[2] - 100) < 0.5 and abs(stl.extents[0] / stl.extents[2] - 1.5) < 0.05
-    status, r = call(base + "/api/workspaces/o/export", "POST", {"format": "glb_mesh"})
+    status, r = call(base + "/api/workspaces/o/export", "POST", glb_body)
+    assert not r["cached"]
     with urllib.request.urlopen(base + "/api/workspaces/o/exports/" + r["file"]) as resp:
         out = trimesh.load(trimesh.util.wrap_as_stream(resp.read()), file_type="glb", force="mesh")
     assert np.allclose(out.bounds, expect, atol=1e-5)
+    status, r = call(base + "/api/workspaces/o/export", "POST", {"items": [{"content": "print", "format": "stl"}]})
+    with urllib.request.urlopen(base + "/api/workspaces/o/exports/" + r["file"]) as resp:
+        stl = trimesh.load(trimesh.util.wrap_as_stream(resp.read()), file_type="stl")
+    assert abs(stl.extents[2] - 100) < 0.5 and abs(stl.extents[0] / stl.extents[2] - 1.5) < 0.05  # Z-up, 2 m side up
 
-    # only rotations and moves; a run in progress or a rebuild still going refuses it
+    # only rotations and moves
     bad = np.diag([2.0, 1, 1, 1])
     assert call(base + "/api/workspaces/o/orientation", "POST", {"transform": bad.tolist()})[0] == 400
     assert call(base + "/api/workspaces/o/orientation", "POST", {"transform": [[1, 0], [0, 1]]})[0] == 400
@@ -678,12 +662,8 @@ def test_orientation_set_by_hand_is_used_by_every_export(server):
     os.utime(ws.sparse / "images.bin", ns=(time.time_ns(), time.time_ns() + 10**9))
     assert call(base + "/api/workspaces/o/state")[1]["orientation"]["lapsed"]
     assert not call(base + "/api/workspaces/o/scene")[1]["user"]
-    while app.reorienting:
-        time.sleep(0.1)
     status, r = call(base + "/api/workspaces/o/orientation", "POST", {"transform": None})
     assert status == 200 and not r["user"] and not (ws.root / "orientation.json").exists()
-    while app.reorienting:
-        time.sleep(0.1)
 
 
 def test_frame_viewer_gets_full_frames_and_per_frame_stats(server):
