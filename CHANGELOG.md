@@ -39,6 +39,11 @@ the image with that version, and the About page and `mg --version` show it.
   the edited mesh, run from the editor) and **Carry the texture over** (no photos: a layout for the
   edited mesh coloured from the nearest point of the old texture; removed pieces go, closed holes
   take the colour around them; also for VGGT scans).
+- **Texture my edits on a sculpt**: saving a sculpt that leaves two faces on the same three
+  vertices, traversed both ways (a degenerate two-face "pillow"), made the texture step fail with
+  `TextureMesh failed (exit -6)` / `std::out_of_range` in OpenMVS's seam leveling. Open3D's
+  duplicate-triangle cleanup compares ordered triples, so it kept such pairs; the mesh cleanup
+  and the editor now drop them before the mesh is written.
 
 ## 0.1.0 — 2026-10-31
 

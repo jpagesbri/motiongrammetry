@@ -758,8 +758,8 @@ class App:
         mesh = o3d.geometry.TriangleMesh(o3d.utility.Vector3dVector(pos),
                                          o3d.utility.Vector3iVector(tri.astype(np.int32)))
         mesh.vertex_colors = o3d.utility.Vector3dVector(col / 255.0)
-        # As clean does: cuts leave bow-tie vertices, and OpenMVS TextureMesh crashes on them
-        # (std::out_of_range in the atlas builder).
+        # As clean does: cuts leave bow-tie vertices and opposite-winding duplicate faces,
+        # and OpenMVS TextureMesh aborts on them (std::out_of_range in the seam leveling).
         mesh.remove_degenerate_triangles()
         mesh.remove_duplicated_triangles()
         mesh.remove_unreferenced_vertices()

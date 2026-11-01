@@ -196,9 +196,35 @@ def clean_mesh(
     return info
 
 
+def _remove_opposite_faces(mesh: o3d.geometry.TriangleMesh) -> int:
+    """Drop faces that repeat another face's three vertices with the opposite winding.
+
+    Open3D's ``remove_duplicated_triangles`` compares vertices as an ordered triple, so it
+    keeps ``(a,b,c)`` and ``(c,b,a)`` - the same triangle traversed both ways. Editing leaves
+    such pairs (a degenerate two-face "pillow"), and OpenMVS TextureMesh aborts on them:
+    ``std::out_of_range`` from ``MeshTexture::GlobalSeamLeveling``, which builds its vertex/
+    patch row map from the labelling and then looks a patch up that the face does not have.
+    Two faces on the same three vertices contribute no area and no surface, so dropping the
+    later one loses nothing."""
+    faces = np.asarray(mesh.triangles)
+    if not len(faces):
+        return 0
+    key = np.sort(faces, axis=1)  # the triangle's vertex set, winding-independent
+    order = np.lexsort(key.T[::-1])  # group equal vertex sets together
+    skey = key[order]
+    starts = np.flatnonzero(np.r_[True, np.any(skey[1:] != skey[:-1], axis=1)])
+    drop = np.ones(len(faces), bool)
+    drop[order[starts]] = False  # keep the first face of each vertex set
+    if drop.any():
+        mesh.remove_triangles_by_mask(drop)
+        mesh.remove_unreferenced_vertices()
+    return int(drop.sum())
+
+
 def _make_manifold(mesh: o3d.geometry.TriangleMesh, max_iter: int = 10) -> int:
     """Drop bow-tie vertices (carving leaves a few). OpenMVS TextureMesh crashes on them
     (std::out_of_range in the atlas builder) and they break most downstream tools."""
+    _remove_opposite_faces(mesh)
     removed = 0
     for _ in range(max_iter):
         mesh.remove_non_manifold_edges()

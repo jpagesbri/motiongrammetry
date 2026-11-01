@@ -128,6 +128,35 @@ def test_close_holes_caps_every_opening():
     assert np.linalg.norm(V, axis=1).max() < 0.5 + 1e-9, "caps should stay inside the opening, not balloon"
 
 
+def test_make_manifold_drops_opposite_winding_duplicate_faces():
+    """Editing can leave two faces on the same three vertices, traversed both ways. Open3D's
+    remove_duplicated_triangles keeps them (it compares ordered triples), and OpenMVS
+    TextureMesh then aborts with std::out_of_range in GlobalSeamLeveling."""
+    from motiongrammetry.clean import _make_manifold
+
+    box = o3d.geometry.TriangleMesh.create_box(1, 1, 1)
+    box.remove_duplicated_vertices()
+    v, t = np.asarray(box.vertices), np.asarray(box.triangles)
+    # a separate two-face "pillow" on its own vertices, as editing leaves it
+    pv = v[:3] + [2.0, 0.0, 0.0]
+    pillow = np.array([[8, 9, 10], [10, 9, 8]])  # the same face, both windings
+    V = np.vstack([v, pv])
+    mesh = o3d.geometry.TriangleMesh(o3d.utility.Vector3dVector(V),
+                                     o3d.utility.Vector3iVector(np.vstack([t, pillow])))
+    assert len(mesh.triangles) == len(t) + 2
+
+    _make_manifold(mesh)
+    assert len(mesh.triangles) == len(t) + 1, "one face of the pair should go, and only that"
+    kept = np.sort(np.asarray(mesh.triangles), axis=1)
+    assert len(np.unique(kept, axis=0)) == len(kept), "no vertex set is used by two faces"
+    assert len(mesh.vertices) == len(V), "the survivor still uses its vertices"
+
+    # a mesh with no duplicates is left exactly as it was
+    clean = o3d.geometry.TriangleMesh(o3d.utility.Vector3dVector(v), o3d.utility.Vector3iVector(t))
+    _make_manifold(clean)
+    assert len(clean.triangles) == len(t)
+
+
 def test_print_mesh_is_z_up_sized_and_flat_based(tmp_path):
     from motiongrammetry.clean import print_mesh
 
