@@ -202,7 +202,18 @@ def flatten(v: np.ndarray, f: np.ndarray, normals: np.ndarray, area: np.ndarray,
                     out.append((q[fids], uvs))
         return out
     # at the texel density of the surface: uv area = 3D area
-    s = np.sqrt(area.sum() / max(np.abs(sa).sum(), 1e-20))
+    total = float(np.abs(sa).sum())
+    # A piece that flattens to (nearly) no area - two faces on the same three vertices, traversed
+    # both ways, do exactly that - would need a scale of ~1/0 to reach the surface's texel density.
+    # That blows its extent up by millions, which wrecks the packer for every other piece: the
+    # atlas comes out a few pixels tall and nothing is painted. Only a true collapse does this
+    # (LSCM keeps a piece's scale, so a real one needs a factor near 1); leave it unscaled, where
+    # it covers no texel, instead of poisoning the whole layout.
+    if not total > 1e-9 * max(float(area.sum()), 1e-30):
+        log.warning("a piece of %d face(s) flattened to no area: packed unscaled", len(f))
+        s = 1.0
+    else:
+        s = np.sqrt(area.sum() / total)
     return [(ids, (uv * s)[lf])]
 
 
@@ -430,13 +441,21 @@ def transfer(src: Path, mesh: Path, dst: Path, angle: float = 45.0, min_size: fl
 
     new = _fill(lay["W"], lay["H"], lay["uv"][lay["faces"]], colour, padding)
     t_bake = time.time()
+    painted = float(lay["used"])
+    if max(lay["W"], lay["H"]) > 20 * min(lay["W"], lay["H"]):
+        # A piece that flattened to no area scaled itself by millions and squeezed every other
+        # piece into a few pixels: the atlas is a sliver and the model comes out blank. Writing
+        # that would replace a good texture with a blank one and report success, so refuse.
+        raise ValueError(f"the new layout is degenerate ({lay['pieces']} pieces in {lay['W']}x{lay['H']}, "
+                         f"{100 * painted:.0f}% used): a piece of the mesh flattens to no area, so it "
+                         f"needs cleaning before it can be textured")
     _write(dst, lay["vertices"], lay["faces"], lay["uv"], new)
-    d = np.concatenate(far) if far else np.zeros(1)
+    d = np.concatenate(far) if far else np.zeros(0)
     size = float(np.linalg.norm(np.ptp(pv, axis=0)))
     info = {"pieces_now": k, "pieces": lay["pieces"], "recut": lay["recut"], "size": [lay["W"], lay["H"]],
             "used": round(lay["used"], 2), "faces": len(gf),
             # how much of the surface is new (more than 0.5% of the model's size from the old one)
-            "new_surface": round(float((d > 0.005 * size).mean()), 3),
+            "new_surface": round(float((d > 0.005 * size).mean()), 3) if len(d) else 0.0,
             "seconds": {"layout": round(t_lay - t0, 1), "bake": round(t_bake - t_lay, 1)}}
     log.info("texture carried over: %d pieces, %dx%d, %.0f%% new surface, %.0f s", lay["pieces"], lay["W"], lay["H"],
              100 * info["new_surface"], time.time() - t0)

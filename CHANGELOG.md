@@ -44,6 +44,10 @@ the image with that version, and the About page and `mg --version` show it.
   `TextureMesh failed (exit -6)` / `std::out_of_range` in OpenMVS's seam leveling. Open3D's
   duplicate-triangle cleanup compares ordered triples, so it kept such pairs; the mesh cleanup
   and the editor now drop them before the mesh is written.
+- **Carrying a texture over**: the same degenerate pair made the new layout collapse (an 8119x17
+  image, every piece a sliver, nothing painted, `nan%` reported) and the model came out blank. A
+  piece that flattens to no area is no longer scaled up by millions, and a sliver layout is
+  refused instead of replacing a good texture with a blank one.
 
 ## 0.1.0 — 2026-10-31
 

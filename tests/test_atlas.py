@@ -180,3 +180,78 @@ def test_texture_carried_over_to_an_edited_mesh_keeps_its_colours(tmp_path):
     bc = trimesh.triangles.points_to_barycentric(out.triangles[tri], pts)
     diff = np.abs(colours_at(old, faces, w) - colours_at(out, tri, bc)).mean(1)
     assert np.median(diff) < 3 and np.mean(diff) < 6
+
+
+def pillow(textured_folder: Path, tmp_path: Path) -> Path:
+    """A textured mesh plus a degenerate two-face "pillow": the same three vertices, traversed both
+    ways. It flattens to no area, which used to blow the atlas up (a 8119x17 image, nothing painted)."""
+    src = textured_folder
+    m = trimesh.load(str(src), process=False)
+    v, f = np.asarray(m.vertices), np.asarray(m.faces)
+    base = len(v)
+    pv = v[:3] + 2.0  # its own vertices, so it stays a piece of its own
+    mesh = trimesh.Trimesh(np.vstack([v, pv]),
+                           np.vstack([f, [[base, base + 1, base + 2], [base + 2, base + 1, base]]]), process=False)
+    out = tmp_path / "pillow.ply"
+    mesh.export(str(out))
+    return out
+
+
+def test_a_piece_that_flattens_to_no_area_does_not_ruin_the_atlas(tmp_path):
+    # a degenerate pair on its own vertices: it must not scale itself up and squeeze everything
+    # else into a few pixels (it used to give a 8119x17 atlas with nothing painted)
+    src = scattered_box(tmp_path)
+    mesh = pillow(src, tmp_path)
+    info = atlas.transfer(src, mesh, tmp_path / "carried.ply")
+    W, H = info["size"]
+    assert max(W, H) < 4 * min(W, H), f"one piece squeezed the atlas: {info['size']}"
+    assert info["used"] > 0.2
+    out = trimesh.load(str(tmp_path / "carried.ply"), process=False)
+    assert len(out.visual.material.image.getcolors(maxcolors=1 << 20)) > 10, "the carried texture is blank"
+
+
+def test_the_size_of_a_piece_is_not_blown_up_by_a_collapsed_one():
+    # flatten's own guard, without the atlas around it: a real piece must come out at the
+    # surface's texel density (uv area = 3D area), and a piece with no area must stay at LSCM's
+    # scale instead of being scaled by ~1/0
+    v = np.array([[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0]], float)
+    square = np.array([[0, 1, 2], [0, 2, 3]])  # a flat 1 x 1 patch: area 1
+    ids, uv = atlas.flatten(v, square, np.array([[0, 0, 1.0], [0, 0, 1.0]]), np.array([0.5, 0.5]))[0]
+    # uv is one vertex per (face, corner): its total area equals the patch's 3D area
+    e1, e2 = uv[:, 1] - uv[:, 0], uv[:, 2] - uv[:, 0]
+    flat_area = 0.5 * np.abs(e1[:, 0] * e2[:, 1] - e1[:, 1] * e2[:, 0])
+    assert np.isclose(flat_area.sum(), 1.0)
+
+    # the pillow: the same three vertices both ways, so it has no area at all
+    pv = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0]], float)
+    pillow_f = np.array([[0, 1, 2], [2, 1, 0]])
+    _, puv = atlas.flatten(pv, pillow_f, np.array([[0, 0, 1.0], [0, 0, -1.0]]), np.array([0.5, 0.5]))[0]
+    assert np.isfinite(puv).all() and np.ptp(puv, axis=0).max() < 1e3, \
+        "a collapsed piece must not be scaled by millions"
+
+
+def test_a_sliver_atlas_is_refused_instead_of_writing_a_blank_texture(tmp_path):
+    # the shape of the real failure: one piece scaled up by millions squeezed the atlas to 8119x17
+    # and every piece came out a sliver. A blank texture must never replace a good one silently.
+    src = scattered_box(tmp_path)
+    seen = {}
+
+    def fake_layout(pv, gf, area, normals, lab, density, padding, limit, fit=False):
+        seen.setdefault("n", 0)
+        seen["n"] += 1
+        if seen["n"] > 1:
+            raise AssertionError("should have stopped at the first layout")
+        return {"vertices": pv[gf].reshape(-1, 3), "faces": np.arange(len(gf) * 3).reshape(-1, 3),
+                "uv": np.zeros((len(gf) * 3, 2)), "W": 8119, "H": 17, "used": 0.0, "pieces": 41, "recut": 0}
+
+    mesh = trimesh.load(str(src), process=False)
+    mesh.export(str(tmp_path / "m.ply"))
+    out = tmp_path / "carried.ply"
+    real = atlas._layout
+    atlas._layout = fake_layout
+    try:
+        with pytest.raises(ValueError, match="degenerate"):
+            atlas.transfer(src, tmp_path / "m.ply", out)
+    finally:
+        atlas._layout = real
+    assert not out.exists(), "a blank texture must not be written over a real one"
