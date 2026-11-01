@@ -571,16 +571,20 @@ function renderModeInfo() {
   $('lyUndo').hidden = !c.layout_undo;
   $('modeNote').textContent = m === 'sculpt'
     ? (c.mesh ? 'editing your custom mesh (the pipeline clean mesh is kept as it is)' : 'the pipeline clean mesh: saving creates a custom version, the original stays')
-    : (c.texture ? 'painting your custom textured model' : 'the pipeline textured model: saving creates a custom version, the original stays');
+    : (c.texture ? 'painting your custom textured model' : 'the pipeline textured model: saving creates a custom version, the original stays'
+      + (c.mesh && !c.mesh_outdated ? ' · your sculpt has no texture yet' : ''));
   let warn = '';
   if (m === 'sculpt' && c.mesh_outdated)
     warn = 'This custom mesh was made from an older clean mesh (clean ran again since), so texture will not use it. Save it again to use it, or delete it.';
   const edited = m === 'paint' && c.mesh && !c.mesh_outdated && (!c.texture || c.texture_from !== 'custom' || c.texture_stale);
   if (edited)
-    warn = 'This textured model is from before your sculpt edits: pieces you removed still show and holes you closed are missing. '
-      + (wsState.can_texture ? 'Texture your edits from the photos, or carry this texture over to the edited mesh (quick, no photos; closed holes take the colour around them).'
-        : 'Carry this texture over to the edited mesh (no photos: this scan has no OpenMVS scene to texture from; closed holes take the colour around them).')
-      + ' Paint saved before that would be replaced.';
+    warn = 'This textured model is from before your sculpt edits: it has the old shape, so pieces you removed still show and holes you closed are missing. '
+      + 'Give your edited mesh its own texture first, then paint it: '
+      + (wsState.can_texture ? 'Texture my edits projects the photos again (about a minute; new surface stays grey); '
+        : '')
+      + 'Carry the texture over copies this texture across in seconds and colours closed holes from around them'
+      + (wsState.can_texture ? '.' : ' (this scan has no OpenMVS scene, so carrying over is the only way).')
+      + ' Paint saved before that is replaced.';
   else if (m === 'paint' && !c.texture && (wsState.stale || []).includes('texture'))
     warn = 'The textured model is older than the clean mesh: re-run texture first.';
   $('modeWarn').hidden = !warn; $('modeWarn').textContent = warn;

@@ -265,13 +265,27 @@ window starts.</p>
 
 <h2 id="edit">Edit &amp; paint</h2>
 <p>Edits are saved as a <b>custom version</b> (in <code>mesh/custom/</code>); the pipeline's files are never changed and
-<b>Delete custom version</b> goes back to them. Texture uses your edited mesh when it is newer than the clean mesh, so the
-order is: <b>sculpt → texture the edit → paint</b>. After a sculpt, paint mode says its textured model is from before the
-edit (removed pieces still show, closed holes are missing) and offers two ways: <b>Texture my edits</b> runs the texture
-step on your edited mesh from here (the photos projected again, about a minute on the GPU; surface no camera saw, like a
-closed underside, comes out grey), and <b>Carry the texture over</b> gives the edited mesh its own layout coloured from the
-nearest point of the old texture (seconds, no photos, also for scans made with VGGT, which have no scene to texture from;
-closed holes take the colour of the surface around them). <b>Undo layout</b> goes back from a carry-over.</p>
+<b>Delete custom version</b> goes back to them. The two modes work on different things: <b>Sculpt mesh</b> changes the
+<b>shape</b>, <b>Paint texture</b> changes the <b>colours</b> on that shape. So the order is always
+<b>sculpt → save → texture the edit → paint</b>.</p>
+<p>After you save a sculpt, the textured model you can paint is still the one made <b>before</b> your edit: it has the old
+shape, so pieces you removed still show and holes you closed are missing. Paint mode says so and offers two ways to give
+your edited shape a texture of its own:</p>
+<table>
+  <tr><th></th><th>Texture my edits</th><th>Carry the texture over</th></tr>
+  <tr><td>How</td><td>The photos are projected again, onto your edited mesh</td><td>Your old texture is copied onto the edited
+    mesh, nearest point to nearest point</td></tr>
+  <tr><td>Takes</td><td>About a minute on the GPU</td><td>Seconds to half a minute</td></tr>
+  <tr><td>Colour of new surface</td><td>What the cameras saw; where no camera saw it (a closed underside, a filled gap) it
+    is <b>grey</b></td><td>Taken from the surface <b>next to it</b>, so closed holes and smoothed areas blend in</td></tr>
+  <tr><td>Best for</td><td>Removing or reshaping things, and you want the real photo detail on what is left</td><td>Closing
+    holes, smoothing, filling; you want the model to look unchanged, and quickly</td></tr>
+  <tr><td>Needs</td><td>The photos and OpenMVS's scene (<code>mg mvs</code>); not available on VGGT scans</td><td>Only the
+    old texture; works on every scan</td></tr>
+</table>
+<p>Either way the result becomes your <b>custom textured model</b> (next to your custom mesh), the pipeline's own textured
+model is left alone, and <b>paint saved before that is replaced</b> (you are asked first). Then paint. If it comes out
+wrong, <b>Undo layout</b> goes back from a carry-over; re-running texture goes back to the photos.</p>
 <h3 id="sculpt">Sculpt</h3>
 <p>Left-drag on the mesh to use the tool, off it (or right-drag) to orbit, middle-drag to pan, wheel to zoom. The example: the
 shoe sat on a stool, so its underside was never filmed and the scan is open there, with a loose scrap
