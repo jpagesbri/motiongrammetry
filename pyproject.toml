@@ -1,6 +1,6 @@
 [project]
 name = "motiongrammetry"
-version = "0.1.0"
+version = "0.2.0"
 description = "Turn a walk-around video of a person or object into a cleaned, textured 3D mesh."
 readme = "README.md"
 license = "Apache-2.0"

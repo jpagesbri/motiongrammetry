@@ -10,6 +10,8 @@ the image with that version, and the About page and `mg --version` show it.
 
 ## Unreleased
 
+## 0.2.0 — 2026-11-02
+
 - **Export**: pick the contents to take out (textured model, clean mesh, 3D print, raw mesh,
   dense point cloud, cameras) and each one's format; several come as one zip. New formats:
   3MF for prints, OBJ for the clean and raw meshes, the dense cloud as PLY and the COLMAP
@@ -39,6 +41,10 @@ the image with that version, and the About page and `mg --version` show it.
   the edited mesh, run from the editor) and **Carry the texture over** (no photos: a layout for the
   edited mesh coloured from the nearest point of the old texture; removed pieces go, closed holes
   take the colour around them; also for VGGT scans).
+- **Docker**: the container is named after the project, `motiongrammetry` (or
+  `motiongrammetry-<folder>` for another data folder), instead of Compose's
+  `motiongrammetry-motiongrammetry-1`; a container under the old name is replaced on its next
+  start, with no rebuild.
 - **Texture my edits on a sculpt**: saving a sculpt that leaves two faces on the same three
   vertices, traversed both ways (a degenerate two-face "pillow"), made the texture step fail with
   `TextureMesh failed (exit -6)` / `std::out_of_range` in OpenMVS's seam leveling. Open3D's
