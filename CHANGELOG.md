@@ -17,6 +17,11 @@ the image with that version, and the About page and `mg --version` show it.
   and head); it is now GitHub's own mark, kept once in `topbar.css` (#20).
 - **CONTRIBUTING.md and a pull request template**: a branch per change, a local instance to try
   it, and a list of what the approver has to validate before the merge.
+- **Upload video…**: with no name typed it replaced the selected scan's video without asking, and
+  with an existing scan's name typed it silently replaced *that* scan's video. Now it asks before
+  replacing, refuses a name that is taken, and the server refuses a replacement nobody confirmed or
+  one during a run; a failed upload leaves the old video whole, and the upload it replaces is
+  removed (part of #25).
 
 ## 0.2.0 — 2026-11-02
 

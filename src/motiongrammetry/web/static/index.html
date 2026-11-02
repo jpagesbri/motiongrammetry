@@ -2695,17 +2695,31 @@ $('upload').addEventListener('change', async () => {
   const file = $('upload').files[0]; if (!file) return;
   $('newErr').textContent = '';
   try {
-    let name = $('newName').value.trim() || current;
-    if (!name) { name = file.name.replace(/\.[^.]+$/, '').replace(/[^A-Za-z0-9._-]/g, '-').slice(0, 60); }
-    if (name !== current) {
+    // Where the video goes: a new scan under the typed name (one already taken is refused, it
+    // used to receive the video silently), else the selected scan (asked first when it has a video
+    // already), else a new scan named after the file (with a free suffix if that name is taken).
+    const typed = $('newName').value.trim();
+    let name = typed || current, replace = false;
+    if (typed && typed !== current) {
       await api('/api/workspaces', { method: 'POST', body: JSON.stringify({ name }) }).catch((e) => {
-        if (!/already exists/.test(e.message)) throw e;
+        throw /already exists/.test(e.message)
+          ? new Error(`a scan named "${typed}" already exists: choose another name, or select that scan to replace its video`) : e;
       });
+    } else if (!name) {
+      const base = file.name.replace(/\.[^.]+$/, '').replace(/[^A-Za-z0-9._-]/g, '-').slice(0, 60) || 'scan';
+      const taken = new Set((await api('/api/workspaces')).map((w) => w.name));
+      name = base;
+      for (let i = 2; taken.has(name); i++) name = `${base}-${i}`;
+      await api('/api/workspaces', { method: 'POST', body: JSON.stringify({ name }) });
+    } else if (wsState?.meta?.video) {
+      const now = String(wsState.meta.video).split('/').pop();
+      if (!confirm(`Replace the video of "${name}"?\n\nnow: ${now}\nnew: ${file.name}\n\nIts keyframes and every step after them will need running again.`)) return;
+      replace = true;
     }
     const prog = $('upProg'); prog.hidden = false;
     await new Promise((ok, fail) => {
       const xhr = new XMLHttpRequest();
-      xhr.open('PUT', `/api/workspaces/${name}/video?name=${encodeURIComponent(file.name)}`);
+      xhr.open('PUT', `/api/workspaces/${name}/video?name=${encodeURIComponent(file.name)}${replace ? '&replace=1' : ''}`);
       xhr.upload.onprogress = (e) => { if (e.lengthComputable) prog.value = e.loaded / e.total; };
       xhr.onload = () => (xhr.status < 300 ? ok() : fail(new Error(JSON.parse(xhr.responseText).error)));
       xhr.onerror = () => fail(new Error('upload failed'));
@@ -2713,8 +2727,7 @@ $('upload').addEventListener('change', async () => {
     });
     prog.hidden = true;
     await select(name);
-  } catch (e) { $('newErr').textContent = e.message; $('upProg').hidden = true; }
-  $('upload').value = '';
+  } catch (e) { $('newErr').textContent = e.message; $('upProg').hidden = true; } finally { $('upload').value = ''; }
 });
 // Delete a scan: its folder and everything in it, after typing its name.
 $('delBtn').addEventListener('click', async () => {
