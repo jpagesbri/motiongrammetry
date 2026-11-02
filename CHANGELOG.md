@@ -46,8 +46,9 @@ the image with that version, and the About page and `mg --version` show it.
   and the editor now drop them before the mesh is written.
 - **Carrying a texture over**: the same degenerate pair made the new layout collapse (an 8119x17
   image, every piece a sliver, nothing painted, `nan%` reported) and the model came out blank. A
-  piece that flattens to no area is no longer scaled up by millions, and a sliver layout is
-  refused instead of replacing a good texture with a blank one.
+  piece that flattens to no area is no longer scaled up by millions, and a layout that paints
+  almost none of its image (under 5%) is refused instead of replacing a good texture with a blank
+  one; long, thin objects, whose layouts are long and thin too, are not mistaken for it.
 
 ## 0.1.0 — 2026-10-31
 

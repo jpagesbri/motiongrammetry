@@ -406,6 +406,9 @@ def relayout(src: Path, dst: Path, angle: float = 45.0, min_size: float = 0.005,
     return info
 
 
+MIN_USED = 0.05  # a layout painting less of its image than this is broken (good ones: 30-70%)
+
+
 def transfer(src: Path, mesh: Path, dst: Path, angle: float = 45.0, min_size: float = 0.005, padding: int = 4,
              max_size: int = 8192) -> dict:
     """Carry src's texture over to another mesh of the same subject (the editor's sculpted one),
@@ -425,6 +428,15 @@ def transfer(src: Path, mesh: Path, dst: Path, angle: float = 45.0, min_size: fl
     density, k = _detail(f_src, uv_src, v_src, src_area, old.shape[1], old.shape[0])
     lay = _layout(pv, gf, area, normals, lab, density, padding, max_size)
     t_lay = time.time()
+    if lay["used"] < MIN_USED:
+        # A piece that flattened to no area scaled itself by millions and squeezed every other
+        # piece into a few pixels: almost none of the image is painted and the model comes out
+        # blank. Writing that would replace a good texture with a blank one and report success,
+        # so refuse, before baking it. (Judged by the share painted, not the image's shape: a
+        # long, thin object is laid out long and thin and still fills it well.)
+        raise ValueError(f"the new layout is degenerate ({lay['pieces']} pieces in {lay['W']}x{lay['H']}, "
+                         f"{100 * lay['used']:.0f}% used): a piece of the mesh flattens to no area, so it "
+                         f"needs cleaning before it can be textured")
     scene = o3d.t.geometry.RaycastingScene()
     scene.add_triangles(o3d.core.Tensor(v_src.astype(np.float32)), o3d.core.Tensor(f_src.astype(np.uint32)))
     sample, corners = _sampler(old, uv_src[f_src]), uv_src[f_src]
@@ -441,14 +453,6 @@ def transfer(src: Path, mesh: Path, dst: Path, angle: float = 45.0, min_size: fl
 
     new = _fill(lay["W"], lay["H"], lay["uv"][lay["faces"]], colour, padding)
     t_bake = time.time()
-    painted = float(lay["used"])
-    if max(lay["W"], lay["H"]) > 20 * min(lay["W"], lay["H"]):
-        # A piece that flattened to no area scaled itself by millions and squeezed every other
-        # piece into a few pixels: the atlas is a sliver and the model comes out blank. Writing
-        # that would replace a good texture with a blank one and report success, so refuse.
-        raise ValueError(f"the new layout is degenerate ({lay['pieces']} pieces in {lay['W']}x{lay['H']}, "
-                         f"{100 * painted:.0f}% used): a piece of the mesh flattens to no area, so it "
-                         f"needs cleaning before it can be textured")
     _write(dst, lay["vertices"], lay["faces"], lay["uv"], new)
     d = np.concatenate(far) if far else np.zeros(0)
     size = float(np.linalg.norm(np.ptp(pv, axis=0)))

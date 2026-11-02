@@ -255,3 +255,22 @@ def test_a_sliver_atlas_is_refused_instead_of_writing_a_blank_texture(tmp_path):
     finally:
         atlas._layout = real
     assert not out.exists(), "a blank texture must not be written over a real one"
+
+
+def test_a_long_thin_layout_is_not_mistaken_for_a_broken_one(tmp_path):
+    # a long, thin object packs into a long, thin image that it still fills well: carrying its
+    # texture over must work (the broken layout of the pillow bug was 0% used, this one ~26%)
+    rng = np.random.default_rng(0)
+    T = 256
+    img = Image.fromarray(rng.integers(0, 255, (T, T, 3), dtype=np.uint8))
+    strip = trimesh.Trimesh([[0, 0, 0], [80, 0, 0], [80, 1, 0], [0, 1, 0]], [[0, 1, 2], [0, 2, 3]], process=False)
+    strip.visual = trimesh.visual.TextureVisuals(uv=np.array([[0, 0], [1, 0], [1, 0.0125], [0, 0.0125]]), image=img)
+    img.save(tmp_path / "textured0.png")
+    head, rest = strip.export(file_type="ply").split(b"end_header\n", 1)
+    head = head.replace(b"\nelement vertex", b"\ncomment TextureFile textured0.png\nelement vertex", 1)
+    (tmp_path / "textured.ply").write_bytes(head + b"end_header\n" + rest)
+    trimesh.Trimesh(strip.vertices, strip.faces, process=False).export(str(tmp_path / "edited.ply"))
+    info = atlas.transfer(tmp_path / "textured.ply", tmp_path / "edited.ply", tmp_path / "carried.ply")
+    W, H = info["size"]
+    assert max(W, H) > 20 * min(W, H) and info["used"] > 4 * atlas.MIN_USED  # long and thin, and well filled
+    assert (tmp_path / "carried.ply").exists()
