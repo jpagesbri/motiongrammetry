@@ -164,6 +164,12 @@
   .win.small { width: min(560px, 94vw); height: auto; }
   .del-body { padding: 14px 18px 18px; }
   .del-body p { margin: 6px 0 10px; line-height: 1.5; }
+  .rep-pair { display: grid; grid-template-columns: 1fr auto 1fr; gap: 10px; align-items: center; margin: 4px 0 10px; }
+  .rep-pair figure { margin: 0; min-width: 0; }
+  .rep-pair .pic { aspect-ratio: 16 / 10; border-radius: 6px; background: var(--bg); border: 1px solid var(--line); overflow: hidden; display: grid; place-items: center; color: var(--muted); font-size: 12px; }
+  .rep-pair .pic img { width: 100%; height: 100%; object-fit: cover; }
+  .rep-pair figcaption { font-size: 12px; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .rep-arrow { color: var(--muted); font-size: 18px; }
   .btn.danger { color: var(--bad); }
   .btn.danger:hover { border-color: var(--bad); }
   .btn.danger-solid { background: var(--bad); border-color: var(--bad); color: #fff; font-weight: 600; }
@@ -370,6 +376,20 @@
       <label class="row" style="justify-content:flex-start;gap:10px">Type <code id="delName"></code> to confirm <input type="text" id="delConfirm" autocomplete="off" style="width:200px"></label>
       <div class="btns"><button class="btn danger-solid" id="delGo" disabled>Delete for good</button><button class="btn" id="delCancel">Cancel</button></div>
       <div class="err" id="delErr"></div>
+    </div>
+  </div>
+</div>
+<div class="modal" id="repModal" hidden>
+  <div class="win small">
+    <div class="win-head"><b>Replace the video</b><span class="muted" id="repScan"></span><button class="x" id="repClose" title="close (Esc)">✕</button></div>
+    <div class="del-body">
+      <div class="rep-pair">
+        <figure><div class="pic" id="repOldPic"></div><figcaption><span class="muted">now</span> <b id="repOld"></b></figcaption></figure>
+        <span class="rep-arrow">→</span>
+        <figure><div class="pic" id="repNewPic"></div><figcaption><span class="muted">new</span> <b id="repNew"></b></figcaption></figure>
+      </div>
+      <p id="repText"></p>
+      <div class="btns"><button class="btn primary" id="repGo">Replace the video</button><button class="btn" id="repCancel">Cancel</button></div>
     </div>
   </div>
 </div>
@@ -2712,8 +2732,7 @@ $('upload').addEventListener('change', async () => {
       for (let i = 2; taken.has(name); i++) name = `${base}-${i}`;
       await api('/api/workspaces', { method: 'POST', body: JSON.stringify({ name }) });
     } else if (wsState?.meta?.video) {
-      const now = String(wsState.meta.video).split('/').pop();
-      if (!confirm(`Replace the video of "${name}"?\n\nnow: ${now}\nnew: ${file.name}\n\nIts keyframes and every step after them will need running again.`)) return;
+      if (!(await askReplace(name, String(wsState.meta.video), file))) return;
       replace = true;
     }
     const prog = $('upProg'); prog.hidden = false;
@@ -2729,6 +2748,48 @@ $('upload').addEventListener('change', async () => {
     await select(name);
   } catch (e) { $('newErr').textContent = e.message; $('upProg').hidden = true; } finally { $('upload').value = ''; }
 });
+// Replacing a scan's video: the current one (its first keyframe) next to the new one (a frame of the
+// chosen file), asked in the page before anything is sent. Resolves true to replace.
+function videoFrame(file) {  // a picture from the chosen file, or null if the browser can't decode it
+  return new Promise((ok) => {
+    const v = document.createElement('video'), url = URL.createObjectURL(file);
+    const done = (src) => { URL.revokeObjectURL(url); ok(src); };
+    v.muted = true; v.preload = 'auto';
+    v.onloadedmetadata = () => { v.currentTime = Math.min(1, (v.duration || 0) / 4); };
+    v.onseeked = () => {
+      const c = document.createElement('canvas'), k = 320 / Math.max(v.videoWidth, 1);
+      c.width = 320; c.height = Math.round(v.videoHeight * k) || 200;
+      c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
+      done(c.toDataURL('image/jpeg', 0.8));
+    };
+    v.onerror = () => done(null);
+    setTimeout(() => done(null), 5000);
+    v.src = url;
+  });
+}
+let repAnswer = null;
+function askReplace(name, now, file) {
+  const pic = (el, src, alt) => { el.innerHTML = src ? `<img alt="${esc(alt)}" src="${src}">` : 'no picture'; };
+  $('repScan').textContent = '· ' + name;
+  $('repOld').textContent = now.split('/').pop(); $('repNew').textContent = file.name;
+  pic($('repOldPic'), wsState?.frames?.length ? `/api/workspaces/${encodeURIComponent(name)}/thumb/frames/${encodeURIComponent(wsState.frames[0])}` : null, 'the current video');
+  $('repNewPic').textContent = 'reading…';
+  videoFrame(file).then((src) => { if (!$('repModal').hidden) pic($('repNewPic'), src, 'the new video'); });
+  const uploaded = now.includes(`/${name}/.ui/`);
+  $('repText').innerHTML = `From now on <b>${esc(name)}</b> is made from the new video: its keyframes and every step after them`
+    + ` need running again.${uploaded ? ' The uploaded video it replaces is deleted.' : ' The video it used stays where it is on disk.'}`;
+  $('repModal').hidden = false; $('repGo').focus();
+  return new Promise((ok) => { repAnswer = ok; });
+}
+function closeReplace(yes) {
+  if ($('repModal').hidden) return;
+  $('repModal').hidden = true;
+  const ok = repAnswer; repAnswer = null; ok?.(yes);
+}
+$('repGo').addEventListener('click', () => closeReplace(true));
+for (const id of ['repClose', 'repCancel']) $(id).addEventListener('click', () => closeReplace(false));
+$('repModal').addEventListener('click', (e) => { if (e.target === $('repModal')) closeReplace(false); });
+addEventListener('keydown', (e) => { if (e.key === 'Escape') closeReplace(false); });
 // Delete a scan: its folder and everything in it, after typing its name.
 $('delBtn').addEventListener('click', async () => {
   if (!current) return;
