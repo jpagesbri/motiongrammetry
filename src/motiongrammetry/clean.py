@@ -196,6 +196,28 @@ def clean_mesh(
     return info
 
 
+def repeated_faces(faces: np.ndarray) -> np.ndarray:
+    """Mask of the faces on a vertex set an earlier face already has, in either winding: every
+    face of such a set but the first."""
+    key = np.sort(faces, axis=1)  # the triangle's vertex set, winding-independent
+    order = np.lexsort(key.T[::-1])  # group equal vertex sets together
+    skey = key[order]
+    starts = np.flatnonzero(np.r_[True, np.any(skey[1:] != skey[:-1], axis=1)])
+    drop = np.ones(len(faces), bool)
+    drop[order[starts]] = False  # keep the first face of each vertex set
+    return drop
+
+
+def broken_faces(faces: np.ndarray) -> np.ndarray:
+    """Mask of the faces OpenMVS texturing can't take: a vertex used twice in one face, or a face
+    on the same three vertices as an earlier one (a "pillow"; see _remove_opposite_faces). The
+    clean stage and the editor's save drop them; a mesh saved before they did can still have them."""
+    if not len(faces):
+        return np.zeros(0, bool)
+    degenerate = (faces[:, 0] == faces[:, 1]) | (faces[:, 1] == faces[:, 2]) | (faces[:, 2] == faces[:, 0])
+    return degenerate | repeated_faces(faces)
+
+
 def _remove_opposite_faces(mesh: o3d.geometry.TriangleMesh) -> int:
     """Drop faces that repeat another face's three vertices with the opposite winding.
 
@@ -209,12 +231,7 @@ def _remove_opposite_faces(mesh: o3d.geometry.TriangleMesh) -> int:
     faces = np.asarray(mesh.triangles)
     if not len(faces):
         return 0
-    key = np.sort(faces, axis=1)  # the triangle's vertex set, winding-independent
-    order = np.lexsort(key.T[::-1])  # group equal vertex sets together
-    skey = key[order]
-    starts = np.flatnonzero(np.r_[True, np.any(skey[1:] != skey[:-1], axis=1)])
-    drop = np.ones(len(faces), bool)
-    drop[order[starts]] = False  # keep the first face of each vertex set
+    drop = repeated_faces(faces)
     if drop.any():
         mesh.remove_triangles_by_mask(drop)
         mesh.remove_unreferenced_vertices()
