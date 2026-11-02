@@ -59,19 +59,22 @@ It also has to give:
 Whoever does the work writes this, an agent included, so the approver knows exactly what to
 do. Add a line under **Unreleased** in `CHANGELOG.md` for anything a user would notice.
 
-## 4. Merge: linear history
+## 4. Merge: rebase and merge
 
-Once approved:
+The approver's "approved" is the go-ahead; nothing merges without it. Merges use GitHub's
+**Rebase and merge**: the branch's commits are replayed on top of `main` one by one, with
+the same messages, authors and changes, so history stays linear without squashing anything.
+No merge commits, no squashes.
 
 ```bash
-git switch fix/upload-replaces-video && git rebase main     # rerun the tests after a rebase
-git switch main && git merge --ff-only fix/upload-replaces-video
-git push origin main                                        # GitHub marks the PR merged
-git branch -d fix/upload-replaces-video && git push origin --delete fix/upload-replaces-video
+gh pr update-branch 25 --rebase    # only if main moved since the review: then rerun the tests
+                                   # and say so, since the code changed after it was checked
+gh pr merge 25 --rebase --delete-branch     # or the "Rebase and merge" button
+git switch main && git pull --ff-only
+git branch -D fix/upload-replaces-video     # -D: GitHub replayed the commits, so new hashes
 ```
 
-No merge commits. If the branch was already pushed, its rebased version is published by
-merging into `main`, and the old branch is deleted, so no force push is needed.
+`gh pr update-branch --rebase` rebases the branch on GitHub, so no local force push is needed.
 
 ## 5. Releases
 
