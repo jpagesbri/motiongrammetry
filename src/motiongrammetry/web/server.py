@@ -226,6 +226,14 @@ class Job:
                     "failure": self.failure, "log": self.lines[since:], "next": len(self.lines)}
 
 
+def _clock() -> float:
+    """Seconds of the day on this machine's clock, the one the logs are stamped with: the page
+    times running steps from the log lines against it, not against the browser's clock, which
+    can be in another time zone (a container runs in UTC, the browser in local time)."""
+    t = time.localtime()
+    return t.tm_hour * 3600 + t.tm_min * 60 + t.tm_sec + time.time() % 1
+
+
 def _parse_progress(line: str) -> float | None:
     for rx in PROGRESS:
         m = rx.search(line)
@@ -1143,10 +1151,10 @@ def make_handler(app: App):
                 job = app.job(ws)
                 since = int(q.get("since", ["0"])[0])
                 if job:
-                    return self._json(job.snapshot(since))
+                    return self._json({**job.snapshot(since), "clock": _clock()})
                 prev = ws.root / ".ui" / "last_run.log"  # survive server restarts
                 lines = prev.read_text().splitlines() if prev.exists() else []
-                return self._json({"status": None, "log": lines[since:], "next": len(lines)})
+                return self._json({"status": None, "log": lines[since:], "next": len(lines), "clock": _clock()})
             if what == "scene":
                 return self._json(app.scene(ws))
             if what == "history":

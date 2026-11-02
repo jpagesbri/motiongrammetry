@@ -2454,7 +2454,11 @@ function trackLines(lines, tracks = {}, state = { stage: null }) {
 
 const dur = (s) => s == null ? '' : s < 60 ? `${Math.round(s)}s` : s < 3600 ? `${Math.floor(s / 60)}m ${String(Math.round(s % 60)).padStart(2, '0')}s`
   : `${Math.floor(s / 3600)}h ${String(Math.floor(s % 3600 / 60)).padStart(2, '0')}m`;
-const nowSod = () => { const d = new Date(); return d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds(); };
+// Now on the server's clock, the one the log lines are stamped with: the browser can be in another
+// time zone (a container runs in UTC), which made every running step start at 1h 00.
+let clockSkew = 0;  // server seconds-of-day minus the browser's, from the last job poll
+const browserSod = () => { const d = new Date(); return d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds() + d.getMilliseconds() / 1000; };
+const nowSod = () => (browserSod() + clockSkew + 86400) % 86400;
 const shortEta = (e) => e.replace(/(\d+[hms])\d+ms$/, '$1');
 let liveTracks = {}, trackSince = 0, trackState = { stage: null };
 const fileTracks = {};                 // log path -> tracker (finished runs, parsed on demand)
@@ -2675,6 +2679,7 @@ async function poll() {
       // One request feeds both the live log and the step trackers (which need every line).
       const since = logMode === 'live' ? Math.min(jobSince, trackSince) : trackSince;
       const j = await api(`/api/workspaces/${current}/job?since=${since}`);
+      if (j.clock != null) clockSkew = j.clock - browserSod();
       if (j.next < trackSince) {             // a new run (or a server restart): start over
         liveTracks = {}; trackState = { stage: null }; trackSince = 0; jobSince = 0;
         setTimeout(poll, 0); return;
