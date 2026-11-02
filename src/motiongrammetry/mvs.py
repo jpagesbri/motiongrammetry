@@ -84,8 +84,19 @@ def _explain_exit(tool: str, rc: int, lines: list[str], log_file: Path) -> Diag:
     if rc in (137, -9):
         return error("out-of-memory", f"{tool} was killed (exit {rc}), most likely out of memory",
                      "raise resolution_level, use fewer keyframes, or the low-disk preset")
+    # std::out_of_range from the seam leveling: broken mesh geometry (see clean.broken_faces). It ends
+    # as an abort (-6; 134 through docker) or, when several threads throw at once, as a segfault.
+    if rc in (134, -6, 139, -11) and any("std::out_of_range" in line for line in lines):
+        return error("openmvs-degenerate-mesh",
+                     f"{tool} failed (exit {rc}, std::out_of_range): the mesh has broken geometry, "
+                     "such as two faces on the same three vertices",
+                     f"open the mesh in the editor and save it again (saving cleans it), or re-run clean; "
+                     f"log: {log_file}\n{tail}")
     if rc in (139, -11):
         return error("openmvs-crashed", f"{tool} crashed (segfault)",
+                     f"often a degenerate mesh or scene; re-run clean; log: {log_file}\n{tail}")
+    if rc in (134, -6):  # SIGABRT (134 through docker): an uncaught C++ exception
+        return error("openmvs-aborted", f"{tool} aborted (exit {rc})",
                      f"often a degenerate mesh or scene; re-run clean; log: {log_file}\n{tail}")
     if any("No space left" in line for line in lines):
         return error("disk-full", f"{tool} ran out of disk space", "free space or raise resolution_level")
@@ -224,6 +235,31 @@ def _explain_densify_failure(ws: Workspace, err: StageError) -> StageError:
     return err
 
 
+TEXTURE_INPUT = ".texture-input.ply"  # in mesh/: a cleaned copy of the mesh, while TextureMesh runs
+
+
+def _texture_input(ws: Workspace, mesh: Path) -> Path | None:
+    """A copy of the mesh without the faces TextureMesh aborts on (clean.broken_faces), or None when
+    it has none. A mesh saved before the clean stage and the editor dropped them can still have
+    them; the mesh itself is left as it is (saving it in the editor cleans it for good)."""
+    import numpy as np
+    import open3d as o3d
+
+    from .clean import broken_faces
+
+    m = o3d.io.read_triangle_mesh(str(mesh))
+    bad = broken_faces(np.asarray(m.triangles))
+    if not bad.any():
+        return None
+    m.remove_triangles_by_mask(bad)
+    m.remove_unreferenced_vertices()
+    out = ws.mesh / TEXTURE_INPUT
+    o3d.io.write_triangle_mesh(str(out), m)
+    log.warning("texturing without %d broken faces of %s (duplicates or degenerate, left by an older save); "
+                "saving the mesh in the editor removes them for good", int(bad.sum()), mesh.name)
+    return out
+
+
 def texture(ws: Workspace, mesh: Path, out_name: str = "textured", resolution_level: int = 0, threads: int = 0,
             idle_timeout_min: float = 30.0) -> Path:
     """Texture an (already cleaned) mesh with the dense scene's images. Returns the PLY path."""
@@ -234,10 +270,17 @@ def texture(ws: Workspace, mesh: Path, out_name: str = "textured", resolution_le
     rel_mesh = os.path.relpath(mesh, ws.root)
     if rel_mesh.startswith(".."):
         raise RuntimeError(f"mesh to texture must live inside the workspace: {mesh}")
-    # PLY (per-face UVs + TextureFile comment): OpenMVS 2.3's OBJ exporter segfaults.
-    mvs.run("TextureMesh", "-i", mvs.p("mvs/scene_dense.mvs"), "-m", mvs.p(rel_mesh),
-            "-o", mvs.p(f"mesh/{out_name}.ply"), "--resolution-level", str(resolution_level),
-            "--empty-color", str(0x808080))  # faces no camera saw: neutral grey, not orange
+    fixed = _texture_input(ws, mesh)
+    if fixed:
+        rel_mesh = os.path.relpath(fixed, ws.root)
+    try:
+        # PLY (per-face UVs + TextureFile comment): OpenMVS 2.3's OBJ exporter segfaults.
+        mvs.run("TextureMesh", "-i", mvs.p("mvs/scene_dense.mvs"), "-m", mvs.p(rel_mesh),
+                "-o", mvs.p(f"mesh/{out_name}.ply"), "--resolution-level", str(resolution_level),
+                "--empty-color", str(0x808080))  # faces no camera saw: neutral grey, not orange
+    finally:
+        if fixed:
+            fixed.unlink(missing_ok=True)
     out = ws.mesh / f"{out_name}.ply"
     if not out.exists():
         raise RuntimeError(f"TextureMesh produced no {out}")

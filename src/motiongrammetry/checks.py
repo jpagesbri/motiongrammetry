@@ -339,6 +339,19 @@ def _pre_clean(ws, o, video):
     return d
 
 
+def _broken_faces(mesh: Path) -> int:
+    """How many faces of the mesh TextureMesh can't take (clean.broken_faces); 0 if unreadable."""
+    import numpy as np
+    import open3d as o3d
+
+    from .clean import broken_faces
+
+    try:
+        return int(broken_faces(np.asarray(o3d.io.read_triangle_mesh(str(mesh)).triangles)).sum())
+    except Exception:
+        return 0
+
+
 def _pre_texture(ws, o, video):
     if not (ws.mesh / "mesh_clean.ply").exists():
         return [error("no-clean-mesh", "no clean mesh yet", "run clean first")]
@@ -349,6 +362,10 @@ def _pre_texture(ws, o, video):
     from .clean import texture_source
 
     custom = ws.mesh / "custom" / "mesh_clean.ply"
+    broken = _broken_faces(texture_source(ws)[0])
+    if broken:
+        d.append(info("broken-faces", f"the mesh has {broken:,} broken faces (duplicates or degenerate, left by an "
+                      "older save): texture leaves them out", "saving the mesh in the editor removes them for good"))
     if texture_source(ws)[1] == "custom":
         d.append(info("custom-mesh", "texturing your custom (edited) mesh: the result is the custom textured model",
                       "the pipeline's own textured model is left as it is"))

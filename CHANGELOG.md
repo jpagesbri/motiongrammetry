@@ -25,6 +25,11 @@ the image with that version, and the About page and `mg --version` show it.
 - **Run times**: a running step showed **1h 00** from the start, and a time left of many hours,
   whenever the browser's time zone differed from the server's (the container runs in UTC). Steps
   are now timed against the server's clock, and OpenMVS run in Docker logs in the host's zone (#21).
+- **Old edited meshes and texturing**: a mesh saved before 0.2.0 could still hold duplicate
+  ("pillow") or degenerate faces, and "Texture my edits" then died in OpenMVS. The texture step now
+  leaves those faces out (from a cleaned copy; the mesh itself is untouched), the pre-flight check
+  says how many, and if OpenMVS still fails on broken geometry (`std::out_of_range`, as an abort
+  or a segfault) the error names it and says how to fix it (#1, #2).
 
 ## 0.2.0 — 2026-11-02
 
