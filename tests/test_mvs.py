@@ -35,3 +35,25 @@ def test_densify_refuses_when_disk_too_small_and_clears_stale_dmaps(tmp_path, mo
     with pytest.raises(RuntimeError, match="not enough disk space"):
         mvs.densify_and_mesh(ws, resolution_level=0)
     assert not list(ws.mvs.glob("depth*"))
+
+
+def test_openmvs_in_docker_logs_in_the_host_time_zone(tmp_path, monkeypatch):
+    """Its log stamps are compared with ours on the run screen: the image alone runs in UTC."""
+    import subprocess
+    from pathlib import Path
+
+    seen = {}
+
+    class Started(Exception):
+        pass
+
+    def popen(cmd, **kw):
+        seen["cmd"] = cmd
+        raise Started
+
+    monkeypatch.setattr(shutil, "which", lambda name: "/usr/bin/docker" if name == "docker" else None)
+    monkeypatch.setattr(subprocess, "Popen", popen)
+    with pytest.raises(Started):
+        mvs.OpenMVS(Workspace(tmp_path / "w")).run("TextureMesh", "-i", "x")
+    assert seen["cmd"][:2] == ["docker", "run"]
+    assert ("/etc/localtime:/etc/localtime:ro" in seen["cmd"]) == Path("/etc/localtime").exists()

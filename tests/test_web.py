@@ -804,3 +804,15 @@ def test_replacing_a_video_never_deletes_one_outside_the_scan(server, tmp_path):
     call(base + "/api/workspaces", "POST", {"name": "o", "video_path": str(outside)})
     status, _ = _put_video(base, "o", "new.mp4", b"n" * 100, replace=True)
     assert status == 200 and outside.read_bytes() == b"keep"
+
+
+def test_job_polls_carry_the_server_clock(server):
+    """The run screen times steps from the log lines' stamps against the server's clock, not the
+    browser's (another time zone made every running step start at 1h 00)."""
+    base, _ = server
+    call(base + "/api/workspaces", "POST", {"name": "c"})
+    t = time.localtime()
+    status, body = call(base + "/api/workspaces/c/job?since=0")
+    assert status == 200
+    now = t.tm_hour * 3600 + t.tm_min * 60 + t.tm_sec
+    assert abs((body["clock"] - now + 43200) % 86400 - 43200) < 5

@@ -50,9 +50,12 @@ class OpenMVS:
             # A named container can be killed for sure: killing only the docker client on
             # cancel/timeout could leave OpenMVS running (and writing GBs) in the background.
             container = f"mg-{tool.lower()}-{os.getpid()}-{int(time.time() * 1000) % 10**8}"
+            # The host's time zone, so the tool's log stamps match ours (the run screen times
+            # steps from them); the image alone runs in UTC.
+            tz = ["-v", "/etc/localtime:/etc/localtime:ro"] if Path("/etc/localtime").exists() else []
             cmd = [
                 "docker", "run", "--rm", "--name", container, "--user", f"{os.getuid()}:{os.getgid()}",
-                "-v", f"{self.ws.root}:/work", "-w", "/work", DOCKER_IMAGE, tool, *args,
+                *tz, "-v", f"{self.ws.root}:/work", "-w", "/work", DOCKER_IMAGE, tool, *args,
             ]
         log.info("$ %s %s", tool, " ".join(args))
         log_file = self.ws.mvs / f"{tool}.log"

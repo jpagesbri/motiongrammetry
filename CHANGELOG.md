@@ -22,6 +22,9 @@ the image with that version, and the About page and `mg --version` show it.
   replacing, refuses a name that is taken, and the server refuses a replacement nobody confirmed or
   one during a run; a failed upload leaves the old video whole, and the upload it replaces is
   removed (part of #25).
+- **Run times**: a running step showed **1h 00** from the start, and a time left of many hours,
+  whenever the browser's time zone differed from the server's (the container runs in UTC). Steps
+  are now timed against the server's clock, and OpenMVS run in Docker logs in the host's zone (#21).
 
 ## 0.2.0 — 2026-11-02
 
