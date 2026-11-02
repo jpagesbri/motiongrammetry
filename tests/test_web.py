@@ -767,3 +767,40 @@ def test_delete_a_scan_needs_its_name_and_no_run(server, tmp_path):
     assert "gone" not in {w["name"] for w in call(base + "/api/workspaces")[1]}
     status, r = call(base + "/api/workspaces/keepvid/delete", "POST", {"confirm": "keepvid"})
     assert status == 200 and video.exists()  # the video outside the scan stays
+
+
+def _put_video(base, scan, name, data, replace=False):
+    url = f"{base}/api/workspaces/{scan}/video?name={name}" + ("&replace=1" if replace else "")
+    req = urllib.request.Request(url, data=data, method="PUT")
+    try:
+        with urllib.request.urlopen(req) as r:
+            return r.status, json.loads(r.read())
+    except urllib.error.HTTPError as e:
+        return e.code, json.loads(e.read())
+
+
+def test_a_video_is_replaced_only_when_confirmed(server):
+    """An upload used to replace a scan's video without asking (#25)."""
+    from pathlib import Path
+
+    base, app = server
+    call(base + "/api/workspaces", "POST", {"name": "r"})
+    status, body = _put_video(base, "r", "first.mp4", b"a" * 1000)
+    assert status == 200
+    first = Path(body["meta"]["video"])
+    status, body = _put_video(base, "r", "second.mp4", b"b" * 1000)
+    assert status == 409 and "already has a video" in body["error"]
+    _, state = call(base + "/api/workspaces/r/state")
+    assert Path(state["meta"]["video"]) == first and first.read_bytes() == b"a" * 1000
+    status, body = _put_video(base, "r", "second.mp4", b"b" * 1000, replace=True)
+    assert status == 200 and body["meta"]["video"].endswith("second.mp4")
+    assert not first.exists()  # the upload it replaced is gone, not left taking space
+
+
+def test_replacing_a_video_never_deletes_one_outside_the_scan(server, tmp_path):
+    base, app = server
+    outside = tmp_path / "mine.mp4"
+    outside.write_bytes(b"keep")
+    call(base + "/api/workspaces", "POST", {"name": "o", "video_path": str(outside)})
+    status, _ = _put_video(base, "o", "new.mp4", b"n" * 100, replace=True)
+    assert status == 200 and outside.read_bytes() == b"keep"

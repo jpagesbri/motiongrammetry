@@ -1066,6 +1066,9 @@ def make_handler(app: App):
                 self._json({"error": f"not found: {e}"}, HTTPStatus.NOT_FOUND)
             except FileNotFoundError as e:
                 self._json({"error": f"not available yet: {e}"}, HTTPStatus.NOT_FOUND)
+            except FileExistsError as e:
+                self.close_connection = True  # the refused upload's body is still on its way
+                self._json({"error": str(e)}, HTTPStatus.CONFLICT)
             except (ValueError, RuntimeError) as e:
                 self._json({"error": str(e)}, HTTPStatus.BAD_REQUEST)
             except BrokenPipeError:
@@ -1249,18 +1252,33 @@ def make_handler(app: App):
             parts, q = self._route()
             if len(parts) == 4 and parts[:2] == ["api", "workspaces"] and parts[3] == "video":
                 ws = app.ws(parts[2])
+                old = app.meta(ws).get("video")
+                # A scan's video is replaced only when asked (replace=1, after the page asked you),
+                # never by a run that is reading it.
+                if old and q.get("replace", [""])[0] != "1":
+                    raise FileExistsError(f"scan {ws.root.name!r} already has a video ({Path(old).name}): "
+                                          "replacing it needs confirming")
+                app._editable(ws)
                 fname = Path(q.get("name", ["video.mp4"])[0]).name or "video.mp4"
                 dst = ws.root / ".ui" / fname
                 dst.parent.mkdir(exist_ok=True)
+                tmp = dst.with_name(dst.name + ".part")  # a failed upload leaves the old video whole
                 remaining = int(self.headers.get("Content-Length") or 0)
-                with open(dst, "wb") as f:
+                with open(tmp, "wb") as f:
                     while remaining:
                         chunk = self.rfile.read(min(remaining, 1 << 20))
                         if not chunk:
                             break
                         f.write(chunk)
                         remaining -= len(chunk)
+                if remaining:
+                    tmp.unlink(missing_ok=True)
+                    raise ValueError("the upload was cut short: the video is unchanged")
+                tmp.replace(dst)
                 app.set_meta(ws, video=str(dst.relative_to(ws.root)))
+                prev = (ws.root / old).resolve() if old else None
+                if prev and prev != dst.resolve() and prev.parent == (ws.root / ".ui").resolve():
+                    prev.unlink(missing_ok=True)  # an earlier upload it replaces (not a video elsewhere)
                 return self._json(app.state(ws))
             raise KeyError(self.path)
 
