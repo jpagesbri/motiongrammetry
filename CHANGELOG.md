@@ -13,6 +13,8 @@ the image with that version, and the About page and `mg --version` show it.
 - **Version of a checkout**: run from a git checkout, `mg --version` and the About page add the
   branch (`0.2.0-fix-some-bug`, or `-main` past a release), so a local instance says which code
   it runs; installed copies and the Docker image show the plain version.
+- **GitHub icon** in the top bar: it was drawn from a mistyped copy of the logo (a misshapen ear
+  and head); it is now GitHub's own mark, kept once in `topbar.css` (#20).
 - **CONTRIBUTING.md and a pull request template**: a branch per change, a local instance to try
   it, and a list of what the approver has to validate before the merge.
 
