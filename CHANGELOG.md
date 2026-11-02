@@ -10,6 +10,12 @@ the image with that version, and the About page and `mg --version` show it.
 
 ## Unreleased
 
+- **Version of a checkout**: run from a git checkout, `mg --version` and the About page add the
+  branch (`0.2.0-fix-some-bug`, or `-main` past a release), so a local instance says which code
+  it runs; installed copies and the Docker image show the plain version.
+- **CONTRIBUTING.md and a pull request template**: a branch per change, a local instance to try
+  it, and a list of what the approver has to validate before the merge.
+
 ## 0.2.0 — 2026-11-02
 
 - **Export**: pick the contents to take out (textured model, clean mesh, 3D print, raw mesh,

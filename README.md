@@ -151,6 +151,8 @@ mg logs work/ --list                  # what ran, how long it took, the warnings
 
 The current version is in `pyproject.toml`, shown by `mg --version` and on the About page; what
 changed in each one is in [CHANGELOG.md](CHANGELOG.md).
+Run from a git checkout, the version also names the branch (`0.2.0-fix-some-bug`); how changes
+are made, tried and approved is in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
