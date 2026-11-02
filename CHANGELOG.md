@@ -33,6 +33,10 @@ the image with that version, and the About page and `mg --version` show it.
 - **Tests on every pull request**: a GitHub Actions workflow runs the tests on pull requests into
   `main` and after each merge, on the locked versions, and checks they import the checked-out
   code; the tests themselves now stop if they would import another installed copy (#9).
+- **3D preview after a run**: a mesh made while the preview was open was cut off when approached,
+  and moving around felt wrong until a reload: the view kept the clipping distances and framing of
+  what it first showed (the sparse points). The clipping planes now follow the camera, and the view
+  is framed again when a re-run SfM moves the scene or the first mesh appears (#22).
 
 ## 0.2.0 — 2026-11-02
 
