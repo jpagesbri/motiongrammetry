@@ -1,5 +1,5 @@
 // The sculpt editor's density operations (static/sculpt-mesh.js), in Node on synthetic meshes.
-// Run: node --import ./tests/js/vendor-hooks.mjs --test tests/js/   (tests/test_js.py runs it in pytest)
+// Run: node --import ./tests/js/vendor-hooks.mjs --test tests/js/*.test.mjs   (tests/test_js.py runs it in pytest)
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';

@@ -18,6 +18,9 @@ def _node_ok() -> bool:  # module.registerHooks (tests/js/vendor-hooks.mjs) came
 
 @pytest.mark.skipif(not _node_ok(), reason="needs Node.js 22.15 or later")
 def test_js_suites():
-    r = subprocess.run(["node", "--import", "./tests/js/vendor-hooks.mjs", "--test", "tests/js/"],
+    # the files themselves: Node 24 reads a directory argument as a module to import
+    files = sorted(str(p.relative_to(ROOT)) for p in (ROOT / "tests" / "js").glob("*.test.mjs"))
+    assert files
+    r = subprocess.run(["node", "--import", "./tests/js/vendor-hooks.mjs", "--test", *files],
                        cwd=ROOT, capture_output=True, text=True, timeout=600)
     assert r.returncode == 0, r.stdout[-4000:] + r.stderr[-2000:]

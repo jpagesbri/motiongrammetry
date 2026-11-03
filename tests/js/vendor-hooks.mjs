@@ -1,5 +1,5 @@
 // Resolve the browser's import map in Node: 'three' and 'three-mesh-bvh' are the vendored copies the
-// editor loads. Used as: node --import ./tests/js/vendor-hooks.mjs --test tests/js/
+// editor loads. Used as: node --import ./tests/js/vendor-hooks.mjs --test tests/js/*.test.mjs
 import { registerHooks } from 'node:module';
 import { pathToFileURL } from 'node:url';
 import { resolve } from 'node:path';
