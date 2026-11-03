@@ -10,6 +10,13 @@ the image with that version, and the About page and `mg --version` show it.
 
 ## Unreleased
 
+- **Close holes is faster**: Sanitize mesh's Close holes (and the editor's Close all holes / Cap)
+  sorted each lid's triangles into inside and outside one at a time in Python, with a numpy call
+  per triangle edge. A hole with a fine rim gets a lid of up to 80,000 points, so on the 1M-face
+  test mesh that was ~480,000 calls for two holes. It is now done in one pass over all triangles.
+  Close holes takes about 2 s instead of 4-4.7 s on that mesh (2M faces once fixed) and 0.3 s
+  instead of 0.9 s on a 240k-face one. The lids come out exactly the same.
+
 - **Saving keeps the right face of a pillow**: a "pillow" is one triangle stored twice, wound both
   ways. The editor's save and the clean stage dropped one copy but kept the first, and after editing
   that is often the copy wound against its neighbours, so the saved mesh had flipped faces (the mesh

@@ -441,10 +441,16 @@ def _cancel_flaps(F: np.ndarray, n_old: int) -> tuple[np.ndarray, int]:
     old, lid = F[:n_old], F[n_old:]
     if not len(lid):
         return F, 0
-    near = np.flatnonzero(np.isin(old, np.unique(lid)).all(1))  # old faces made of lid vertices only
+    # only a lid face made of existing vertices can be one (most of a lid is new vertices)
+    used = np.zeros(int(F.max()) + 1, bool)
+    used[old.ravel()] = True
+    cand = np.flatnonzero(used[lid].all(1))
+    on = np.zeros(len(used), bool)
+    on[lid[cand].ravel()] = True
+    near = np.flatnonzero(on[old].all(1))  # old faces made of those vertices only
     seen = {tuple(sorted(x)): int(i) for i, x in zip(near, old[near].tolist())}
     drop_old, drop_lid = [], []
-    for j, x in enumerate(lid.tolist()):
+    for j, x in zip(cand.tolist(), lid[cand].tolist()):
         i = seen.get(tuple(sorted(x)))
         if i is not None and _parity(old[i:i + 1])[0] != _parity(lid[j:j + 1])[0]:
             drop_old.append(i)

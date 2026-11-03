@@ -71,6 +71,8 @@ def _triangulate(U, h):
     """Even triangulation of the simple polygon U (n x 2): its own vertices and a hexagonal grid of
     spacing h inside, kept clear of the rim. Returns (grid points, triangles indexing U then grid),
     or None when some rim edge isn't in the Delaunay triangulation (a zigzag in the outline)."""
+    from scipy.sparse import coo_matrix
+    from scipy.sparse.csgraph import connected_components
     from scipy.spatial import Delaunay, cKDTree
     from skimage.measure import points_in_poly
 
@@ -85,41 +87,36 @@ def _triangulate(U, h):
     if len(G):  # nor inside a rim edge's diametral circle, which would keep that edge out of the Delaunay
         mid, rad = (U + np.roll(U, -1, 0)) / 2, np.linalg.norm(np.roll(U, -1, 0) - U, axis=1) / 2
         near = cKDTree(G).query_ball_point(mid, rad * 1.05)
-        G = np.delete(G, np.unique(np.fromiter((i for ids in near for i in ids), np.int64)), 0)
+        clear = np.ones(len(G), bool)
+        clear[[i for ids in near for i in ids]] = False
+        G = G[clear]
     dt = Delaunay(np.concatenate([U, G]))
-
-    def rim_edge(a, b):
-        return a < n and b < n and (a - b) % n in (1, n - 1)
-
-    # inside or outside, flood-filled from the hull and flipping only across rim edges (a centroid
-    # test misjudges the slivers in thin notches); any contradiction means a rim edge is missing
-    side = np.full(len(dt.simplices), -1, np.int8)
-    todo = []
-    for t in np.flatnonzero((dt.neighbors == -1).any(1)):
-        for k in np.flatnonzero(dt.neighbors[t] == -1):
-            s_ = int(rim_edge(*np.delete(dt.simplices[t], k)))
-            if side[t] not in (-1, s_):
-                return None
-            side[t] = s_
-        todo.append(t)
-    while todo:
-        t = todo.pop()
-        for k, u in enumerate(dt.neighbors[t]):
-            if u == -1:
-                continue
-            s_ = side[t] ^ int(rim_edge(*np.delete(dt.simplices[t], k)))
-            if side[u] == -1:
-                side[u] = s_
-                todo.append(u)
-            elif side[u] != s_:
-                return None
-    tri = dt.simplices[side == 1]
+    S, N, T = dt.simplices.astype(np.int64), dt.neighbors.astype(np.int64), len(dt.simplices)
+    # rim[t, k]: whether the edge of triangle t facing its corner k is a rim edge
+    a, b = S[:, [1, 2, 0]], S[:, [2, 0, 1]]
+    rim = (a < n) & (b < n) & np.isin((a - b) % n, (1, n - 1))
+    # inside or outside, from the hull inwards and flipping only across rim edges (a centroid test
+    # misjudges the slivers in thin notches); any contradiction means a rim edge is missing. Solved
+    # all at once as a graph: node 2t + s is "triangle t is on side s", 2T is "true", 2T + 1 "false";
+    # a constraint joins the statements it makes equal, and a contradiction joins t's two statements.
+    t, k = np.nonzero(N >= 0)
+    u, r = N[t, k], rim[t, k].astype(np.int64)
+    th, kh = np.nonzero(N < 0)
+    rh = rim[th, kh].astype(np.int64)
+    src = np.concatenate([2 * t, 2 * t + 1, 2 * th + rh, 2 * th + 1 - rh])
+    dst = np.concatenate([2 * u + r, 2 * u + 1 - r, np.full(len(th), 2 * T), np.full(len(th), 2 * T + 1)])
+    g = coo_matrix((np.ones(len(src), np.int8), (src, dst)), shape=(2 * T + 2, 2 * T + 2))
+    lab = connected_components(g, directed=False)[1]
+    if lab[2 * T] == lab[2 * T + 1] or (lab[0:2 * T:2] == lab[1:2 * T:2]).any():
+        return None
+    tri = S[lab[1:2 * T:2] == lab[2 * T]]
     # every rim edge, and nothing else, must be the lid's border
+    m = n + len(G)
     e = np.sort(np.concatenate([tri[:, [0, 1]], tri[:, [1, 2]], tri[:, [2, 0]]]), 1)
-    ue, cnt = np.unique(e, axis=0, return_counts=True)
-    rim = np.sort(np.stack([np.arange(n), (np.arange(n) + 1) % n], 1), 1)
+    ue, cnt = np.unique(e[:, 0] * m + e[:, 1], return_counts=True)
     border = ue[cnt == 1]
-    if not len(tri) or len(border) != n or np.unique(np.concatenate([border, rim]), axis=0).shape[0] != n:
+    ring = np.sort(np.stack([np.arange(n), (np.arange(n) + 1) % n], 1), 1)
+    if not len(tri) or len(border) != n or len(np.unique(np.concatenate([border, ring[:, 0] * m + ring[:, 1]]))) != n:
         return None
     pts = np.concatenate([U, G])
     a, b, c = pts[tri[:, 0]], pts[tri[:, 1]], pts[tri[:, 2]]
@@ -170,7 +167,11 @@ def _lid(v, c, loop, base: int, max_points: int = 80_000):
     X = np.zeros((m, 3))
     Cc = np.zeros((m, 3))
     if m:
-        ed = np.unique(np.sort(np.concatenate([tri[:, [0, 1]], tri[:, [1, 2]], tri[:, [2, 0]]]), 1), axis=0)
+        nv = n + m
+        ed = np.sort(np.concatenate([tri[:, [0, 1]], tri[:, [1, 2]], tri[:, [2, 0]]]), 1).astype(np.int64)
+        ed = np.sort(ed[:, 0] * nv + ed[:, 1])  # distinct by sorting (numpy's own unique hashes, slower here)
+        ed = ed[np.concatenate([[True], ed[1:] != ed[:-1]])]
+        ed = np.stack([ed // nv, ed % nv], 1)
         ed = np.concatenate([ed, ed[:, ::-1]])
         ed = ed[ed[:, 0] >= n]
         i, j = ed[:, 0] - n, ed[:, 1]
