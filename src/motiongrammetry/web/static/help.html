@@ -332,7 +332,9 @@ factor of its own density, not of the rest of the scan's. It doesn't depend on t
 area again at the same factor adds nothing more. It works with Draw, Dig in, Inflate, Deflate,
 Smooth, Flatten and Pinch, on the surface under the brush only (not the other side of a thin part). One stroke adds at most
 50,000 vertices and says so when it stops; brush again to add more. A stroke and the vertices it added undo together.
-<b>Decimate</b> uses the same control the other way (÷).</p>
+<b>Decimate</b> uses the same control the other way (÷). What it leaves becomes the reference there: Adaptive detail
+afterwards adds its factor to the simplified area (×1.5 after ÷4 adds about half, it doesn't bring back the scan's
+detail), and Decimating the same area again simplifies it further.</p>
 <p>Also: <b>Close all holes</b> (each lid is an even mesh that follows its rim: flat where the rim is flat, curved
 where it rises), <b>Remove loose pieces</b>, <kbd>[</kbd> <kbd>]</kbd> brush size, <kbd>Ctrl</kbd> inverts,
 <kbd>Ctrl+Z</kbd> / <kbd>Ctrl+Shift+Z</kbd> undo and redo, <kbd>Ctrl+S</kbd> save.</p>

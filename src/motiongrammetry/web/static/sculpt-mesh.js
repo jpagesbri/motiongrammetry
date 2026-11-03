@@ -404,9 +404,28 @@ export function decimate(S, dabs, k) {
   let nv = 0, nf = 0;
   for (let t = 0; t < nf0; t++) if (!dead[t] && !emptied(F, t))
     for (let k = 0; k < 3; k++) { const v = F[t * 3 + k]; if (map[v] < 0) map[v] = nv++; }
+  // the vertices Decimate worked on: in the dabs and free to move (not on their border or an open edge)
+  const worked = new Uint8Array(nv);
+  for (const t of inside) for (let j = 0; j < 3; j++) {
+    const u = F[t * 3 + j];
+    if (map[u] >= 0 && !worked[map[u]] && !isLocked(u)) { worked[map[u]] = 1; edgeAt(S, P, E, u); }
+  }
   const np = new Float32Array(nv * 3), nc = new Uint8Array(nv * 3), ne = new Float32Array(nv);
   for (let v = 0; v < S.nv; v++) if (map[v] >= 0) { np.set(P.subarray(v * 3, v * 3 + 3), map[v] * 3); nc.set(col8.subarray(v * 3, v * 3 + 3), map[v] * 3); ne[map[v]] = E[v]; }
   const ni = [];
   for (let t = 0; t < nf0; t++) if (!dead[t] && !emptied(F, t)) { ni.push(map[F[t * 3]], map[F[t * 3 + 1]], map[F[t * 3 + 2]]); nf++; }
+  // What Decimate leaves becomes the reference there (the owner's choice, on #37): Adaptive detail's
+  // ×k afterwards is relative to it, not to the denser scan, and a second Decimate simplifies further.
+  // Each vertex it worked on takes the longer of its reference edge and the mean of its edges now, so
+  // where nothing was merged the reference stays the scan's.
+  const sum = new Float64Array(nv), cnt = new Uint32Array(nv);
+  for (let i = 0; i < ni.length; i += 3) for (let j = 0; j < 3; j++) {
+    const a = ni[i + j], b = ni[i + (j + 1) % 3];
+    if (!worked[a] && !worked[b]) continue;
+    const l = Math.hypot(np[a * 3] - np[b * 3], np[a * 3 + 1] - np[b * 3 + 1], np[a * 3 + 2] - np[b * 3 + 2]);
+    if (worked[a]) { sum[a] += l; cnt[a]++; }
+    if (worked[b]) { sum[b] += l; cnt[b]++; }
+  }
+  for (let v = 0; v < nv; v++) if (worked[v] && cnt[v]) ne[v] = Math.max(ne[v], sum[v] / cnt[v]);
   return { pos: np, col8: nc, idx: Uint32Array.from(ni), e0v: ne, before: nf0, after: nf };
 }

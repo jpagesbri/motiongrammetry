@@ -181,3 +181,19 @@ test('×k is relative to the scan where you brush, also on a much coarser part o
   const got = near(S, c, r) / near(coarse, c, r);
   assert.ok(got > 1.1 && got < 2.2, `×1.5 gave ×${got.toFixed(1)}`);
 });
+
+test('after Decimate, ×k is relative to what it left, and a second Decimate simplifies further', () => {
+  // the owner's choice on #37: ÷4 on the top of the head, then ×1.5 there, adds ~50%, not 6×
+  const c = spots[0], R = 14 * e0, r = 8 * e0;
+  const out = M.decimate(base, [[c.x, c.y, c.z, R]], 4);
+  const dec = M.buildSculptState(out.pos, out.col8, out.idx, out.e0v, base.density);
+  const once = refineAt(dec, c, r, 1.5), got = near(once, c, r) / near(dec, c, r);
+  assert.ok(got > 1.1 && got < 2.2, `×1.5 after ÷4 gave ×${got.toFixed(2)}`);
+  const twice = refineAt(once, c, r, 1.5);
+  assert.ok(twice.nv - once.nv <= 0.05 * (once.nv - dec.nv) + 5, `brushing again added ${twice.nv - once.nv} more`);
+  const half = M.decimate(base, [[c.x, c.y, c.z, R]], 2);
+  const h1 = M.buildSculptState(half.pos, half.col8, half.idx, half.e0v, base.density);
+  const out2 = M.decimate(h1, [[c.x, c.y, c.z, R]], 2), h2 = M.buildSculptState(out2.pos, out2.col8, out2.idx, out2.e0v, base.density);
+  const n0 = near(base, c, r), n1 = near(h1, c, r), n2 = near(h2, c, r);
+  assert.ok(n2 < 0.75 * n1, `÷2 twice: ${n0} → ${n1} → ${n2} vertices in the area`);
+});
