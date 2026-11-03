@@ -314,8 +314,8 @@ how fine the new mesh is; holes update as you cut and fill.</p>
   <tr><td>Inflate / Deflate</td><td><kbd>I</kbd> <kbd>O</kbd></td><td>Swell / shrink along the surface</td></tr>
   <tr><td>Smooth</td><td><kbd>S</kbd></td><td>Relax bumps and noise (hold <kbd>Shift</kbd> with any tool)</td></tr>
   <tr><td>Flatten, Pinch, Grab</td><td><kbd>F</kbd> <kbd>P</kbd> <kbd>G</kbd></td><td>Press flat, sharpen creases, drag a region</td></tr>
-  <tr><td>Decimate</td><td><kbd>E</kbd></td><td>Simplify where you brush: when you let go, edges shorter than the <b>Detail</b> size are merged,
-    shortest first, never folding a triangle; open edges of the mesh and everything outside the stroke stay as they are</td></tr>
+  <tr><td>Decimate</td><td><kbd>E</kbd></td><td>Simplify where you brush, down to the <b>Density</b> (÷2 is half the scan's vertices): when you let go,
+    short edges are merged, shortest first, never folding a triangle; open edges of the mesh and everything outside the stroke stay as they are</td></tr>
   <tr><td>Cut away</td><td><kbd>X</kbd></td><td>Delete surface (tick <b>cap the opening</b> to close the hole it leaves)</td></tr>
   <tr><td>Fill + Merge</td><td><kbd>B</kbd></td><td>Brush spheres into a hole or gap, then <b>Merge fill</b>: only the area around them is rebuilt
     (at the mesh's own resolution) and stitched in; the rest keeps every detail. An opening the spheres only partly cover is closed whole.
@@ -325,10 +325,13 @@ how fine the new mesh is; holes update as you cut and fill.</p>
     joins an opening the scan already had is left for <b>Close all holes</b></td></tr>
 </table>
 <p><b>Adaptive detail</b> (a tick box under the brush): when the mesh is too coarse to shape, each dab first adds vertices
-around itself, splitting edges longer than the <b>Detail</b> size (a share of the brush radius: smaller is finer) and the
-triangles beside them too, so no crack opens. It works with Draw, Dig in, Inflate, Deflate, Smooth, Flatten and Pinch; where
-the mesh is already fine enough it does nothing. A stroke and the vertices it added undo together. On a dense scan, entering
-a coarse area makes the brush pause briefly while the new vertices are added.</p>
+around itself, up to the <b>Density</b> below it, and splits the triangles beside them too, so no crack opens. The density is a
+factor of the scan as the pipeline made it: <b>×2</b> (the default) is twice its vertices, <b>×4</b> four times with edges half as
+long, up to <b>×8</b>. It doesn't depend on the zoom or the brush size, and brushing an area again at the same factor adds
+nothing more: coarser spots are brought up to it, finer ones are left alone. It works with Draw, Dig in, Inflate, Deflate,
+Smooth, Flatten and Pinch, on the surface under the brush only (not the other side of a thin part). One stroke adds at most
+50,000 vertices and says so when it stops; brush again to add more. A stroke and the vertices it added undo together.
+<b>Decimate</b> uses the same control the other way (÷).</p>
 <p>Also: <b>Close all holes</b> (each lid is an even mesh that follows its rim: flat where the rim is flat, curved
 where it rises), <b>Remove loose pieces</b>, <kbd>[</kbd> <kbd>]</kbd> brush size, <kbd>Ctrl</kbd> inverts,
 <kbd>Ctrl+Z</kbd> / <kbd>Ctrl+Shift+Z</kbd> undo and redo, <kbd>Ctrl+S</kbd> save.</p>

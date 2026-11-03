@@ -37,6 +37,16 @@ the image with that version, and the About page and `mg --version` show it.
   and moving around felt wrong until a reload: the view kept the clipping distances and framing of
   what it first showed (the sparse points). The clipping planes now follow the camera, and the view
   is framed again when a re-run SfM moves the scene or the first mesh appears (#22).
+- **Adaptive detail and Decimate: Density instead of Detail.** The Detail slider was a share of the
+  brush radius, so it depended on the zoom: most of its range did nothing on a normal scan, and 3%
+  multiplied the vertices by 10–30. The new **Density** control is a factor of the scan's own
+  density (from the pipeline's clean mesh): ×1.5 to ×8, default ×2, the same at any zoom or brush
+  size. Brushing an area again adds nothing more. Decimate uses it the other way (÷2 is half the
+  vertices). Measured on four scans, the result is within 25% of the factor. Adaptive detail now works
+  only on the surface under the brush (not the other side of a thin part), and one stroke adds at
+  most 50,000 vertices and says so. It no longer pauses about half a second each time it adds
+  vertices on a dense mesh. It also no longer leaves small cracks, which the save then cut out with
+  the faces around them (#13, #4).
 
 ## 0.2.0 — 2026-11-02
 
