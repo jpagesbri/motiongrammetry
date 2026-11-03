@@ -277,7 +277,8 @@ your edited shape a texture of its own:</p>
     mesh, nearest point to nearest point</td></tr>
   <tr><td>Takes</td><td>About a minute on the GPU</td><td>Seconds to half a minute</td></tr>
   <tr><td>Colour of new surface</td><td>What the cameras saw; where no camera saw it (a closed underside, a filled gap) it
-    is <b>grey</b></td><td>Taken from the surface <b>next to it</b>, so closed holes and smoothed areas blend in</td></tr>
+    is <b>grey</b></td><td>A smooth <b>blend of the colours around it</b>, so closed holes and smoothed areas blend in
+    (plain, without detail: what lies behind a lid, like a shoe's insole, does not show through)</td></tr>
   <tr><td>Best for</td><td>Removing or reshaping things, and you want the real photo detail on what is left</td><td>Closing
     holes, smoothing, filling; you want the model to look unchanged, and quickly</td></tr>
   <tr><td>Needs</td><td>The photos and OpenMVS's scene (<code>mg mvs</code>); not available on VGGT scans</td><td>Only the

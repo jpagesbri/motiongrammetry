@@ -492,6 +492,47 @@ def relayout(src: Path, dst: Path, angle: float = 45.0, min_size: float = 0.005,
 
 
 MIN_USED = 0.05  # a layout painting less of its image than this is broken (good ones: 30-70%)
+NEW_SURFACE = 0.005  # carrying a texture over: farther than this share of the model's size from the old surface is new
+
+
+def _blend_in(colour: np.ndarray, known: np.ndarray, f: np.ndarray) -> np.ndarray:
+    """Vertex colours where known, and elsewhere the smoothest blend of them over the mesh (each
+    vertex the mean of its neighbours: a harmonic fill, as the editor's lids blend in their rim's
+    colours). New surface touching no known vertex (a separate new part) gets neutral grey."""
+    from scipy.sparse import coo_matrix
+    from scipy.sparse.linalg import spsolve
+
+    out = colour.astype(np.float64).copy()
+    unk = np.flatnonzero(~known)
+    if not len(unk):
+        return out
+    e = np.unique(np.sort(np.concatenate([f[:, [0, 1]], f[:, [1, 2]], f[:, [2, 0]]]), 1), axis=0)
+    e = e[e[:, 0] != e[:, 1]]
+    e = np.concatenate([e, e[:, ::-1]])
+    n = len(colour)
+    idx = np.full(n, -1)
+    idx[unk] = np.arange(len(unk))
+    # unknown vertices with no path to a known one: grey
+    lab = _components(n, e[:, 0], e[:, 1])
+    anchored = np.zeros(lab.max() + 1, bool)
+    anchored[lab[known]] = True
+    lone = unk[~anchored[lab[unk]]]
+    out[lone] = 128
+    solve = unk[anchored[lab[unk]]]
+    if not len(solve):
+        return out
+    idx = np.full(n, -1)
+    idx[solve] = np.arange(len(solve))
+    row = e[idx[e[:, 0]] >= 0]                                   # edges from a vertex to solve
+    deg = np.bincount(idx[row[:, 0]], minlength=len(solve)).astype(np.float64)
+    inner = idx[row[:, 1]] >= 0
+    A = coo_matrix((np.concatenate([deg, -np.ones(inner.sum())]),
+                    (np.concatenate([np.arange(len(solve)), idx[row[inner, 0]]]),
+                     np.concatenate([np.arange(len(solve)), idx[row[inner, 1]]]))), shape=(len(solve),) * 2).tocsc()
+    rhs = np.zeros((len(solve), 3))
+    np.add.at(rhs, idx[row[~inner, 0]], out[row[~inner, 1]])
+    out[solve] = spsolve(A, rhs).reshape(len(solve), 3)
+    return np.clip(out, 0, 255)
 
 
 def transfer(src: Path, mesh: Path, dst: Path, angle: float = 45.0, min_size: float = 0.005, padding: int = 4,
@@ -499,7 +540,7 @@ def transfer(src: Path, mesh: Path, dst: Path, angle: float = 45.0, min_size: fl
     """Carry src's texture over to another mesh of the same subject (the editor's sculpted one),
     without the photos: mesh gets its own layout (cut by its sides, as relayout) and each texel the
     colour of the nearest point of src's textured surface. Removed parts are simply gone; new
-    surface (closed holes, merged volume) takes the colour of the surface nearest to it."""
+    surface (closed holes, merged volume) takes a smooth blend of the colours around it."""
     import open3d as o3d
     import trimesh
 
@@ -525,26 +566,39 @@ def transfer(src: Path, mesh: Path, dst: Path, angle: float = 45.0, min_size: fl
     scene = o3d.t.geometry.RaycastingScene()
     scene.add_triangles(o3d.core.Tensor(v_src.astype(np.float32)), o3d.core.Tensor(f_src.astype(np.uint32)))
     sample, corners = _sampler(old, uv_src[f_src]), uv_src[f_src]
+
+    def nearest(p):
+        r = scene.compute_closest_points(o3d.core.Tensor(p.astype(np.float32)))
+        pid = r["primitive_ids"].numpy().astype(np.int64)
+        pu = r["primitive_uvs"].numpy().astype(np.float64)  # point = (1-u-v) a + u b + v c
+        w = np.stack([1 - pu.sum(1), pu[:, 0], pu[:, 1]], 1)
+        return sample(np.einsum("nk,nkj->nj", w, corners[pid])), np.linalg.norm(r["points"].numpy() - p, axis=1)
+
+    # New surface (farther than tol from the old one: a lid, a merged volume) does not take the
+    # colour of the nearest old point: across a big lid that is the rim's colours stretched into
+    # streaks, and whatever lies behind it (a shoe's insole through its closed sole). It takes the
+    # colours of the old surface around it, blended smoothly over it (harmonic, see _blend_in),
+    # fading in from tol / 2 to tol so there is no edge where it starts.
+    size = float(np.linalg.norm(np.ptp(pv, axis=0)))
+    tol = NEW_SURFACE * size
+    vcol, vd = nearest(pv)
+    vcol = _blend_in(vcol, vd <= tol / 2, gf)
     far = []
 
     def colour(tri, bc):
-        p = np.einsum("nk,nkj->nj", bc, pv[gf[tri]]).astype(np.float32)
-        r = scene.compute_closest_points(o3d.core.Tensor(p))
-        pid = r["primitive_ids"].numpy().astype(np.int64)
-        pu = r["primitive_uvs"].numpy().astype(np.float64)  # point = (1-u-v) a + u b + v c
-        far.append(np.linalg.norm(r["points"].numpy() - p, axis=1))
-        w = np.stack([1 - pu.sum(1), pu[:, 0], pu[:, 1]], 1)
-        return sample(np.einsum("nk,nkj->nj", w, corners[pid]))
+        c, d = nearest(np.einsum("nk,nkj->nj", bc, pv[gf[tri]]))
+        far.append(d)
+        t = np.clip((d - tol / 2) / (tol / 2), 0, 1)[:, None]
+        return c * (1 - t) + np.einsum("nk,nkj->nj", bc, vcol[gf[tri]]) * t
 
     new = _fill(lay["W"], lay["H"], lay["uv"][lay["faces"]], colour, padding)
     t_bake = time.time()
     _write(dst, lay["vertices"], lay["faces"], lay["uv"], new)
     d = np.concatenate(far) if far else np.zeros(0)
-    size = float(np.linalg.norm(np.ptp(pv, axis=0)))
     info = {"pieces_now": k, "pieces": lay["pieces"], "recut": lay["recut"], "size": [lay["W"], lay["H"]],
             "used": round(lay["used"], 2), "faces": len(gf), "detail": round(lay["detail"], 2),
             # how much of the surface is new (more than 0.5% of the model's size from the old one)
-            "new_surface": round(float((d > 0.005 * size).mean()), 3) if len(d) else 0.0,
+            "new_surface": round(float((d > tol).mean()), 3) if len(d) else 0.0,
             "seconds": {"layout": round(t_lay - t0, 1), "bake": round(t_bake - t_lay, 1)}}
     log.info("texture carried over: %d pieces, %dx%d, %.0f%% new surface, %.0f s", lay["pieces"], lay["W"], lay["H"],
              100 * info["new_surface"], time.time() - t0)

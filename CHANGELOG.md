@@ -84,6 +84,10 @@ the image with that version, and the About page and `mg --version` show it.
   faces (and paint goes to the right one). Rebuild layout and Carry the texture over read them
   too, and write one image, lowering the detail if it would pass 8192 px, which the message
   says (#7).
+- **Carry the texture over onto closed holes**: new surface (a lid, a merged volume) took the colour
+  of the nearest old point, so the shoe's closed sole showed its insole through it, ringed with
+  streaks stretched from the rim. New surface now takes a smooth blend of the colours around it,
+  fading in from the old surface with no edge (#6).
 
 ## 0.2.0 — 2026-11-02
 
