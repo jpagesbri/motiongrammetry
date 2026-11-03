@@ -35,6 +35,23 @@ ZERO_AREA = 1e-6  # a face is zero-area when its height is below this share of i
 
 
 # ---- measures --------------------------------------------------------------------------------
+# NumPy 2.3+ answers a plain np.unique (and np.isin, which calls it) with a hash table, ~20x slower
+# than sorting on the integer edge keys used here; these two sort instead.
+def _unique(x: np.ndarray) -> np.ndarray:
+    """Sorted distinct values of x."""
+    s = np.sort(np.asarray(x).ravel())
+    return s[np.concatenate([[True], s[1:] != s[:-1]])] if len(s) else s
+
+
+def _isin(x: np.ndarray, keys: np.ndarray) -> np.ndarray:
+    """np.isin(x, keys) for integer arrays, by binary search in the sorted distinct keys."""
+    k = _unique(keys)
+    if not len(k):
+        return np.zeros(np.shape(x), bool)
+    i = np.minimum(np.searchsorted(k, x), len(k) - 1)
+    return k[i] == x
+
+
 def _cross(v: np.ndarray, f: np.ndarray) -> np.ndarray:
     a, b, c = v[f[:, 0]], v[f[:, 1]], v[f[:, 2]]
     return np.cross(b - a, c - a)
@@ -48,7 +65,7 @@ def model_size(v: np.ndarray, f: np.ndarray) -> float:
     """Diagonal of the bounding box of the vertices the faces use."""
     if not len(f):
         return 0.0
-    p = v[np.unique(f)]
+    p = v[_unique(f)]
     return float(np.linalg.norm(p.max(0) - p.min(0)))
 
 
@@ -63,15 +80,25 @@ def degenerate_faces(v: np.ndarray, f: np.ndarray) -> np.ndarray:
     return idx | ~(cross > ZERO_AREA * longest2)
 
 
+def _face_sets(f: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """(first, inverse, counts) of the faces' vertex sets, as np.unique(np.sort(f, 1), axis=0)
+    gives them (first: the earliest face of each set), but on one integer key per face, which
+    sorts several times faster than rows."""
+    s = np.sort(f, axis=1)
+    n = int(s.max()) + 1
+    key = (s[:, 0] * n + s[:, 1]) * n + s[:, 2] if n ** 3 < 2 ** 63 else s
+    _, first, inv, cnt = np.unique(key, axis=0 if key.ndim == 2 else None, return_index=True,
+                                   return_inverse=True, return_counts=True)
+    return first, inv.ravel(), cnt
+
+
 def repeats(f: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """(duplicates, pillows): masks of the faces on a vertex set an earlier face already has, with
     the same winding (a plain duplicate) or the opposite one (a "pillow": the same triangle both
     ways, which OpenMVS texturing crashes on). The first face of each set is in neither."""
     if not len(f):
         return np.zeros(0, bool), np.zeros(0, bool)
-    key = np.sort(f, axis=1)
-    _, first, inv = np.unique(key, axis=0, return_index=True, return_inverse=True)
-    inv = inv.ravel()
+    first, inv, _ = _face_sets(f)
     rep = first[inv] != np.arange(len(f))
     wind = _parity(f)
     opposite = wind != wind[first[inv]]
@@ -176,8 +203,8 @@ def inspect(v: np.ndarray, f: np.ndarray, intersections: bool = False) -> dict:
     k_all = int(lab_all.max()) + 1 if F else 0
     shared_set = np.zeros(F, bool)
     if F:
-        _, inv, cnt = np.unique(np.sort(f, axis=1), axis=0, return_inverse=True, return_counts=True)
-        shared_set = cnt[inv.ravel()] > 1
+        _, inv, cnt = _face_sets(f)
+        shared_set = cnt[inv] > 1
     good_area = np.bincount(lab_all, area_all * ~(degen | shared_set), k_all) if F else np.zeros(0)
     total = float(area_all[good].sum())
     flat = good_area <= 1e-9 * max(total, 1e-300)
@@ -188,7 +215,7 @@ def inspect(v: np.ndarray, f: np.ndarray, intersections: bool = False) -> dict:
     u, uc = np.unique(und, return_counts=True)
     rep["nonmanifold_edges"] = int((uc > 2).sum())
     rep["open_edges"] = int((uc == 1).sum())
-    two = np.isin(und, u[uc == 2])
+    two = _isin(und, u[uc == 2])
     d, dc = np.unique(dirk[two], return_counts=True)
     rep["flipped_edges"] = int((dc > 1).sum())  # two faces running along an edge the same way
     # how many faces the orientation fix would turn (only run when some edge says it has work)
@@ -210,7 +237,7 @@ def inspect(v: np.ndarray, f: np.ndarray, intersections: bool = False) -> dict:
     if intersections:
         pairs = self_intersections(v, g)
         rep["intersecting_pairs"] = int(len(pairs))
-        rep["intersecting_faces"] = int(len(np.unique(pairs))) if len(pairs) else 0
+        rep["intersecting_faces"] = int(len(_unique(pairs))) if len(pairs) else 0
     return rep
 
 
@@ -286,8 +313,7 @@ def _fix_duplicates(v, f, c, **_):
     if pil.any():
         # Of a pillow the first face stays, and the editor's face order is arbitrary (its BVH reorders
         # it): turn the one kept to run along its edges the opposite way to its neighbours, as they do.
-        _, inv, cnt = np.unique(np.sort(f, axis=1), axis=0, return_inverse=True, return_counts=True)
-        inv = inv.ravel()
+        _, inv, cnt = _face_sets(f)
         has_pillow = np.zeros(len(cnt), bool)
         has_pillow[inv[pil]] = True
         kept = np.flatnonzero(~drop & has_pillow[inv])
@@ -297,7 +323,7 @@ def _fix_duplicates(v, f, c, **_):
         theirs = theirs[:, 0] * n + theirs[:, 1]
 
         def clashes(x):  # half-edges a neighbour also runs along the same way
-            return sum(np.isin(x[:, i] * n + x[:, (i + 1) % 3], theirs).astype(int) for i in range(3))
+            return sum(_isin(x[:, i] * n + x[:, (i + 1) % 3], theirs).astype(int) for i in range(3))
 
         fk = f[kept]
         turn = clashes(fk[:, ::-1]) < clashes(fk)
@@ -392,7 +418,7 @@ def _fix_unreferenced(v, f, c, **_):
 def _fix_intersections(v, f, c, **_):
     pairs = self_intersections(v, f)
     return v, f, c, {"intersecting_pairs": int(len(pairs)),
-                     "intersecting_faces": int(len(np.unique(pairs))) if len(pairs) else 0}
+                     "intersecting_faces": int(len(_unique(pairs))) if len(pairs) else 0}
 
 
 STEPS = {"duplicates": _fix_duplicates, "manifold": _fix_manifold, "pieces": _fix_pieces, "orient": _fix_orient,
