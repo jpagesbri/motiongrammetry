@@ -34,6 +34,11 @@ the image with that version, and the About page and `mg --version` show it.
   three faces, so the next run took them out, reopened the hole and closed it the same way again,
   and the saved mesh came out with flipped faces. Now the flap goes with its mirror in the lid: one
   run closes the hole, and running the fixes again changes nothing.
+- **Self-intersections shown on the model**: Sanitize mesh… listed *Detect self-intersections* among
+  the fixes, with a checkbox, though it never changed anything. It is now a line under the fixes:
+  how many faces cut through others and in how many spots, and **Show them**, which marks them in
+  red on the model and takes the view from spot to spot (◀ ▶, the largest first; Hide or Esc, or
+  any edit, takes the marks away), so you can smooth or carve the ones that show as a crease.
 - **Upload video…**: with no name typed it replaced the selected scan's video without asking, and
   with an existing scan's name typed it silently replaced *that* scan's video. Now it asks before
   replacing, refuses a name that is taken, and the server refuses a replacement nobody confirmed or

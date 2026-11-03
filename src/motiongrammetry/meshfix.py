@@ -177,6 +177,37 @@ def self_intersections(v: np.ndarray, f: np.ndarray) -> np.ndarray:
     return np.unique(np.stack([np.minimum(fa, fb), np.maximum(fa, fb)], 1), axis=0)
 
 
+SPOT_FACES = 200_000  # at most this many intersecting faces are sent to the editor to be shown
+
+
+def intersection_spots(v: np.ndarray, f: np.ndarray, pairs: np.ndarray) -> list[dict]:
+    """The faces that cut through each other, grouped into spots: faces that share a vertex or cross
+    each other are in the same spot. Each spot: its centre, radius (from the centre to its farthest
+    vertex) and number of faces, the most faces first."""
+    from scipy.sparse import coo_matrix
+    from scipy.sparse.csgraph import connected_components
+
+    if not len(pairs):
+        return []
+    bad = _unique(pairs)
+    k, n = len(bad), len(v)
+    # a graph of the bad faces (0..k-1) and their vertices (k..k+n-1), plus the crossings
+    pos = np.searchsorted(bad, pairs)
+    rows = np.concatenate([np.repeat(np.arange(k), 3), pos[:, 0]])
+    cols = np.concatenate([k + f[bad].ravel(), pos[:, 1]])
+    g = coo_matrix((np.ones(len(rows), np.int8), (rows, cols)), shape=(k + n, k + n))
+    lab = connected_components(g, directed=False)[1][:k]
+    _, lab = np.unique(lab, return_inverse=True)
+    out = []
+    for i in range(int(lab.max()) + 1):
+        ff = bad[lab == i]
+        p = v[_unique(f[ff])]
+        c = p.mean(0)
+        out.append({"centre": [round(float(x), 6) for x in c],
+                    "radius": round(float(np.linalg.norm(p - c, axis=1).max()), 6), "faces": int(len(ff))})
+    return sorted(out, key=lambda s: -s["faces"])
+
+
 # ---- the check -------------------------------------------------------------------------------
 def inspect(v: np.ndarray, f: np.ndarray, intersections: bool = False) -> dict:
     """What is wrong with the mesh. Counts are of faces unless named otherwise; holes and pieces
@@ -238,6 +269,10 @@ def inspect(v: np.ndarray, f: np.ndarray, intersections: bool = False) -> dict:
         pairs = self_intersections(v, g)
         rep["intersecting_pairs"] = int(len(pairs))
         rep["intersecting_faces"] = int(len(_unique(pairs))) if len(pairs) else 0
+        # where they are, for the editor to show: the spots, and the faces as vertex ids (the
+        # editor's own: g only drops and turns faces, it keeps the vertices)
+        rep["intersection_spots"] = intersection_spots(v, g, pairs)
+        rep["intersecting_tris"] = g[_unique(pairs)[:SPOT_FACES]].ravel().tolist() if len(pairs) else []
     return rep
 
 
