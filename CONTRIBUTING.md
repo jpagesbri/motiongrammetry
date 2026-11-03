@@ -45,6 +45,9 @@ another installed copy of `motiongrammetry` instead of this checkout.
 
 GitHub runs the same tests on every pull request into `main` (the **tests / pytest** check, from
 `.github/workflows/tests.yml`, about 5 minutes), on the versions in `requirements-lock.txt`.
+That file is the project's only lock: there is no `uv.lock` (it is ignored, since `uv run` and
+`uv sync` would write one that nothing tests). When a dependency changes in `pyproject.toml`,
+update `requirements-lock.txt` in the same pull request.
 Branch protection on `main` requires it to pass before a merge.
 
 ## 3. Before merging: say what the approver has to validate
