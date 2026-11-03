@@ -42,7 +42,8 @@ the image with that version, and the About page and `mg --version` show it.
   multiplied the vertices by 10–30. The new **Density** control is a factor of the scan's own
   density where you brush (from the pipeline's clean mesh), so a part the scan left coarse gets the
   same factor of its own density: ×1.5 to ×8, default ×2, the same at any zoom or brush size. Brushing an area again adds nothing more. Decimate uses it the other way (÷2 is half the
-  vertices). Measured on four scans, the result is within 25% of the factor. Adaptive detail now works
+  vertices), and what it leaves becomes the reference there: ×1.5 afterwards adds about half to the
+  simplified area instead of bringing back the scan's density. Measured on four scans, the result is within 25% of the factor. Adaptive detail now works
   only on the surface under the brush (not the other side of a thin part), and one stroke adds at
   most 50,000 vertices and says so. It no longer pauses about half a second each time it adds
   vertices on a dense mesh. It also no longer leaves small cracks, which the save then cut out with
