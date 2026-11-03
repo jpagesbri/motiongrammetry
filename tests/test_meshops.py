@@ -209,3 +209,169 @@ def test_cap_follows_a_rim_that_rises_at_one_end():
     assert np.abs(lid[lid[:, 0] < 0.5, 2]).max() < 0.01, "flat where the rim is flat (bar a gentle blend into the rise)"
     assert lid[lid[:, 0] > 2.6, 2].min() > 0.15, "curving up towards the raised end"
     assert lid[:, 2].min() > -1e-6, "never below the rim"
+
+
+# ---- lids: what close_loops must give, whatever the implementation --------------------------
+def _ring_mesh(radius, k, z=None, R=3.0):
+    """A flat annulus: an inner open loop (vertices 0..k-1, at ``radius(theta)``, raised by ``z``)
+    joined by quads to an outer circle of radius R, which stays open."""
+    th = np.linspace(0, 2 * np.pi, k, endpoint=False)
+    r = radius(th)
+    inner = np.stack([r * np.cos(th), r * np.sin(th), np.zeros(k) if z is None else z(th)], 1)
+    v = np.concatenate([inner, np.stack([R * np.cos(th), R * np.sin(th), np.zeros(k)], 1)])
+    a = np.arange(k)
+    b = (a + 1) % k
+    f = np.concatenate([np.stack([a, k + a, k + b], 1), np.stack([a, k + b, b], 1)]).astype(np.int64)
+    return v, f, np.random.default_rng(k).integers(0, 256, (len(v), 3)).astype(np.uint8)
+
+
+def _figure_eight_band():
+    """A band whose lower rim seen from above crosses itself (a figure of eight): no flat outline,
+    so _lid refuses it and close_loops falls back to the soap-film rings."""
+    k = 120
+    t = np.linspace(0, 2 * np.pi, k, endpoint=False)
+    rim = np.stack([np.sin(2 * t), np.sin(t), 0.3 * np.cos(t)], 1)
+    v = np.concatenate([rim, rim + [0, 0, 1.0]])
+    a = np.arange(k)
+    b = (a + 1) % k
+    f = np.concatenate([np.stack([a, k + a, k + b], 1), np.stack([a, k + b, b], 1)]).astype(np.int64)
+    return v, f, np.random.default_rng(3).integers(0, 256, (len(v), 3)).astype(np.uint8)
+
+
+def _holed(res, *holes):
+    """A sphere with random colours and the faces whose centres ``holes`` picks removed."""
+    m = o3d.geometry.TriangleMesh.create_sphere(1.0, res)
+    v, f = np.asarray(m.vertices), np.asarray(m.triangles).astype(np.int64)
+    cen = v[f].mean(1)
+    gone = np.zeros(len(f), bool)
+    for h in holes:
+        gone |= h(cen)
+    return v, f[~gone], np.random.default_rng(res).integers(0, 256, (len(v), 3)).astype(np.uint8)
+
+
+def _crescent(p):
+    """A crescent-shaped (non-convex) hole on the equator."""
+    return (np.linalg.norm(p - [1, 0, 0], axis=1) < 0.45) & (np.linalg.norm(p - [0.97, 0.25, 0], axis=1) > 0.3)
+
+
+def _check_lids(v, f, c, loops):
+    """Close ``loops`` together and one by one, and check what any lid must satisfy."""
+    from motiongrammetry import meshfix
+    from motiongrammetry.meshops import close_loops
+
+    before = meshfix.inspect(v, f)
+    V, F, C = close_loops(v, f, c, loops)
+    assert np.array_equal(F[:len(f)], f) and np.array_equal(V[:len(v)], v) and np.array_equal(C[:len(v)], c)
+    assert len(C) == len(V) and C.dtype == np.uint8 and F.min() >= 0 and F.max() < len(V)
+    # every chosen hole closed, the others left as they were
+    chosen = {frozenset(l) for l in loops}
+    left = [frozenset(l) for l in boundary_loops(F)]
+    assert not chosen & set(left)
+    assert sorted(map(sorted, left)) == sorted(sorted(l) for l in boundary_loops(f) if frozenset(l) not in chosen)
+    # each rim edge gets exactly one lid face
+    lid = F[len(f):]
+    e = np.sort(np.concatenate([lid[:, [0, 1]], lid[:, [1, 2]], lid[:, [2, 0]]]), 1)
+    ue, cnt = np.unique(e, axis=0, return_counts=True)
+    count = {tuple(x): int(n) for x, n in zip(ue.tolist(), cnt)}
+    for l in loops:
+        for a, b in zip(l, np.roll(l, -1)):
+            assert count.get(tuple(sorted((int(a), int(b)))), 0) == 1
+    # no non-manifold edge or pillow made, wound like the surface around it
+    after = meshfix.inspect(V, F)
+    assert after["nonmanifold_edges"] == before["nonmanifold_edges"] == 0
+    assert after["pillow_faces"] == 0 and after["degenerate_faces"] == 0
+    assert after["flipped_faces"] == 0 and after["flipped_edges"] == 0
+    # each lid alone: its new vertices inside its rim's box, its colours within the rim's
+    for l in loops:
+        V1, F1, C1 = close_loops(v, f, c, [l])
+        rim, new = v[l], V1[len(v):]
+        tol = 1e-9 * np.ptp(rim, 0).max()
+        assert (new >= rim.min(0) - tol).all() and (new <= rim.max(0) + tol).all()
+        assert (C1[len(v):] >= c[l].min(0)).all() and (C1[len(v):] <= c[l].max(0)).all()
+        assert len(F1) > len(f)
+    return V, F, C
+
+
+@pytest.mark.parametrize("name", ["round", "non-convex", "side by side", "slot and round", "star", "zigzag rim",
+                                  "thin notch"])
+def test_lids_close_their_holes_cleanly(name):
+    """Lid invariants on holes of several shapes: a round one, a crescent (non-convex), two holes
+    next to each other, a slot beside a round hole, a star, a rim that zigzags up and down, a rim
+    with a thin notch."""
+    if name == "round":
+        v, f, c = _holed(30, lambda p: p[:, 2] > 0.9)
+    elif name == "non-convex":
+        v, f, c = _holed(40, _crescent)
+    elif name == "side by side":
+        v, f, c = _holed(40, lambda p: np.linalg.norm(p - [1, 0, 0], axis=1) < 0.2,
+                         lambda p: np.linalg.norm(p - [0.85, 0.5, 0], axis=1) < 0.2)
+    elif name == "slot and round":
+        v, f, c = _holed(40, lambda p: (p[:, 2] > 0.5) & (np.abs(p[:, 1]) < 0.05),
+                         lambda p: np.linalg.norm(p - [0, 0, -1], axis=1) < 0.3)
+    elif name == "star":
+        v, f, c = _ring_mesh(lambda t: np.where(np.arange(len(t)) % 2 == 0, 1.0, 0.35), 80)
+    elif name == "zigzag rim":
+        v, f, c = _ring_mesh(lambda t: 1 + 0 * t, 60, z=lambda t: 0.4 * (np.arange(len(t)) % 2))
+    else:
+        v, f, c = _ring_mesh(lambda t: np.where(np.abs(t - np.pi) < 0.05, 0.1, 1.0), 200)
+    loops = boundary_loops(f)
+    if name in ("star", "zigzag rim", "thin notch"):
+        loops = [l for l in loops if 0 in l]  # the inner loop; the outer edge stays open
+    assert loops
+    _check_lids(v, f, c, loops)
+
+
+def test_a_rim_that_zigzags_in_view_is_triangulated_on_a_smoothed_outline(monkeypatch):
+    """The crescent's rim makes the first triangulation fail; _lid smooths the outline and the lid
+    still passes every check."""
+    from motiongrammetry import meshops
+
+    tries = []
+    real = meshops._triangulate
+    monkeypatch.setattr(meshops, "_triangulate", lambda U, h: tries.append(r := real(U, h)) or r)
+    v, f, c = _holed(40, _crescent)
+    loops = boundary_loops(f)
+    meshops.close_loops(v, f, c, loops)
+    assert any(t is None for t in tries) and tries[-1] is not None
+
+
+def test_a_rim_lid_refuses_gets_soap_film_rings_alongside_the_others():
+    """A figure-of-eight rim (_lid refuses it) closed together with a star hole elsewhere."""
+    from motiongrammetry.meshops import _lid
+
+    v1, f1, c1 = _figure_eight_band()
+    assert _lid(v1, c1, [l for l in boundary_loops(f1) if 0 in l][0], len(v1)) is None
+    v2, f2, c2 = _ring_mesh(lambda t: np.where(np.arange(len(t)) % 2 == 0, 1.0, 0.35), 80)
+    v, f, c = np.concatenate([v1, v2 + 10]), np.concatenate([f1, f2 + len(v1)]), np.concatenate([c1, c2])
+    loops = [l for l in boundary_loops(f) if 0 in l or len(v1) in l]
+    assert len(loops) == 2
+    _check_lids(v, f, c, loops)
+
+
+def test_a_lid_costs_the_same_python_work_however_many_points_it_has():
+    """Guard for the speed-up: the Python calls made to build a lid don't grow with its size (the
+    inside/outside fill used to call numpy per triangle: ~480,000 calls for one hole of a 1M-face
+    mesh). Counted, not timed, so it can't flake on a slow machine."""
+    import sys
+
+    from motiongrammetry.meshops import _lid
+
+    def calls(k):
+        v, f, c = _ring_mesh(lambda t: 1 + 0 * t, k)
+        n = [0]
+
+        def count(frame, event, arg):
+            n[0] += event in ("call", "c_call")
+
+        sys.setprofile(count)
+        try:
+            X, tri, _ = _lid(v, c, np.arange(k), len(v))
+        finally:
+            sys.setprofile(None)
+        return n[0], len(tri)
+
+    _lid(*_ring_mesh(lambda t: 1 + 0 * t, 40)[::2], np.arange(40), 80)  # imports done before counting
+    small, small_tris = calls(60)
+    big, big_tris = calls(600)
+    assert big_tris > 50 * small_tris  # ~100x the faces...
+    assert big < 2 * small + 2000, (small, big)  # ...for about the same Python work
