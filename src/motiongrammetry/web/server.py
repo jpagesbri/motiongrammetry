@@ -48,7 +48,11 @@ Preview data is served in the raw SfM frame together with one 4x4 "scene" transf
   GET  /api/about[/license?kind=&id=|/notices.txt]   their list, one license text, all notices
   GET  /help                                the how-to page (static/help.html, images in static/help/)
   POST /api/workspaces/<ws>/preview         JPEG snapshot taken by the viewer
-  POST /api/workspaces/<ws>/edit/op?kind=cap|plane|remesh  mesh edit (see meshops.run), returns the mesh
+  POST /api/workspaces/<ws>/edit/op?kind=cap|plane|remesh|sanitize  mesh edit (see meshops.run), returns the mesh
+  POST /api/workspaces/<ws>/edit/op?kind=inspect  the editor's mesh -> what is wrong with it, and how long
+                                            each Sanitize mesh fix would take (meshfix.inspect / estimates)
+  GET  /api/workspaces/<ws>/edit/check?what=paint|edits  problems of the saved mesh that break or spoil
+                                            texturing: the textured model painted, or the edited mesh
 """
 
 from __future__ import annotations
@@ -765,6 +769,28 @@ class App:
         used = ws.load_manifest().get("clean", {}).get("input")
         return Path(used) if used and Path(used).exists() else ws.raw_mesh()
 
+    def mesh_check(self, ws: Workspace, what: str) -> dict:
+        """Problems of a saved mesh that break or spoil texturing (meshfix.problems): ``paint`` checks
+        the textured model the editor paints, ``edits`` the edited mesh Texture my edits and Carry
+        the texture over start from. Cached until the file changes."""
+        from ..meshfix import check_file
+
+        c = ws.mesh / "custom"
+        if what == "paint":
+            src, label = (c / "textured.ply", "your custom textured model") if (c / "textured.ply").exists() \
+                else (ws.mesh / "textured.ply", "the textured model")
+        elif what == "edits":
+            src, label = c / "mesh_clean.ply", "your edited mesh"
+        else:
+            raise ValueError("what: paint or edits")
+        if not src.exists():
+            raise FileNotFoundError(src.name)
+
+        def build(out: Path) -> None:
+            out.write_text(json.dumps(check_file(src)))
+
+        return {**json.loads(self._cached(ws, f"check_{what}.json", [src], build).read_text()), "mesh": label}
+
     def _editable(self, ws: Workspace) -> None:
         job = self.job(ws)
         if job and job.status == "running":
@@ -1183,6 +1209,8 @@ def make_handler(app: App):
                 return self._json({"status": None, "log": lines[since:], "next": len(lines), "clock": _clock()})
             if what == "scene":
                 return self._json(app.scene(ws))
+            if what == "edit" and parts[4:] == ["check"]:
+                return self._json(app.mesh_check(ws, q.get("what", [""])[0]))
             if what == "history":
                 return self._json(ws.history()[-200:])
             if what == "log" and "path" in q:
@@ -1249,9 +1277,13 @@ def make_handler(app: App):
                         return self._json(app.relayout_texture(ws, {"seams": self._raw(), "from": q.get("from", [""])[0],
                                                                     "preview": "image" if q.get("preview") else None}))
                     return self._json(app.relayout_texture(ws, self._body()))
-                if what == "op":  # cap / plane / remesh: mesh in, mesh out, nothing saved
+                if what == "op":  # cap / plane / remesh / sanitize: mesh in, mesh out, nothing saved
                     from ..meshops import run
 
+                    if q.get("kind", [""])[0] == "inspect":
+                        from ..meshfix import inspect_request
+
+                        return self._json(inspect_request(self._raw()))
                     data, info = run(q.get("kind", [""])[0], self._raw(), app.clean_input(ws))
                     return self._binary(data, info)
             if len(parts) == 4 and parts[:2] == ["api", "workspaces"]:
