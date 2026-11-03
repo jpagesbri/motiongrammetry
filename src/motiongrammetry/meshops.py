@@ -8,6 +8,7 @@ Open3D / scikit-image) and hand the editor a new mesh; nothing is written to dis
 - plane_cut: split the triangles along a plane, drop one side, close the cut with a flat cap.
 - restore: bring back raw-mesh triangles inside brushed spheres (what clean carved away).
 - keep_pieces: drop loose pieces, e.g. a part a cut separated from the body.
+- sanitize: the chosen repairs of meshfix.py (duplicates, manifold, holes, orientation, ...).
 - voxel_remesh: rebuild the surface from a signed-distance volume, optionally unioned with
   spheres the editor's fill brush placed. Separate shells, inner walls and membranes merge
   into one closed surface with even triangles, ready to be smoothed as a single piece.
@@ -608,9 +609,15 @@ def run(kind: str, data: bytes, raw_mesh=None) -> tuple[bytes, dict]:
         V, F, C, info = keep_pieces(v, f, c, float(params.get("keep", 0.1)))
     elif kind == "remesh":
         V, F, C, info = voxel_remesh(v, f, c, params.get("spheres"), float(params.get("voxel", 0.004)))
+    elif kind == "sanitize":
+        from .meshfix import sanitize
+
+        V, F, C, info = sanitize(v, f, c, params.get("fixes") or [], float(params.get("hole_size", 0.1)),
+                                 float(params.get("piece_size", 0.05)))
     elif kind == "merge_local":
         V, F, C, info = local_merge(v, f, c, params.get("spheres") or [])
     else:
         raise KeyError(kind)
-    log.info("mesh %s: %d -> %d faces %s", kind, len(f), len(F), info)
+    log.info("mesh %s: %d -> %d faces %s", kind, len(f), len(F),
+             {k: x for k, x in info.items() if k != "after"} if kind == "sanitize" else info)
     return encode_mesh(V, F, C), info

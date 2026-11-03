@@ -838,3 +838,55 @@ def test_job_polls_carry_the_server_clock(server):
     assert status == 200
     now = t.tm_hour * 3600 + t.tm_min * 60 + t.tm_sec
     assert abs((body["clock"] - now + 43200) % 86400 - 43200) < 5
+
+
+def test_editor_checks_and_sanitizes_meshes(server, monkeypatch):
+    """#12: the saved meshes texturing starts from are checked; #29: the editor's mesh is checked
+    (with time estimates) and sanitized, mesh in, mesh out, nothing saved."""
+    import open3d as o3d
+
+    from motiongrammetry import meshfix
+    from motiongrammetry.meshops import decode_mesh, encode_mesh
+
+    monkeypatch.setattr(meshfix, "BENCH_FACES", 4000)
+    monkeypatch.setattr(meshfix, "_rates", {})
+    base, app = server
+    call(base + "/api/workspaces", "POST", {"name": "k"})
+    ws = Workspace(app.root / "k")
+    assert call(base + "/api/workspaces/k/edit/check?what=edits")[0] == 404  # no edited mesh
+    assert call(base + "/api/workspaces/k/edit/check?what=other")[0] == 400
+
+    # an edited mesh saved by an older version: a pillow and a bow-tie vertex
+    v, f, c = meshfix.test_mesh(4000)
+    (ws.mesh / "custom").mkdir(parents=True)
+    m = o3d.geometry.TriangleMesh(o3d.utility.Vector3dVector(v), o3d.utility.Vector3iVector(f.astype(np.int32)))
+    o3d.io.write_triangle_mesh(str(ws.mesh / "custom" / "mesh_clean.ply"), m)
+    status, r = call(base + "/api/workspaces/k/edit/check?what=edits")
+    assert status == 200 and r["mesh"] == "your edited mesh"
+    codes = {p["code"]: p for p in r["problems"]}
+    assert {"pillows", "bowtie", "degenerate"} <= set(codes) and codes["pillows"]["count"] == 1
+    # the textured model painted: its vertices are split at texture seams, the check joins them
+    sphere = o3d.geometry.TriangleMesh.create_sphere(1.0, 12)
+    sv, sf = np.asarray(sphere.vertices), np.asarray(sphere.triangles)
+    split = o3d.geometry.TriangleMesh(o3d.utility.Vector3dVector(sv[sf.ravel()]),
+                                      o3d.utility.Vector3iVector(np.arange(sf.size).reshape(-1, 3).astype(np.int32)))
+    o3d.io.write_triangle_mesh(str(ws.mesh / "textured.ply"), split)
+    status, r = call(base + "/api/workspaces/k/edit/check?what=paint")
+    assert status == 200 and r["problems"] == [] and r["mesh"] == "the textured model"
+
+    params = json.dumps({}).encode()
+    body = struct.pack("<I", len(params)) + params + encode_mesh(v, f, c)
+    status, r = _post_bytes(base + "/api/workspaces/k/edit/op?kind=inspect", body)
+    assert status == 200 and r["report"]["bowtie_vertices"] == 1 and r["report"]["intersecting_pairs"] >= 1
+    assert set(r["seconds"]) >= set(meshfix.FIXES) and r["machine"]["cpu"]
+
+    params = json.dumps({"fixes": ["duplicates", "manifold", "pieces", "orient", "holes"], "hole_size": 0.5}).encode()
+    body = struct.pack("<I", len(params)) + params + encode_mesh(v, f, c)
+    req = urllib.request.Request(base + "/api/workspaces/k/edit/op?kind=sanitize", data=body, method="POST")
+    with urllib.request.urlopen(req) as resp:
+        info = json.loads(resp.headers["X-Op-Info"])
+        V, F, _ = decode_mesh(resp.read())
+    assert [s["fix"] for s in info["steps"]] == ["duplicates", "manifold", "pieces", "orient", "holes"]
+    assert info["after"]["pillow_faces"] == 0 and info["after"]["bowtie_vertices"] == 0 and info["after"]["holes"] == 0
+    assert len(F) == info["faces_out"]
+    assert len(o3d.io.read_triangle_mesh(str(ws.mesh / "custom" / "mesh_clean.ply")).triangles) == len(f)  # not saved
