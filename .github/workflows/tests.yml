@@ -1,0 +1,53 @@
+# Runs the test suite on every pull request into main, and on main itself after a merge.
+# Branch protection on main can require the "pytest" check below (see CONTRIBUTING.md).
+name: tests
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  pytest:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.9.5"   # the same uv as docker/Dockerfile
+
+      # Open3D's wheel links libGL and libgomp even when nothing is drawn.
+      - name: System libraries
+        run: sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends libgl1 libegl1 libgomp1
+
+      # The tested versions first (requirements-lock.txt), then this checkout itself, editable and
+      # without dependencies, so the tests import the code under review and not another copy.
+      - name: Install
+        run: |
+          uv venv -p 3.12
+          uv pip install -r requirements-lock.txt
+          uv pip install --no-deps -e '.[mask,dev]'
+
+      - name: Tests import this checkout
+        run: |
+          .venv/bin/python - <<'PY'
+          import os, pathlib, motiongrammetry
+          src = pathlib.Path(os.environ["GITHUB_WORKSPACE"], "src").resolve()
+          here = pathlib.Path(motiongrammetry.__file__).resolve()
+          print("motiongrammetry", motiongrammetry.__version__, "from", here)
+          assert here.is_relative_to(src), f"imported {here}, not the checkout in {src}"
+          PY
+
+      - name: pytest
+        run: .venv/bin/python -m pytest tests/ -q

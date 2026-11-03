@@ -40,7 +40,12 @@ Run from a checkout, the version names its branch: the About page and `mg --vers
 release's own commit, and in the Docker image, which has no checkout. So you can always tell
 which code a running instance is.
 
-Run the tests too: `.venv/bin/python -m pytest tests/ -q`.
+Run the tests too: `.venv/bin/python -m pytest tests/ -q`. They stop at once if they would import
+another installed copy of `motiongrammetry` instead of this checkout.
+
+GitHub runs the same tests on every pull request into `main` (the **tests / pytest** check, from
+`.github/workflows/tests.yml`, about 5 minutes), on the versions in `requirements-lock.txt`.
+Branch protection on `main` requires it to pass before a merge.
 
 ## 3. Before merging: say what the approver has to validate
 

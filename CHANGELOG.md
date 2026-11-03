@@ -30,6 +30,9 @@ the image with that version, and the About page and `mg --version` show it.
   leaves those faces out (from a cleaned copy; the mesh itself is untouched), the pre-flight check
   says how many, and if OpenMVS still fails on broken geometry (`std::out_of_range`, as an abort
   or a segfault) the error names it and says how to fix it (#1, #2).
+- **Tests on every pull request**: a GitHub Actions workflow runs the tests on pull requests into
+  `main` and after each merge, on the locked versions, and checks they import the checked-out
+  code; the tests themselves now stop if they would import another installed copy (#9).
 
 ## 0.2.0 — 2026-11-02
 
