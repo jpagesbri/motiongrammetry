@@ -274,3 +274,44 @@ def test_a_long_thin_layout_is_not_mistaken_for_a_broken_one(tmp_path):
     W, H = info["size"]
     assert max(W, H) > 20 * min(W, H) and info["used"] > 4 * atlas.MIN_USED  # long and thin, and well filled
     assert (tmp_path / "carried.ply").exists()
+
+
+def claimed_twice(px: np.ndarray, chart: np.ndarray, n: int, W: int, H: int, margin: int) -> int:
+    """Texels that two pieces (each grown by margin texels) both cover, in a packed layout."""
+    import cv2
+
+    count = np.zeros((H, W), np.int32)
+    for c in range(n):
+        m = np.zeros((H, W), np.uint8)
+        cv2.fillPoly(m, list(np.round(px[chart == c] * 16).astype(np.int32)), 1, shift=4)
+        count += cv2.dilate(m, np.ones((2 * margin + 1, 2 * margin + 1), np.uint8))
+    return int((count > 1).sum())
+
+
+def test_pieces_are_packed_by_their_outlines_without_overlapping():
+    # right triangles and L shapes: their enclosing rectangles are half or more empty, so packing
+    # rectangles (as atlas.pack used to) fills under half the image; by their outlines they nest
+    rng = np.random.default_rng(0)
+    tri = np.array([[[0, 0], [1, 0], [0, 1]]], float)
+    ell = np.array([[[0, 0], [1, 0], [1, .3]], [[0, 0], [1, .3], [.3, .3]], [[0, 0], [.3, .3], [.3, 1]], [[0, 0], [.3, 1], [0, 1]]])
+    corner_uv, chart = [], []
+    for c in range(40):
+        shape = (tri if c % 2 else ell) * rng.uniform(0.5, 1.5)
+        corner_uv.append(shape @ np.array([[np.cos(c), np.sin(c)], [-np.sin(c), np.cos(c)]]))  # any way round
+        chart += [c] * len(shape)
+    corner_uv, chart = np.concatenate(corner_uv), np.array(chart)
+    px, W, H, used = atlas.pack(corner_uv, chart, 40, 100.0, 4, 8192)
+    assert used > 0.55, f"only {used:.0%} of the image used"
+    assert max(W, H) < 1.3 * min(W, H)                         # about square
+    assert px.min() >= 0 and px[..., 0].max() <= W and px[..., 1].max() <= H
+    assert claimed_twice(px, chart, 40, W, H, 2) == 0           # 4 texels of margin: 2 each, no overlap
+    # every piece kept its shape and size (turned only, never mirrored or scaled)
+    for c in range(40):
+        a = atlas._signed_area(corner_uv[chart == c].reshape(-1, 2), np.arange(3 * (chart == c).sum()).reshape(-1, 3))
+        b = atlas._signed_area(px[chart == c].reshape(-1, 2), np.arange(3 * (chart == c).sum()).reshape(-1, 3))
+        assert np.allclose(b, a * 100 ** 2, rtol=1e-6)
+    # too big for the limit: the detail is lowered until it fits; fit: scaled up to fill it
+    _, W, H, _ = atlas.pack(corner_uv, chart, 40, 1000.0, 4, 512)
+    assert 0.9 * 512 <= max(W, H) <= 512
+    _, W, H, _ = atlas.pack(corner_uv, chart, 40, 1.0, 4, 512, fit=True)
+    assert 0.97 * 512 <= max(W, H) <= 512

@@ -75,6 +75,10 @@ the image with that version, and the About page and `mg --version` show it.
   most 50,000 vertices and says so. It no longer pauses about half a second each time it adds
   vertices on a dense mesh. It also no longer leaves small cracks, which the save then cut out with
   the faces around them (#13, #4).
+- **Texture layout packing**: Rebuild layout, Apply seams and Carry the texture over pack the
+  pieces by their outlines instead of their enclosing rectangles, so they nest into each other's
+  hollows. The image is about half texture instead of a bit over a third (her_face: 38% to 51%,
+  5502x5277 to 4667x4668 at the same detail), so rebuilt textures are smaller (#5).
 
 ## 0.2.0 — 2026-11-02
 
