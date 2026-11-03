@@ -26,7 +26,7 @@ import struct
 import numpy as np
 
 from .clean import boundary_loops, close_holes
-from .meshfix import unique_sorted
+from .meshfix import _edges, isin_sorted, unique_sorted
 
 log = logging.getLogger(__name__)
 
@@ -189,8 +189,84 @@ def _lid(v, c, loop, base: int, max_points: int = 80_000):
     return X, ids[tri], np.clip(np.round(Cc), 0, 255).astype(np.uint8)
 
 
-def close_loops(v, f, c, loops):
-    """Close the given boundary loops: even membrane lids (_lid), soap-film rings where that fails."""
+def _scraps(f, every, n):
+    """Scraps: pieces held to the rest by their corners only (no shared edge), every vertex on their
+    own rim and that rim one loop: a lone face left between holes, a strip of such faces, a fan with
+    no inner vertex. boundary_loops reports that rim as a hole of its own, but it runs round the
+    piece: a lid on it is the piece again, wound the other way (a pillow). ``every``: all boundary
+    loops of f; n: the vertex count. Returns (the scraps' faces, the scrap of each, the directed
+    keys a * n + b of their half-edges)."""
+    from scipy.sparse import coo_matrix
+    from scipy.sparse.csgraph import connected_components
+
+    none = np.zeros(0, np.int64)
+    if not every:
+        return none, none, none
+    rim = np.zeros(n, bool)
+    rim[np.concatenate([np.asarray(l, np.int64) for l in every])] = True
+    near = np.flatnonzero(rim[f].sum(1) >= 2)  # the only faces that can share an edge with a scrap's
+    cand = rim[f[near]].all(1)                 # a scrap's faces have all three corners on rims
+    if not cand.any():
+        return none, none, none
+    he, fid, und, key = _edges(f[near], n)
+    o = np.argsort(und, kind="stable")
+    su = und[o]
+    first = np.concatenate([[True], su[1:] != su[:-1]])
+    grp = np.cumsum(first) - 1
+    cnt = np.bincount(grp)[grp]
+    # a half-edge's partner, where its edge has exactly two faces (it follows or precedes it in order)
+    nxt = np.concatenate([o[1:], o[:1]])
+    prv = np.concatenate([o[-1:], o[:-1]])
+    partner = np.full(len(und), -1, np.int64)
+    two = cnt == 2
+    partner[o[two & first]] = nxt[two & first]
+    partner[o[two & ~first]] = prv[two & ~first]
+    count = np.empty(len(und), np.int64)
+    count[o] = cnt
+    cf = cand[fid]
+    p = np.maximum(partner, 0)
+    # an edge a candidate shares well: two faces, both candidates, wound against each other
+    joined = cf & (count == 2) & cand[fid[p]] & (key[p] != key)
+    bad = cf & ~joined & (count != 1)  # shared with a non-candidate, with 3+ faces, or wound alike
+    m = len(near)
+    a, b = fid[joined], fid[p[joined]]
+    lab = connected_components(coo_matrix((np.ones(len(a), np.int8), (a, b)), shape=(m, m)), directed=False)[1]
+    lab = np.where(cand, lab, -1)
+    k = int(lab.max()) + 1
+    ok = np.ones(k, bool)
+    ok[lab[fid[bad]]] = False
+    nf = np.bincount(lab[cand], minlength=k)
+    nb = np.bincount(lab[fid[cf & (count == 1)]], minlength=k)
+    ni = np.bincount(lab[fid[joined]], minlength=k) // 2
+    corner = unique_sorted(lab[cand][:, None] * n + f[near[cand]])
+    nv = np.bincount(corner // n, minlength=k)
+    # one rim through every vertex: a disc (V - E + F = 1) with as many rim edges as vertices
+    ok &= (nv - nb - ni + nf == 1) & (nb == nv)
+    hit = cand & ok[np.maximum(lab, 0)]
+    if not hit.any():
+        return none, none, none
+    faces = near[hit]
+    return faces, lab[hit], unique_sorted(key[hit[fid]])
+
+
+def _close(v, f, c, loops, every=None):
+    """close_loops, also returning how many loops got a lid and how many scrap faces went."""
+    n = len(v)
+    sf, lab, own = _scraps(f, boundary_loops(f) if every is None else every, n)
+    dropped = 0
+    if len(sf):
+        # a scrap's own rim is no hole: no lid. A scrap touching a hole that gets one goes: the lid
+        # covers its spot, and keeping it would put a third face on any lid edge between its corners.
+        loops = [l for l in loops if not isin_sorted(np.int64(l[0]) * n + l[1], own)]
+        mark = np.zeros(n, bool)
+        for l in loops:
+            mark[np.asarray(l, np.int64)] = True
+        gone = unique_sorted(lab[mark[f[sf]].any(1)])
+        drop = sf[isin_sorted(lab, gone)] if len(gone) else sf[:0]
+        if len(drop):
+            keep = np.ones(len(f), bool)
+            keep[drop] = False
+            f, dropped = f[keep], len(drop)
     out_v, out_f, out_c, rest = [v], [f], [c], []
     base = len(v)
     for loop in loops:
@@ -207,22 +283,33 @@ def close_loops(v, f, c, loops):
         V2, F, owner = close_holes(V, F, loops=rest, owners=True)
         C = np.concatenate([C, _lid_colours(C, rest, owner)])
         V = V2
-    return V, F, C
+    return V, F, C, len(loops), dropped
+
+
+def close_loops(v, f, c, loops, every=None):
+    """Close the given boundary loops: even membrane lids (_lid), soap-film rings where that fails.
+    The faces come back in order, then the lids. A scrap (_scraps: a lone face left between holes)
+    gets no lid of its own; it goes when it touches a hole that gets one. ``every``: all boundary
+    loops of f, when the caller has them (found again otherwise)."""
+    return _close(v, f, c, loops, every)[:3]
 
 
 # ---- operations ------------------------------------------------------------------------------
 def cap(v, f, c, seeds: np.ndarray | None = None):
     """Close the boundary loops touching any ``seeds`` vertex (all loops when None)."""
     v, f, c = compact(v, f, c) if seeds is None else (v, f, c)  # seeds index the mesh as given
-    loops = boundary_loops(f)
+    every = loops = boundary_loops(f)
     if seeds is not None:
         mark = np.zeros(len(v), bool)
         mark[np.asarray(seeds, np.int64)[np.asarray(seeds) < len(v)]] = True
         loops = [l for l in loops if mark[l].any()]
     if not loops:
         return v, f, c, {"capped": 0}
-    V, F, C = compact(*close_loops(v, f, c, loops))
-    return V, F, C, {"capped": len(loops)}
+    V, F, C, capped, dropped = _close(v, f, c, loops, every)
+    if not capped:  # only a scrap's own rim (_scraps): no hole to close
+        return v, f, c, {"capped": 0}
+    V, F, C = compact(V, F, C)
+    return V, F, C, {"capped": capped, **({"removed_scraps": dropped} if dropped else {})}
 
 
 def plane_cut(v, f, c, point, normal, close: bool = True):
@@ -268,10 +355,13 @@ def plane_cut(v, f, c, point, normal, close: bool = True):
         # An opening the cut made or crossed: most of its rim lies on the plane. Not all of it when the
         # cut goes through an opening the scan already had (a shoe's open bottom reaching up into the
         # toe): its rim there stays above the plane, and the lid follows it.
-        loops = [l for l in boundary_loops(F) if (dist[l] <= eps).mean() >= 0.5]
+        every = boundary_loops(F)
+        loops = [l for l in every if (dist[l] <= eps).mean() >= 0.5]
         if loops:
-            V, F, C = close_loops(V, F, C, loops)
-            info["capped"] = len(loops)
+            V, F, C, info["capped"], dropped = _close(V, F, C, loops, every)
+            if dropped:  # a scrap's corner only it had is left unused
+                V, F, C = compact(V, F, C)
+                info["removed_scraps"] = dropped
     return V, F, C, info
 
 

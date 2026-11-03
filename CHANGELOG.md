@@ -10,6 +10,14 @@ the image with that version, and the About page and `mg --version` show it.
 
 ## Unreleased
 
+- **Closing holes round a stray face makes no pillow**: a face (or a short strip of faces) left
+  inside a hole, joined to the rest only at its corners, was taken for a hole of its own. Close
+  all holes and the Cut stroke's cap gave it a lid that was the same face turned over: a pillow,
+  which crashes texturing, and counted it as a closed hole. Now that stray face gets no lid: when
+  the hole round it is closed it is removed and the lid covers its spot, and the editor says so.
+  Sanitize's Close holes no longer counts it as a hole either. A face on its own, touching
+  nothing, is left as it is. Ordinary holes close exactly as before.
+
 - **Holes at a busy vertex are found and closed**: finding the holes gave up after turning
   through 64 faces around one vertex. A hole whose rim passes a vertex with more faces than that
   (the pole of a fine sphere has 80; a fan can have thousands) was not found, so Close holes,

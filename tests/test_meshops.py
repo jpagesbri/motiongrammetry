@@ -9,8 +9,8 @@ import open3d as o3d
 import trimesh
 
 from motiongrammetry.clean import boundary_loops
-from motiongrammetry.meshops import (cap, decode_mesh, encode_mesh, keep_pieces, local_merge, plane_cut, restore, run,
-                                    voxel_remesh)
+from motiongrammetry.meshops import (cap, compact, decode_mesh, encode_mesh, keep_pieces, local_merge, plane_cut, restore,
+                                    run, voxel_remesh)
 
 
 def _mesh(m):
@@ -375,3 +375,226 @@ def test_a_lid_costs_the_same_python_work_however_many_points_it_has():
     big, big_tris = calls(600)
     assert big_tris > 50 * small_tris  # ~100x the faces...
     assert big < 2 * small + 2000, (small, big)  # ...for about the same Python work
+
+
+# ---- scraps: faces left between holes, held only at their corners ------------------------------
+def _edge_neighbours(f, t):
+    """The faces sharing an edge with face t."""
+    out = []
+    for a, b in ((f[t, 0], f[t, 1]), (f[t, 1], f[t, 2]), (f[t, 2], f[t, 0])):
+        out += [int(j) for j in np.flatnonzero(np.isin(f, [a, b]).sum(1) == 2) if j != t]
+    return out
+
+
+def _lone(kind, t=400):
+    """A sphere where face t (and, for a strip, the next ones along it) is left with every other
+    edge open: "three" drops its three neighbours (it sits between three gaps), "two" drops the fan
+    of one corner and the neighbour opposite (two gaps), "strip2"/"strip3" a strip of 2 or 3 faces.
+    Returns the mesh and the scrap's faces."""
+    m = o3d.geometry.TriangleMesh.create_sphere(1.0, 30)
+    v, f = np.asarray(m.vertices), np.asarray(m.triangles).astype(np.int64)
+    strip = [t]
+    if kind == "two":
+        fan = [int(j) for j in np.flatnonzero((f == f[t, 1]).any(1)) if j != t]
+        gone = fan + [j for j in _edge_neighbours(f, t) if j not in fan]
+    else:
+        while len(strip) < {"three": 1, "strip2": 2, "strip3": 3}[kind]:
+            strip.append([j for j in _edge_neighbours(f, strip[-1]) if j not in strip][0])
+        gone = sorted(set(j for s in strip for j in _edge_neighbours(f, s)) - set(strip))
+    scrap = f[strip]
+    f = np.delete(f, gone, 0)
+    return v, f, np.random.default_rng(7).integers(0, 256, (len(v), 3)).astype(np.uint8), scrap
+
+
+def _clean_after(v, f, V, F, holes_left=0):
+    """What closing must leave: nothing texturing chokes on, no bow-tie or flipped face made, the
+    holes closed, wound like the surface (outward)."""
+    from motiongrammetry import meshfix
+
+    before, after = meshfix.inspect(v, f), meshfix.inspect(V, F)
+    for k in ("pillow_faces", "duplicate_faces", "degenerate_faces", "nonmanifold_edges", "flipped_faces",
+              "flipped_edges"):
+        assert after[k] == 0, (k, after[k])
+    assert after["bowtie_vertices"] <= before["bowtie_vertices"]
+    assert len(boundary_loops(F)) == holes_left and after["holes"] == holes_left
+    if not holes_left:
+        assert after["bowtie_vertices"] == 0 and after["open_edges"] == 0
+        ok, _ = _closed(V, F)
+        assert ok
+
+
+@pytest.mark.parametrize("kind", ["three", "two", "strip2", "strip3"])
+def test_close_all_holes_round_a_face_left_between_them_makes_no_pillow(kind):
+    """#47's known gap: a face left between holes with all three edges open was reported as a hole
+    of its own (its own rim) and got its mirror as a lid: a pillow, which crashes texturing. Now the
+    scrap goes, the hole round it gets one lid, and that's the only hole counted."""
+    v, f, c, scrap = _lone(kind)
+    loops = boundary_loops(f)
+    assert len(loops) == 2, "the gap round the scrap, and the scrap's own rim"
+    V, F, C, info = cap(v, f, c)
+    _clean_after(v, f, V, F)
+    assert info == {"capped": 1, "removed_scraps": len(scrap)}
+    assert len(C) == len(V) and C.dtype == np.uint8
+    # a second Close all holes finds nothing to do
+    V2, F2, C2, info2 = cap(V, F, C)
+    assert info2 == {"capped": 0} and np.array_equal(F2, F) and np.array_equal(V2, V)
+
+
+@pytest.mark.parametrize("kind", ["three", "two", "strip2", "strip3"])
+def test_cap_seeded_on_a_scraps_corner_closes_the_hole_round_it(kind):
+    """The Cut stroke's cap (seeds): a seed on a corner the scrap shares with the hole closes that
+    hole and the scrap goes. A seed on a corner only the scrap has (its own rim, no hole) changes
+    nothing: no pillow, no undo step (capped 0)."""
+    v, f, c, scrap = _lone(kind)
+    other = [l for l in boundary_loops(f) if not set(l) <= set(scrap.ravel().tolist())][0]
+    shared = [int(x) for x in scrap.ravel() if x in other][0]
+    V, F, C, info = cap(v, f, c, seeds=np.array([shared]))
+    _clean_after(v, f, V, F)
+    assert info == {"capped": 1, "removed_scraps": len(scrap)}
+    alone = [int(x) for x in np.unique(scrap) if x not in other]
+    if alone:  # "two": the corner whose fan was dropped
+        V, F, C, info = cap(v, f, c, seeds=np.array(alone[:1]))
+        assert info == {"capped": 0} and np.array_equal(F, f) and np.array_equal(V, v)
+
+
+@pytest.mark.parametrize("kind", ["three", "two", "strip2", "strip3"])
+def test_close_loops_round_a_scrap_gives_no_lid_to_its_own_rim(kind):
+    from motiongrammetry.meshops import close_loops
+
+    v, f, c, scrap = _lone(kind)
+    V, F, C = close_loops(v, f, c, boundary_loops(f))
+    _clean_after(v, f, V, F)
+    # the faces kept come first, in order, then the lid
+    keep = f[[tuple(sorted(x)) not in {tuple(sorted(s)) for s in scrap.tolist()} for x in f.tolist()]]
+    assert np.array_equal(F[:len(keep)], keep) and len(F) > len(keep)
+    assert np.array_equal(V[:len(v)], v) and np.array_equal(C[:len(v)], c)
+    # closing again: no loop left, nothing added
+    V2, F2, C2 = close_loops(V, F, C, boundary_loops(F))
+    assert np.array_equal(F2, F) and np.array_equal(V2, V)
+
+
+@pytest.mark.parametrize("kind", ["three", "two", "strip2", "strip3"])
+def test_sanitize_close_holes_round_a_scrap(kind):
+    """Sanitize mesh → Close holes alone (Fix manifold, which would take the scrap out first, off)."""
+    from motiongrammetry import meshfix
+
+    v, f, c, scrap = _lone(kind)
+    V, F, C, info = meshfix.sanitize(v, f, c, ["holes"], hole_size=0.5)
+    _clean_after(v, f, V, F)
+    s = info["steps"][0]
+    assert (s["closed_holes"], s["left_open"], s["removed_scraps"]) == (1, 0, len(scrap))
+    assert "removed_flaps" not in s
+    assert s["added_faces"] == len(F) - len(f) + len(scrap) > 0
+    assert info["after"]["pillow_faces"] == 0 and info["after"]["holes"] == 0
+    # and running it again finds nothing more to do
+    assert meshfix.sanitize(V, F, C, ["holes"], hole_size=0.5)[3]["unchanged"]
+    # a size that takes only the scrap's small rim, not the hole round it: no hole closed, nothing
+    # changed (before, the scrap was deleted and reported as a closed hole with a flap removed)
+    small = meshfix.inspect(v, f)["size"] * 0.1
+    _, F3, _, s3 = meshfix.STEPS["holes"](v, f, c, hole_size=0.1)
+    assert sum(np.linalg.norm(v[a] - v[b]) for a, b in zip(scrap[0], np.roll(scrap[0], -1))) < small
+    assert s3 == {"closed_holes": 0, "left_open": 1} and np.array_equal(F3, f)
+
+
+def test_a_loose_face_is_no_hole_and_is_left_alone():
+    """A face on its own (meshfix.test_mesh's stray face through the surface) used to be capped with
+    its mirror. It is no hole: Close all holes leaves it, closes the real hole, and counts one."""
+    from motiongrammetry import meshfix
+
+    v, f, c = _holed(30, lambda p: p[:, 2] > 0.9)
+    n = len(v)
+    v = np.concatenate([v, [[0.0, -1.2, -0.02], [0.02, -0.8, 0.02], [-0.02, -0.8, 0.02]]])
+    c = np.concatenate([c, np.full((3, 3), 50, np.uint8)])
+    f = np.concatenate([f, [[n, n + 1, n + 2]]])
+    V, F, C, info = cap(v, f, c)  # cap renumbers (drops the vertices no face uses)
+    assert info == {"capped": 1}
+    assert any(np.array_equal(V[t], v[n:]) for t in F)
+    r = meshfix.inspect(V, F)
+    assert (r["pillow_faces"], r["nonmanifold_edges"], len(boundary_loops(F))) == (0, 0, 1)
+    V2, F2, _, s = meshfix.STEPS["holes"](v, f, c, hole_size=5.0)
+    assert (s["closed_holes"], s["left_open"]) == (1, 0) and "removed_flaps" not in s
+    assert [n, n + 1, n + 2] in F2.tolist() and meshfix.inspect(V2, F2)["pillow_faces"] == 0
+
+
+def _ordinary():
+    """Holes with no scrap: a round one, two side by side, a crescent, holes touching at a vertex,
+    the flap folded over a hole, test_mesh after its other fixes, a figure-of-eight rim (soap film)
+    next to a star."""
+    from motiongrammetry import meshfix
+    import test_meshfix
+
+    out = {"round": _holed(30, lambda p: p[:, 2] > 0.9),
+           "side by side": _holed(40, lambda p: np.linalg.norm(p - [1, 0, 0], axis=1) < 0.2,
+                                  lambda p: np.linalg.norm(p - [0.85, 0.5, 0], axis=1) < 0.2),
+           "crescent": _holed(40, _crescent), "flap": test_meshfix._flap_over_hole()}
+    g = 6
+    v = np.array([[x, y, 0.0] for y in range(g) for x in range(g)], float)
+    cells = [(x, y) for y in range(g - 1) for x in range(g - 1) if (x, y) not in {(2, 2), (3, 3)}]
+    f = np.array([t for x, y in cells for t in ([y * g + x, y * g + x + 1, (y + 1) * g + x + 1],
+                                                 [y * g + x, (y + 1) * g + x + 1, (y + 1) * g + x])], np.int64)
+    out["touching"] = (v, f, np.full((len(v), 3), 90, np.uint8))
+    v, f, c = meshfix.test_mesh(4000)
+    for fx in ("duplicates", "manifold", "pieces", "orient"):
+        v, f, c, _ = meshfix.STEPS[fx](v, f, c)
+    out["test_mesh fixed"] = (v, f, c)
+    v1, f1, c1 = _figure_eight_band()
+    v2, f2, c2 = _ring_mesh(lambda t: np.where(np.arange(len(t)) % 2 == 0, 1.0, 0.35), 80)
+    out["soap film"] = (np.concatenate([v1, v2 + 10]), np.concatenate([f1, f2 + len(v1)]), np.concatenate([c1, c2]))
+    return out
+
+
+def test_ordinary_holes_close_exactly_as_without_the_scrap_check(monkeypatch):
+    """Where there is no scrap, cap, close_loops and Sanitize's Close holes give the very same mesh
+    and info as with the scrap check switched off (the code before it)."""
+    from motiongrammetry import meshfix, meshops
+
+    cases = _ordinary()
+    for name, (v, f, c) in cases.items():
+        loops = boundary_loops(f)
+        assert len(meshops._scraps(f, loops, len(v))[0]) == 0, name
+    real = meshops._scraps
+
+    def run_all():
+        out = {}
+        for name, (v, f, c) in cases.items():
+            loops = boundary_loops(f)
+            out[name] = [cap(v, f, c), cap(v, f, c, seeds=np.array([loops[0][0]])),
+                         meshops.close_loops(v, f, c, loops), meshfix.STEPS["holes"](v, f, c, hole_size=5.0)]
+        return out
+
+    now = run_all()
+    none = np.zeros(0, np.int64)
+    monkeypatch.setattr(meshops, "_scraps", lambda *a: (none, none, none))
+    off = run_all()
+    monkeypatch.setattr(meshops, "_scraps", real)
+    for name in cases:
+        for a, b in zip(now[name], off[name]):
+            for x, y in zip(a, b):
+                assert (np.array_equal(x, y) if isinstance(x, np.ndarray) else x == y), name
+
+
+def test_ordinary_holes_keep_their_counts_and_results():
+    """The same cases asserted directly (these hold on the code before the scrap check too)."""
+    from motiongrammetry import meshfix
+
+    cases = _ordinary()
+    for name, (v, f, c) in cases.items():
+        V, F, C, info = cap(v, f, c)
+        assert info == {"capped": len(boundary_loops(f))} and not boundary_loops(F), name
+        r = meshfix.inspect(V, F)
+        # not "flap" (cap lids over the flap: a pillow, as before; Sanitize cancels it), nor the flat
+        # sheet and the bands, whose outer rim is capped too (the lid lies on the sheet)
+        if name in ("round", "side by side", "crescent", "test_mesh fixed"):
+            assert (r["pillow_faces"], r["nonmanifold_edges"], r["flipped_faces"]) == (0, 0, 0), name
+    v, f, c = compact(*cases["side by side"])
+    V, F, C, info = cap(v, f, c)
+    assert info == {"capped": 2} and np.array_equal(F[:len(f)], f) and not boundary_loops(F)
+    v, f, c = cases["flap"]
+    assert cap(v, f, c)[3] == {"capped": 1}
+    s = meshfix.STEPS["holes"](v, f, c)[3]
+    assert s["closed_holes"] == 1 and s["removed_flaps"] == 1 and "removed_scraps" not in s
+    v, f, c = cases["touching"]
+    assert cap(v, f, c)[3] == {"capped": 3}
+    v, f, c = cases["test_mesh fixed"]
+    s = meshfix.STEPS["holes"](v, f, c, hole_size=5.0)[3]
+    assert s == {"closed_holes": 2, "left_open": 0, "added_faces": s["added_faces"]} and s["added_faces"] > 0
