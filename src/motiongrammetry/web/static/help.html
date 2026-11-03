@@ -326,9 +326,10 @@ how fine the new mesh is; holes update as you cut and fill.</p>
 </table>
 <p><b>Adaptive detail</b> (a tick box under the brush): when the mesh is too coarse to shape, each dab first adds vertices
 around itself, up to the <b>Density</b> below it, and splits the triangles beside them too, so no crack opens. The density is a
-factor of the scan as the pipeline made it: <b>×2</b> (the default) is twice its vertices, <b>×4</b> four times with edges half as
-long, up to <b>×8</b>. It doesn't depend on the zoom or the brush size, and brushing an area again at the same factor adds
-nothing more: coarser spots are brought up to it, finer ones are left alone. It works with Draw, Dig in, Inflate, Deflate,
+factor of the scan as the pipeline made it, where you brush: <b>×2</b> (the default) is twice the vertices it had there,
+<b>×4</b> four times with edges half as long, up to <b>×8</b>. A part the scan left coarse (often the top of a head) gets the same
+factor of its own density, not of the rest of the scan's. It doesn't depend on the zoom or the brush size, and brushing an
+area again at the same factor adds nothing more. It works with Draw, Dig in, Inflate, Deflate,
 Smooth, Flatten and Pinch, on the surface under the brush only (not the other side of a thin part). One stroke adds at most
 50,000 vertices and says so when it stops; brush again to add more. A stroke and the vertices it added undo together.
 <b>Decimate</b> uses the same control the other way (÷).</p>
