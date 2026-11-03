@@ -366,8 +366,8 @@ def export_glb(src: Path, dst: Path, transform: np.ndarray | None = None) -> Pat
 def boundary_loops(faces: np.ndarray) -> list[list[int]]:
     """Ordered loops of open edges, each following its faces' winding (rim half-edge a -> b).
     From each open edge the next is found by turning around its end vertex through that vertex's
-    own fan of faces, so a vertex where two openings touch (a cut that reached another hole) is
-    passed through correctly instead of losing both loops."""
+    own fan of faces (however many it has), so a vertex where two openings touch (a cut that reached
+    another hole) is passed through correctly instead of losing both loops."""
     F = len(faces)
     if not F:
         return []
@@ -380,24 +380,47 @@ def boundary_loops(faces: np.ndarray) -> list[list[int]]:
     pos = np.minimum(np.searchsorted(key[order], he[:, 1] * n + he[:, 0]), len(key) - 1)
     twin = np.where(key[order][pos] == he[:, 1] * n + he[:, 0], order[pos], -1)
     is_open = twin < 0
+    opens = np.flatnonzero(is_open)
 
-    def following(k):  # the open half-edge leaving the end of open half-edge k
-        for _ in range(64):
-            k = ((k // F + 1) % 3) * F + k % F   # same face, the edge leaving that vertex
-            if is_open[k]:
-                return k
-            k = twin[k]                          # across it, into the next face of the fan
-        return -1
+    # following[i]: the open half-edge (by its position in opens) leaving the end vertex b of open
+    # half-edge opens[i], found by turning through b's fan: in the same face, the edge leaving b; if
+    # that edge is shared, across it into the next face. All open half-edges turn together, one face
+    # per step, for a few steps; the walks still going are round busy vertices (any valence) and
+    # finish by pointer jumping over all the half-edges into those vertices, which doubles the steps
+    # covered each pass. A walk that never meets an open edge goes round a fan with none (only on
+    # broken meshes) and gets -1.
+    following = np.full(len(opens), -1, np.int64)
+    src, k = np.arange(len(opens)), opens
+    for _ in range(16):
+        nx = ((k // F + 1) % 3) * F + k % F      # same face, the edge leaving that vertex
+        done = is_open[nx]
+        following[src[done]] = np.searchsorted(opens, nx[done])
+        src, k = src[~done], twin[nx[~done]]     # across it, into the next face of the fan
+        if not len(k):
+            break
+    if len(k):
+        busy = np.zeros(n, bool)
+        busy[he[k, 1]] = True
+        S = np.flatnonzero(busy[he[:, 1]])       # half-edges into a busy vertex (sorted)
+        nx = ((S // F + 1) % 3) * F + S % F
+        res = np.where(is_open[nx], nx, -1)      # the open edge each one reaches, once known
+        jump = np.searchsorted(S, np.where(is_open[nx], S, twin[nx]))  # one face on (stays put once found)
+        for _ in range(len(S).bit_length() + 1):  # a walk is never longer than len(S) faces
+            res = np.where(res < 0, res[jump], res)
+            jump = jump[jump]
+        res = res[np.searchsorted(S, k)]
+        following[src] = np.where(res < 0, -1, np.searchsorted(opens, res))
 
-    loops, seen = [], np.zeros(len(he), bool)
-    for start in np.flatnonzero(is_open):
+    tails, following = he[opens, 0].tolist(), following.tolist()
+    loops, seen = [], [False] * len(opens)
+    for start in range(len(opens)):
         if seen[start]:
             continue
-        loop, k = [], int(start)
+        loop, k = [], start
         while k >= 0 and not seen[k]:
             seen[k] = True
-            loop.append(int(he[k, 0]))
-            k = following(k)
+            loop.append(tails[k])
+            k = following[k]
         if k == start and len(loop) >= 3:
             loops.append(loop)
     # a loop through a shared vertex twice (a figure of eight: two openings touching) is two loops

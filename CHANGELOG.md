@@ -10,6 +10,12 @@ the image with that version, and the About page and `mg --version` show it.
 
 ## Unreleased
 
+- **Holes at a busy vertex are found and closed**: finding the holes gave up after turning
+  through 64 faces around one vertex. A hole whose rim passes a vertex with more faces than that
+  (the pole of a fine sphere has 80; a fan can have thousands) was not found, so Close holes,
+  Close all holes and Cap left it open. Now it works whatever the number of faces, at the same
+  speed (about 0.45 s on a 2M-face mesh). Holes it already found come out exactly the same.
+
 - **Hand-drawn seams and solidify skip NumPy's slow hash**: NumPy 2.3+ answers `np.isin` and a
   plain `np.unique` with a hash table, about 20x slower than sorting on large integer keys. #40
   fixed this for the mesh check. Now the texture layout's hand-drawn seams, the print solidify's
