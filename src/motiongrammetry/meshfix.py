@@ -473,20 +473,24 @@ def _fix_holes(v, f, c, hole_size: float = 0.1, **_):
     """Close every hole whose rim is at most ``hole_size`` of the model's size (its bounding box
     diagonal) long, with the editor's membrane lids (meshops.close_loops). A flap folded across a
     hole goes with its mirror in the lid (_cancel_flaps), or the next run would find a pillow there,
-    take it out and open the hole again."""
+    take it out and open the hole again. A scrap's own rim (meshops._scraps: a lone face left
+    between holes) is no hole: not counted, no lid; the scrap goes when a hole it touches closes."""
     from .clean import boundary_loops
-    from .meshops import close_loops
+    from .meshops import _close, _scraps
 
-    loops = boundary_loops(f)
+    every = boundary_loops(f)
+    own = _scraps(f, every, len(v))[2]
+    loops = [l for l in every if not isin_sorted(np.int64(l[0]) * len(v) + l[1], own)] if len(own) else every
     size = model_size(v, f)
     per = [float(np.linalg.norm(v[l] - v[np.roll(l, -1)], axis=1).sum()) for l in loops]
     sel = [l for l, p in zip(loops, per) if p <= hole_size * size]
     if not sel:
         return v, f, c, {"closed_holes": 0, "left_open": len(loops)}
-    V, F, C = close_loops(v, f, c, sel)
-    F, flaps = _cancel_flaps(F, len(f))
-    return V, F, C, {"closed_holes": len(sel), "left_open": len(loops) - len(sel), "added_faces": len(F) - len(f) + flaps,
-                     **({"removed_flaps": flaps} if flaps else {})}
+    V, F, C, closed, dropped = _close(v, f, c, sel, every)
+    F, flaps = _cancel_flaps(F, len(f) - dropped)
+    return V, F, C, {"closed_holes": closed, "left_open": len(loops) - len(sel),
+                     "added_faces": len(F) - len(f) + flaps + dropped,
+                     **({"removed_flaps": flaps} if flaps else {}), **({"removed_scraps": dropped} if dropped else {})}
 
 
 def _fix_unreferenced(v, f, c, **_):

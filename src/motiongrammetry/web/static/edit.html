@@ -1170,7 +1170,7 @@ function sculptEnd() {
     const seeds = new Set();
     for (let i = 0; i < st.tris.length; i += 4) seeds.add(st.tris[i + 1]).add(st.tris[i + 2]).add(st.tris[i + 3]);
     meshOp('cap', { seeds: [...seeds] }, 'capping the cut…')
-      .then((info) => info && flash(info.capped ? `capped the cut (${info.capped} opening${info.capped > 1 ? 's' : ''})` : 'the cut left no opening to cap'))
+      .then((info) => info && flash(info.capped ? `capped the cut (${info.capped} opening${info.capped > 1 ? 's' : ''})${scrapsSay(info)}` : 'the cut left no opening to cap'))
       .catch(fail);
   }
   updateStatus(); updateButtons();
@@ -1240,6 +1240,8 @@ async function saveSculpt() {
 }
 
 // Topology edits run on the server (meshops.py): mesh in, mesh out, nothing saved until Save.
+// A stray face left inside a hole (joined to the rest only at its corners) goes with the lid.
+const scrapsSay = (info) => (info.removed_scraps ? `, ${info.removed_scraps.toLocaleString()} stray face${info.removed_scraps > 1 ? 's' : ''} inside removed` : '');
 let busy = false;
 function setBusy(label) {
   busy = !!label;
@@ -1382,7 +1384,7 @@ async function applyPlane() {
   endPlane();
   try {
     const info = await meshOp('plane', { point: point.toArray(), normal: normal.toArray(), close }, 'cutting…');
-    if (info) flash(`cut away ${info.removed_faces.toLocaleString()} faces${info.capped ? `, closed with ${info.capped} flat cap${info.capped > 1 ? 's' : ''}` : ''}`);
+    if (info) flash(`cut away ${info.removed_faces.toLocaleString()} faces${info.capped ? `, closed with ${info.capped} flat cap${info.capped > 1 ? 's' : ''}${scrapsSay(info)}` : ''}`);
   } catch (e) { fail(e); }
 }
 $('planeApply').addEventListener('click', applyPlane);
@@ -1414,7 +1416,7 @@ $('clearFill').addEventListener('click', () => {
   pushUndo({ type: 'spheres', list: S.spheres.splice(0) }); updateSpheres(); updateButtons();
 });
 $('closeBtn').addEventListener('click', () => meshOp('cap', {}, 'closing holes…')
-  .then((info) => info && flash(info.capped ? `closed ${info.capped} hole${info.capped > 1 ? 's' : ''}` : 'no open holes')).catch(fail));
+  .then((info) => info && flash(info.capped ? `closed ${info.capped} hole${info.capped > 1 ? 's' : ''}${scrapsSay(info)}` : 'no open holes')).catch(fail));
 $('piecesBtn').addEventListener('click', () => meshOp('pieces', { keep: 0.1 }, 'removing loose pieces…')
   .then((info) => info && flash(info.removed_pieces ? `removed ${info.removed_pieces} piece${info.removed_pieces > 1 ? 's' : ''} (${info.removed_faces.toLocaleString()} faces)` : 'no loose pieces')).catch(fail));
 
@@ -1526,7 +1528,7 @@ const SAN_SAY = {
   pieces: (s) => s.removed_pieces ? `removed ${plural(s.removed_pieces, 'piece')} (${plural(s.removed_faces, 'face')})` : 'no piece that small',
   orient: (s) => (s.flipped_faces ? `turned ${plural(s.flipped_faces, 'face')} round` + (s.pieces_turned_out ? ` (${plural(s.pieces_turned_out, 'piece')} were inside out)` : '') : 'orientation already consistent')
     + (s.not_orientable ? ' · the mesh is not orientable (a Möbius-like twist): only whole pieces were turned' : '') + ' · normals recomputed',
-  holes: (s) => (s.closed_holes ? `closed ${plural(s.closed_holes, 'hole')} (${plural(s.added_faces, 'new face')}${s.removed_flaps ? `, ${plural(s.removed_flaps, 'folded flap')} across them removed` : ''})` : 'no hole that small') + (s.left_open ? `, ${nf(s.left_open)} larger left open` : ''),
+  holes: (s) => (s.closed_holes ? `closed ${plural(s.closed_holes, 'hole')} (${plural(s.added_faces, 'new face')}${s.removed_flaps ? `, ${plural(s.removed_flaps, 'folded flap')} across them removed` : ''}${s.removed_scraps ? `, ${plural(s.removed_scraps, 'stray face')} inside them removed` : ''})` : 'no hole that small') + (s.left_open ? `, ${nf(s.left_open)} larger left open` : ''),
   unreferenced: (s) => s.removed_vertices ? `removed ${plural(s.removed_vertices, 'vertex', 'vertices')}` : 'none',
   intersections: (s) => s.intersecting_faces ? `${plural(s.intersecting_faces, 'face')} cut through another (${plural(s.intersecting_pairs, 'pair')}): not changed; Merge with "whole mesh" rebuilds the surface without them` : 'no self-intersections',
 };
