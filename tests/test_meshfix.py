@@ -122,6 +122,32 @@ def test_holes_are_closed_up_to_the_size_given():
     assert i["closed_holes"] == 2 and len(boundary_loops(F)) == 0
 
 
+def _flap_over_hole():
+    """A sphere with a face missing and, on one of its edges, a flap folded across the gap: a face
+    whose two other edges are open, so the hole's rim runs around it (as in a scanned face)."""
+    v, f, c = _sphere(30)
+    p, q, r = f[100]
+    w = len(v)
+    mid = (v[p] + v[q]) / 2
+    tip = mid - (v[r] - mid)  # folded back flat over the face on the other side of pq
+    v = np.concatenate([v, [tip]])
+    f = np.concatenate([np.delete(f, 100, 0), [[p, q, w]]])
+    return v, f, np.full((len(v), 3), 150, np.uint8)
+
+
+def test_a_flap_across_a_hole_goes_and_the_hole_closes_in_one_run():
+    v, f, c = _flap_over_hole()
+    r = meshfix.inspect(v, f)
+    assert r["holes"] == 1 and r["pillow_faces"] == 0
+    V, F, C, info = meshfix.sanitize(v, f, c, list(meshfix.FIXES))
+    a = info["after"]
+    assert (a["holes"], a["open_edges"], a["pillow_faces"], a["nonmanifold_edges"], a["flipped_faces"]) == (0, 0, 0, 0, 0)
+    holes = next(s for s in info["steps"] if s["fix"] == "holes")
+    assert holes["removed_flaps"] == 1 and holes["added_faces"] >= 1
+    # and running it again finds nothing more to do
+    assert meshfix.sanitize(V, F, C, list(meshfix.FIXES))[3]["unchanged"]
+
+
 def test_orientation_is_made_consistent_and_outward():
     v, f, c = _sphere()
     g = f.copy()

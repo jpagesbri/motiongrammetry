@@ -392,9 +392,35 @@ def _fix_orient(v, f, c, **_):
                      **({} if consistent else {"not_orientable": True})}
 
 
+def _cancel_flaps(F: np.ndarray, n_old: int) -> tuple[np.ndarray, int]:
+    """Lid faces (F[n_old:]) that are an existing face wound the other way: a flap folded across
+    the hole, whose open edges the rim runs along. The lid covers the flap's spot, so the flap and
+    its mirror cancel: both go, and the rest of the lid closes the hole without a pillow or a third
+    face on the flap's edge. Returns the faces and how many flaps went."""
+    old, lid = F[:n_old], F[n_old:]
+    if not len(lid):
+        return F, 0
+    near = np.flatnonzero(np.isin(old, np.unique(lid)).all(1))  # old faces made of lid vertices only
+    seen = {tuple(sorted(x)): int(i) for i, x in zip(near, old[near].tolist())}
+    drop_old, drop_lid = [], []
+    for j, x in enumerate(lid.tolist()):
+        i = seen.get(tuple(sorted(x)))
+        if i is not None and _parity(old[i:i + 1])[0] != _parity(lid[j:j + 1])[0]:
+            drop_old.append(i)
+            drop_lid.append(n_old + j)
+            del seen[tuple(sorted(x))]
+    if not drop_old:
+        return F, 0
+    keep = np.ones(len(F), bool)
+    keep[drop_old + drop_lid] = False
+    return F[keep], len(drop_old)
+
+
 def _fix_holes(v, f, c, hole_size: float = 0.1, **_):
     """Close every hole whose rim is at most ``hole_size`` of the model's size (its bounding box
-    diagonal) long, with the editor's membrane lids (meshops.close_loops)."""
+    diagonal) long, with the editor's membrane lids (meshops.close_loops). A flap folded across a
+    hole goes with its mirror in the lid (_cancel_flaps), or the next run would find a pillow there,
+    take it out and open the hole again."""
     from .clean import boundary_loops
     from .meshops import close_loops
 
@@ -405,7 +431,9 @@ def _fix_holes(v, f, c, hole_size: float = 0.1, **_):
     if not sel:
         return v, f, c, {"closed_holes": 0, "left_open": len(loops)}
     V, F, C = close_loops(v, f, c, sel)
-    return V, F, C, {"closed_holes": len(sel), "left_open": len(loops) - len(sel), "added_faces": len(F) - len(f)}
+    F, flaps = _cancel_flaps(F, len(f))
+    return V, F, C, {"closed_holes": len(sel), "left_open": len(loops) - len(sel), "added_faces": len(F) - len(f) + flaps,
+                     **({"removed_flaps": flaps} if flaps else {})}
 
 
 def _fix_unreferenced(v, f, c, **_):

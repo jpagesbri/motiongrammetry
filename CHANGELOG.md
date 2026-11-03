@@ -29,6 +29,11 @@ the image with that version, and the About page and `mg --version` show it.
   removing degenerate and duplicate faces 1–2 s instead of 19 s, with the same results.
   NumPy 2.3+ finds distinct values with a hash table, which is much slower than sorting on these
   edge keys; the check now sorts, and compares faces by one number each instead of by rows.
+- **Sanitize mesh, Close holes**: a small "hole" whose rim ran around a flap of faces folded across
+  it was closed with a lid that repeated the flap the other way. That left pillows and an edge with
+  three faces, so the next run took them out, reopened the hole and closed it the same way again,
+  and the saved mesh came out with flipped faces. Now the flap goes with its mirror in the lid: one
+  run closes the hole, and running the fixes again changes nothing.
 - **Upload video…**: with no name typed it replaced the selected scan's video without asking, and
   with an existing scan's name typed it silently replaced *that* scan's video. Now it asks before
   replacing, refuses a name that is taken, and the server refuses a replacement nobody confirmed or

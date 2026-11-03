@@ -1508,7 +1508,7 @@ const SAN_SAY = {
   pieces: (s) => s.removed_pieces ? `removed ${plural(s.removed_pieces, 'piece')} (${plural(s.removed_faces, 'face')})` : 'no piece that small',
   orient: (s) => (s.flipped_faces ? `turned ${plural(s.flipped_faces, 'face')} round` + (s.pieces_turned_out ? ` (${plural(s.pieces_turned_out, 'piece')} were inside out)` : '') : 'orientation already consistent')
     + (s.not_orientable ? ' · the mesh is not orientable (a Möbius-like twist): only whole pieces were turned' : '') + ' · normals recomputed',
-  holes: (s) => (s.closed_holes ? `closed ${plural(s.closed_holes, 'hole')} (${plural(s.added_faces, 'new face')})` : 'no hole that small') + (s.left_open ? `, ${nf(s.left_open)} larger left open` : ''),
+  holes: (s) => (s.closed_holes ? `closed ${plural(s.closed_holes, 'hole')} (${plural(s.added_faces, 'new face')}${s.removed_flaps ? `, ${plural(s.removed_flaps, 'folded flap')} across them removed` : ''})` : 'no hole that small') + (s.left_open ? `, ${nf(s.left_open)} larger left open` : ''),
   unreferenced: (s) => s.removed_vertices ? `removed ${plural(s.removed_vertices, 'vertex', 'vertices')}` : 'none',
   intersections: (s) => s.intersecting_faces ? `${plural(s.intersecting_faces, 'face')} cut through another (${plural(s.intersecting_pairs, 'pair')}): not changed; Merge with "whole mesh" rebuilds the surface without them` : 'no self-intersections',
 };
