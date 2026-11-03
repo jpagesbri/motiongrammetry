@@ -371,6 +371,7 @@ class App:
             "raw_source": ws.mesh_producer(ws.raw_mesh()),
             "clean_source": self._clean_source(ws),
             "custom": self.custom_info(ws),
+            "scan_edge": self.scan_edge(ws),
             "preview_stale": self.preview_stale(ws),
             "orientation": self.orientation(ws),
             "version": self._version(ws),
@@ -732,6 +733,24 @@ class App:
             "layout_undo": bool(tex.exists() and (c / LAYOUT_PREVIOUS / "after").exists()
                                 and (c / LAYOUT_PREVIOUS / "after").read_text() == str(tex.stat().st_mtime_ns)),
         }
+
+    def scan_edge(self, ws: Workspace) -> float | None:
+        """Median edge length of the pipeline's clean mesh: the editor's unit of density (Adaptive
+        detail's ×k, Decimate's ÷k), so a factor means the same on a custom mesh as on the scan."""
+        src = ws.mesh / "mesh_clean.ply"
+        if not src.exists():
+            return None
+
+        def build(out: Path) -> None:
+            import trimesh
+
+            try:
+                e = trimesh.load(str(src), process=False, force="mesh").edges_unique_length
+                out.write_text(json.dumps(float(np.median(e)) if len(e) else None))
+            except Exception:  # not a mesh trimesh can read: the editor measures the loaded one
+                out.write_text("null")
+
+        return json.loads(self._cached(ws, "scan_edge.json", [src], build).read_text())
 
     @staticmethod
     def clean_input(ws: Workspace) -> Path | None:

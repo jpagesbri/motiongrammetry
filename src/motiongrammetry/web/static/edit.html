@@ -135,8 +135,8 @@
       </div>
       <div id="sculptOpts">
         <label class="check" title="ignore surface facing away from you, e.g. the back of a thin part"><input type="checkbox" id="frontOnly" checked> front-facing surface only</label>
-        <label class="check" title="add vertices where the brush works when the mesh is too coarse to shape: edges longer than the Detail size are split before each dab (Draw, Dig in, Inflate, Deflate, Smooth, Flatten, Pinch)"><input type="checkbox" id="adaptive"> Adaptive detail</label>
-        <div class="slider" title="the edge length Adaptive detail adds vertices down to, and Decimate merges up to, as a share of the brush radius: smaller is finer"><span>Detail</span><input type="range" id="adDetail" min="3" max="30" value="10"><span id="adDetailV"></span></div>
+        <label class="check" title="add vertices where the brush works, up to the Density below: edges longer than that are split before each dab (Draw, Dig in, Inflate, Deflate, Smooth, Flatten, Pinch). A stroke adds at most 50,000 vertices"><input type="checkbox" id="adaptive"> Adaptive detail</label>
+        <div class="slider" id="densityRow" title="how dense Adaptive detail makes the mesh, and Decimate how sparse, compared with the scan as it came out of the pipeline: ×4 is four times the vertices and edges half as long, ÷2 half the vertices. It doesn't depend on the zoom or the brush size, and brushing an area again at the same factor adds nothing more"><span>Density</span><input type="range" id="adDensity" min="1.5" max="8" step="0.1" value="2"><span id="adDensityV"></span></div>
         <label class="check" title="W cycles through them">Display <select id="dispMode"><option value="colours">Colours</option><option value="solid">Solid grey</option>
           <option value="wire">Wireframe</option><option value="solidwire">Solid + wires</option></select></label>
         <label class="check" title="edges that border a single triangle: holes, openings, cuts left open"><input type="checkbox" id="holesChk"> highlight holes</label>
@@ -218,6 +218,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { MeshBVH, acceleratedRaycast } from 'three-mesh-bvh';
+import * as SMesh from '/sculpt-mesh.js';  // the sculpt mesh's state and density operations
 
 const $ = (id) => document.getElementById(id);
 async function api(url, opts = {}) {
@@ -251,7 +252,7 @@ const TOOLS = {
     ['flatten', 'Flatten', 'F', 'press the surface onto its average plane'],
     ['pinch', 'Pinch', 'P', 'pull towards the brush centre: sharpens creases'],
     ['grab', 'Grab', 'G', 'drag a region of the surface'],
-    ['decimate', 'Decimate', 'E', 'simplify the mesh where you brush: edges shorter than the Detail size are merged when you let go (open edges of the mesh stay)'],
+    ['decimate', 'Decimate', 'E', 'simplify the mesh where you brush, down to the Density (÷): short edges are merged when you let go (open edges of the mesh stay)'],
     ['cut', 'Cut away', 'X', 'delete the surface under the brush (background bits, floaters); tick "cap the opening" to close it'],
     ['fill', 'Fill', 'B', 'add volume: brush over a hole or gap, then press Merge to make it part of the mesh'],
     ['restore', 'Restore', 'R', 'bring back raw-mesh surface that clean carved away (the raw mesh shows as an amber ghost)'],
@@ -300,6 +301,7 @@ function renderTools() {
   const t = TOOLS[mode].find((x) => x[0] === tool[mode]);
   $('toolHelp').textContent = t ? t[3] : '';
   $('help').innerHTML = HELP[mode];
+  showDensity();
 }
 function setTool(id) {
   tool[mode] = id; if (plane.n && id !== 'plane') endPlane();
@@ -629,7 +631,7 @@ async function loadSculpt() {
   if (c) for (let i = 0; i < nv; i++) for (let k = 0; k < 3; k++) {
     const v = c.getComponent(i, k); col8[i * 3 + k] = c.normalized || c.array instanceof Float32Array ? Math.round(v * 255) : v;
   }
-  const st = buildSculptState(new Float32Array(geo.attributes.position.array), col8, new Uint32Array(geo.index.array));
+  const st = SMesh.buildSculptState(new Float32Array(geo.attributes.position.array), col8, new Uint32Array(geo.index.array));
   // Both sides drawn, the back darkened: a folded triangle or an open cut shows as a dark patch,
   // not as a hole you see through.
   const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, metalness: 0, side: THREE.DoubleSide });
@@ -638,49 +640,27 @@ async function loadSculpt() {
       '#include <color_fragment>\n  if (!gl_FrontFacing) diffuseColor.rgb *= 0.3;');
   };
   S.mesh = new THREE.Mesh(st.geom, mat);
-  S.mesh.raycast = acceleratedRaycast;
+  S.mesh.raycast = SMesh.sculptRaycast(S);
   root.add(S.mesh);
   setDisplay(display);
   Object.assign(S, st);
   S.undo = []; S.redo = []; S.dirty = false; S.spheres = []; updateSpheres();
+  // the density unit: the pipeline's clean mesh (from the server), or the loaded mesh when unknown
+  S.e0 = wsState.scan_edge || SMesh.medianEdge(S.pos, S.idx);
 }
-// Everything that describes the current mesh. Topology edits (cap, plane cut, merge) build a new
-// state; undo swaps whole states back, BVH and all, so earlier stroke steps stay valid.
-const STATE_KEYS = ['geom', 'bvh', 'pos', 'nor', 'idx', 'col8', 'nv', 'nf', 'adjStart', 'adj', 'vfStart', 'vf', 'mark', 'fmark', 'touch'];
-function buildSculptState(pos, col8, index) {
-  const geom = new THREE.BufferGeometry();
-  geom.setAttribute('position', new THREE.BufferAttribute(pos, 3).setUsage(THREE.DynamicDrawUsage));
-  geom.setAttribute('color', new THREE.BufferAttribute(col8, 3, true));
-  geom.setIndex(new THREE.BufferAttribute(index, 1).setUsage(THREE.DynamicDrawUsage));
-  geom.computeVertexNormals();
-  geom.attributes.normal.setUsage(THREE.DynamicDrawUsage);
-  const bvh = new MeshBVH(geom, { maxLeafTris: 8 });  // reorders the index buffer: read it afterwards
-  geom.boundsTree = bvh;
-  const nv = pos.length / 3, idx = geom.index.array;
-  return { geom, bvh, pos, nor: geom.attributes.normal.array, idx, col8, nv, nf: idx.length / 3, ...adjacency(idx, nv),
-    mark: new Uint32Array(nv), fmark: new Uint32Array(idx.length / 3), touch: new Uint32Array(nv) };
-}
+// Everything that describes the current mesh (sculpt-mesh.js builds it). Topology edits (cap, plane
+// cut, merge) build a new state; undo swaps whole states back, BVHs and all, so earlier stroke steps
+// stay valid. States share BVH objects (Adaptive detail keeps the main one): applying one points them
+// at its arrays again and refits them.
+const STATE_KEYS = ['geom', 'bvh', 'extra', 'pos', 'nor', 'idx', 'col8', 'nv', 'nf', 'adjStart', 'adj', 'vfStart', 'vf', 'mark', 'fmark', 'touch'];
 const captureState = () => Object.fromEntries(STATE_KEYS.map((k) => [k, S[k]]));
 function applyState(st) {
   const old = S.geom;
   Object.assign(S, st);
   S.mesh.geometry = S.geom;
+  SMesh.bindTrees(S); SMesh.refitAll(S); S.bvhDirty = false;
   if (old && old !== S.geom) old.dispose();  // GPU copy only: it re-uploads if undo brings it back
   requestRender();
-}
-function adjacency(idx, nv) {
-  const nf = idx.length / 3;
-  const deg = new Uint32Array(nv + 1), fdeg = new Uint32Array(nv + 1);
-  for (let i = 0; i < idx.length; i++) { deg[idx[i] + 1] += 2; fdeg[idx[i] + 1] += 1; }
-  for (let i = 0; i < nv; i++) { deg[i + 1] += deg[i]; fdeg[i + 1] += fdeg[i]; }
-  const adj = new Uint32Array(deg[nv]), vf = new Uint32Array(fdeg[nv]);
-  const fa = deg.slice(0, nv), ff = fdeg.slice(0, nv);
-  for (let t = 0; t < nf; t++) {
-    const a = idx[t * 3], b = idx[t * 3 + 1], c = idx[t * 3 + 2];
-    adj[fa[a]++] = b; adj[fa[a]++] = c; adj[fa[b]++] = a; adj[fa[b]++] = c; adj[fa[c]++] = a; adj[fa[c]++] = b;
-    vf[ff[a]++] = t; vf[ff[b]++] = t; vf[ff[c]++] = t;
-  }
-  return { adjStart: deg, adj, vfStart: fdeg, vf };
 }
 
 const raycaster = new THREE.Raycaster();
@@ -696,27 +676,22 @@ function worldRadius(px, point, r) {
   return px / proj.pxPerUnit(r.h, camera.position.distanceTo(point));
 }
 
-const _sph = new THREE.Sphere(), _v = new THREE.Vector3();
+const _v = new THREE.Vector3();
 let region = [];  // vertex ids under the brush
 function gather(c, r, frontOnly, camLocal) {
   const { pos, nor, idx, mark } = S, r2 = r * r;
   const stamp = ++S.stamp; region = [];
-  _sph.set(c, r);
-  S.bvh.shapecast({
-    intersectsBounds: (box) => box.intersectsSphere(_sph),
-    intersectsRange: (off, count) => {
-      for (let t = off; t < off + count; t++) for (let k = 0; k < 3; k++) {
-        const v = idx[t * 3 + k];
-        if (mark[v] === stamp) continue;
-        mark[v] = stamp;
-        const dx = pos[v * 3] - c.x, dy = pos[v * 3 + 1] - c.y, dz = pos[v * 3 + 2] - c.z;
-        if (dx * dx + dy * dy + dz * dz > r2) continue;
-        if (frontOnly && nor[v * 3] * (camLocal.x - pos[v * 3]) + nor[v * 3 + 1] * (camLocal.y - pos[v * 3 + 1])
-            + nor[v * 3 + 2] * (camLocal.z - pos[v * 3 + 2]) < 0) continue;
-        region.push(v);
-      }
-      return false;
-    },
+  SMesh.eachFaceNear(S, c, r, (t) => {
+    for (let k = 0; k < 3; k++) {
+      const v = idx[t * 3 + k];
+      if (mark[v] === stamp) continue;
+      mark[v] = stamp;
+      const dx = pos[v * 3] - c.x, dy = pos[v * 3 + 1] - c.y, dz = pos[v * 3 + 2] - c.z;
+      if (dx * dx + dy * dy + dz * dz > r2) continue;
+      if (frontOnly && nor[v * 3] * (camLocal.x - pos[v * 3]) + nor[v * 3 + 1] * (camLocal.y - pos[v * 3 + 1])
+          + nor[v * 3 + 2] * (camLocal.z - pos[v * 3 + 2]) < 0) continue;
+      region.push(v);
+    }
   });
   return region;
 }
@@ -765,7 +740,7 @@ function flushGeometry() {
   dirtyLo = Infinity; dirtyHi = -1;
   S.bvhDirty = true;
   const now = performance.now();
-  if (now - S.lastRefit > 300) { S.bvh.refit(); S.bvhDirty = false; S.lastRefit = now; }
+  if (now - S.lastRefit > 300) { SMesh.refitAll(S); S.bvhDirty = false; S.lastRefit = now; }
   holes.moved = true;
 }
 
@@ -877,27 +852,20 @@ function swellDab(vs, w, step, sign) {
 }
 function cutDab(p, r) {
   const { pos, idx, nor } = S, r2 = r * r, st = S.stroke, front = $('frontOnly').checked;
-  _sph.set(p, r);
   let lo = Infinity, hi = -1;
-  S.bvh.shapecast({
-    intersectsBounds: (box) => box.intersectsSphere(_sph),
-    intersectsRange: (off, count) => {
-      for (let t = off; t < off + count; t++) {
-        const a = idx[t * 3], b = idx[t * 3 + 1], c = idx[t * 3 + 2];
-        if (a === b && b === c) continue;  // already cut
-        let inside = false;
-        for (const v of [a, b, c]) {
-          const dx = pos[v * 3] - p.x, dy = pos[v * 3 + 1] - p.y, dz = pos[v * 3 + 2] - p.z;
-          if (dx * dx + dy * dy + dz * dz <= r2 && (!front || nor[v * 3] * (camLocal.x - pos[v * 3])
-              + nor[v * 3 + 1] * (camLocal.y - pos[v * 3 + 1]) + nor[v * 3 + 2] * (camLocal.z - pos[v * 3 + 2]) >= 0)) { inside = true; break; }
-        }
-        if (!inside) continue;
-        st.tris.push(t, a, b, c);
-        idx[t * 3 + 1] = a; idx[t * 3 + 2] = a;  // degenerate: invisible, dropped on save
-        if (t < lo) lo = t; if (t > hi) hi = t;
-      }
-      return false;
-    },
+  SMesh.eachFaceNear(S, p, r, (t) => {
+    const a = idx[t * 3], b = idx[t * 3 + 1], c = idx[t * 3 + 2];
+    if (a === b && b === c) return;  // already cut
+    let inside = false;
+    for (const v of [a, b, c]) {
+      const dx = pos[v * 3] - p.x, dy = pos[v * 3 + 1] - p.y, dz = pos[v * 3 + 2] - p.z;
+      if (dx * dx + dy * dy + dz * dz <= r2 && (!front || nor[v * 3] * (camLocal.x - pos[v * 3])
+          + nor[v * 3 + 1] * (camLocal.y - pos[v * 3 + 1]) + nor[v * 3 + 2] * (camLocal.z - pos[v * 3 + 2]) >= 0)) { inside = true; break; }
+    }
+    if (!inside) return;
+    st.tris.push(t, a, b, c);
+    idx[t * 3 + 1] = a; idx[t * 3 + 2] = a;  // degenerate: invisible, dropped on save
+    if (t < lo) lo = t; if (t > hi) hi = t;
   });
   if (hi >= 0) { const ia = S.geom.index; ia.clearUpdateRanges(); ia.addUpdateRange(lo * 3, (hi - lo + 1) * 3); ia.needsUpdate = true; S.bvhDirty = true; }
 }
@@ -911,219 +879,37 @@ function grabMove(delta) {
   updateNormals(g.verts);
 }
 
-// ---- adaptive detail and decimate: the mesh's density changed where the brush works. Adaptive
-// detail splits edges longer than the detail size (a share of the brush radius) around a dab
-// before it moves anything, so a brush always has vertices to shape; Decimate merges edges
-// shorter than it. Both build a new mesh state (BVH, adjacency). Adaptive detail keeps every
-// vertex id (new vertices are appended), so a stroke's moves before it still undo.
+// ---- adaptive detail and decimate (sculpt-mesh.js): the mesh's density changed where the brush
+// works, as a factor of the scan's own density (S.e0, its median edge). Adaptive detail splits the
+// edges longer than its target around a dab before it moves anything, so a brush always has vertices
+// to shape; Decimate merges the short ones when you let go. Adaptive detail keeps every vertex id (new
+// vertices are appended), so a stroke's moves before it still undo.
 const ADAPTIVE = new Set(['draw', 'dig', 'inflate', 'deflate', 'smooth', 'flatten', 'pinch']);
-const detailLen = (r) => r * Number($('adDetail').value) / 100;
-$('adDetail').addEventListener('input', () => { $('adDetailV').textContent = $('adDetail').value + '%'; });
-$('adDetailV').textContent = $('adDetail').value + '%';
-const _ta = new THREE.Vector3(), _tb = new THREE.Vector3(), _tc = new THREE.Vector3(), _tp = new THREE.Vector3(), _tri = new THREE.Triangle();
-function touches(p, f, t, c, r) {  // does triangle t (of index f, positions p) come within r of c?
-  _ta.fromArray(p, f[t * 3] * 3); _tb.fromArray(p, f[t * 3 + 1] * 3); _tc.fromArray(p, f[t * 3 + 2] * 3);
-  return _tri.set(_ta, _tb, _tc).closestPointToPoint(c, _tp).distanceToSquared(c) <= r * r;
+const STROKE_BUDGET = 50000;  // vertices Adaptive detail may add in one stroke
+const density = () => Number($('adDensity').value);
+function showDensity() {  // the same control: ×k for Adaptive detail, ÷k while Decimate is the tool
+  const k = density().toFixed(1).replace(/\.0$/, '');
+  $('adDensityV').textContent = (mode === 'sculpt' && tool.sculpt === 'decimate' ? '÷' : '×') + k;
+  $('densityRow').style.opacity = $('adaptive').checked || tool.sculpt === 'decimate' ? 1 : 0.45;
 }
-function facesNear(c, r) {  // triangles that come within r of c (not the ones a cut emptied)
-  const { pos, idx } = S, out = [];
-  _sph.set(c, r);
-  S.bvh.shapecast({
-    intersectsBounds: (box) => box.intersectsSphere(_sph),
-    intersectsRange: (off, count) => {
-      for (let t = off; t < off + count; t++) {
-        if (idx[t * 3] === idx[t * 3 + 1] && idx[t * 3 + 1] === idx[t * 3 + 2]) continue;
-        if (touches(pos, idx, t, c, r)) out.push(t);
-      }
-      return false;
-    },
-  });
-  return out;
-}
-function longest(p, f, t) {  // [squared length, a, b] of triangle t's longest edge
-  let best = [-1, 0, 0];
-  for (let k = 0; k < 3; k++) {
-    const a = f[t * 3 + k], b = f[t * 3 + (k + 1) % 3];
-    const d = (p[a * 3] - p[b * 3]) ** 2 + (p[a * 3 + 1] - p[b * 3 + 1]) ** 2 + (p[a * 3 + 2] - p[b * 3 + 2]) ** 2;
-    if (d > best[0]) best = [d, a, b];
-  }
-  return best;
-}
-function needsDetail(c, r, L) {
-  const lim2 = (4 / 3 * L) ** 2;
-  return facesNear(c, r).some((t) => longest(S.pos, S.idx, t)[0] > lim2);
-}
-class Grow {  // a typed array with room to append
-  constructor(src, extra) { this.a = new src.constructor(src.length + extra); this.a.set(src); this.n = src.length; }
-  room(k) { if (this.n + k > this.a.length) { const b = new this.a.constructor(Math.ceil((this.n + k) * 1.5)); b.set(this.a.subarray(0, this.n)); this.a = b; } }
-  push(...xs) { this.room(xs.length); for (const x of xs) this.a[this.n++] = x; }
-  out() { return this.a.slice(0, this.n); }
-}
-// Longest-edge bisection: every triangle within R of c whose longest edge is longer than 4/3 L has
-// that edge split at its middle, round after round, until none is. A triangle with 1, 2 or 3 split
-// edges becomes 2, 3 or 4 (its first piece keeps its slot), and the triangles across a split edge
-// are split too, so no crack opens. Returns the new arrays, or null.
-function refine(c, R, L) {
-  const nv0 = S.nv, { vfStart, vf } = S, lim2 = (4 / 3 * L) ** 2;
-  const P = new Grow(S.pos, 3 * 4096), C = new Grow(S.col8, 3 * 4096), F = new Grow(S.idx, 3 * 8192);
-  const KEY = 2 ** 24, key = (a, b) => (a < b ? a * KEY + b : b * KEY + a);
-  let active = facesNear(c, R), added = 0;
-  for (let pass = 0; pass < 40 && active.length; pass++) {
-    const mid = new Map(), ends = [];
-    const p = P.a, f = F.a;
-    for (const t of active) {
-      const [d, a, b] = longest(p, f, t);
-      if (d <= lim2 || !touches(p, f, t, c, R)) continue;
-      const ka = key(a, b);
-      if (mid.has(ka)) continue;
-      const mx = (p[a * 3] + p[b * 3]) / 2, my = (p[a * 3 + 1] + p[b * 3 + 1]) / 2, mz = (p[a * 3 + 2] + p[b * 3 + 2]) / 2;
-      const m = P.n / 3;
-      P.push(mx, my, mz);
-      const cc = C.a;
-      C.push((cc[a * 3] + cc[b * 3]) >> 1, (cc[a * 3 + 1] + cc[b * 3 + 1]) >> 1, (cc[a * 3 + 2] + cc[b * 3 + 2]) >> 1);
-      mid.set(ka, m); ends.push(a, b);
-    }
-    if (!mid.size) break;
-    if (P.n / 3 - nv0 > 400000) break;  // a safety stop: far more than a brush ever needs
-    added += mid.size;
-    // the triangles to split: the active ones, and the original ones across a split edge
-    const todo = new Set(active);
-    for (let i = 0; i < ends.length; i += 2) {
-      const a = ends[i], b = ends[i + 1];
-      if (a >= nv0 || b >= nv0) continue;
-      for (let j = vfStart[a]; j < vfStart[a + 1]; j++) {
-        const t = vf[j], ff = F.a;
-        const has = (v) => ff[t * 3] === v || ff[t * 3 + 1] === v || ff[t * 3 + 2] === v;
-        if (has(a) && has(b)) todo.add(t);
-      }
-    }
-    const next = [];
-    for (const t of todo) {
-      const ff = F.a, a = ff[t * 3], b = ff[t * 3 + 1], cc = ff[t * 3 + 2];
-      const ab = mid.get(key(a, b)), bc = mid.get(key(b, cc)), ca = mid.get(key(cc, a));
-      const n = (ab !== undefined) + (bc !== undefined) + (ca !== undefined);
-      if (!n) continue;  // not split: it did not qualify, and it will not later (it has not changed)
-      let tris;
-      if (n === 3) tris = [a, ab, ca, ab, b, bc, ca, bc, cc, ab, bc, ca];
-      else {
-        // turn the triangle (x, y, z) so its split edges come first: x-y (and y-z)
-        const rot = n === 1 ? (ab !== undefined ? 0 : bc !== undefined ? 1 : 2)
-          : (ab !== undefined && bc !== undefined ? 0 : bc !== undefined && ca !== undefined ? 1 : 2);
-        const v = [a, b, cc], m = [ab, bc, ca];
-        const x = v[rot], y = v[(rot + 1) % 3], z = v[(rot + 2) % 3], mxy = m[rot], myz = m[(rot + 1) % 3];
-        tris = n === 1 ? [x, mxy, z, mxy, y, z] : [y, myz, mxy, x, mxy, myz, x, myz, z];
-      }
-      F.a[t * 3] = tris[0]; F.a[t * 3 + 1] = tris[1]; F.a[t * 3 + 2] = tris[2];
-      next.push(t);
-      for (let i = 3; i < tris.length; i += 3) { next.push(F.n / 3); F.push(tris[i], tris[i + 1], tris[i + 2]); }
-    }
-    active = next;
-  }
-  return added ? { pos: P.out(), col8: C.out(), idx: F.out(), added } : null;
-}
+$('adDensity').addEventListener('input', showDensity);
+$('adaptive').addEventListener('change', showDensity);
 // Before a dab with Adaptive detail on: the long edges around it (twice the brush) are split, once.
 // The first time in a stroke, the state before it is kept: undoing the stroke goes back to it.
 function adaptiveDetail(c, r) {
   const st = S.stroke;
-  if (!$('adaptive').checked || !ADAPTIVE.has(st.t)) return;
-  const L = detailLen(r);
-  if (!needsDetail(c, r, L)) return;
-  const next = refine(c, r * 2, L);
+  if (!$('adaptive').checked || !ADAPTIVE.has(st.t) || st.capped) return;
+  const lim = SMesh.refineLength(S.e0, density());
+  if (!SMesh.needsDetail(S, c, r, lim)) return;
+  const next = SMesh.refine(S, c, r * 2, lim, STROKE_BUDGET - (st.added || 0));
+  if (next?.capped) st.capped = true;
   if (!next) return;
   if (!st.preFull) {
     st.preFull = captureState();
     st.seg1 = { type: 'stroke', verts: Uint32Array.from(st.verts), old: Float32Array.from(st.old), tris: Uint32Array.from(st.tris) };
   }
-  applyState(buildSculptState(next.pos, next.col8, next.idx));
+  applyState(SMesh.grownState(S, next));
   st.added = (st.added || 0) + next.added;
-}
-// Merge the edges shorter than 4/5 of the detail size inside the dabs, shortest first. A merge is
-// skipped when it would fold a triangle or pinch the surface (the two ends share more neighbours
-// than the triangles on the edge); vertices on the mesh's open edges and on the dabs' border stay
-// put, so nothing outside changes. Returns the compacted arrays and face counts, or null.
-function decimate(dabs) {
-  const { pos, col8, idx, vfStart, vf } = S, nf0 = idx.length / 3;
-  const P = pos.slice(), F = idx.slice(), dead = new Uint8Array(nf0);
-  const inside = new Set();
-  for (const [x, y, z, r] of dabs) for (const t of facesNear(new THREE.Vector3(x, y, z), r)) inside.add(t);
-  if (!inside.size) return null;
-  const faces = new Map();  // vertex -> Set of its live faces (only the vertices involved)
-  const facesOf = (v) => {
-    let s = faces.get(v);
-    if (!s) { s = new Set(); for (let j = vfStart[v]; j < vfStart[v + 1]; j++) { const t = vf[j]; if (!dead[t] && (F[t * 3] === v || F[t * 3 + 1] === v || F[t * 3 + 2] === v)) s.add(t); } faces.set(v, s); }
-    return s;
-  };
-  const ring = (v) => { const n = new Set(); for (const t of facesOf(v)) for (let k = 0; k < 3; k++) if (F[t * 3 + k] !== v) n.add(F[t * 3 + k]); return n; };
-  const locked = new Map();
-  const isLocked = (v) => {
-    if (locked.has(v)) return locked.get(v);
-    let lock = false;
-    for (const t of facesOf(v)) if (!inside.has(t)) { lock = true; break; }  // on the dabs' border
-    if (!lock) {  // on an open edge: an edge of v with one face
-      const count = new Map();
-      for (const t of facesOf(v)) for (let k = 0; k < 3; k++) { const u = F[t * 3 + k]; if (u !== v) count.set(u, (count.get(u) || 0) + 1); }
-      for (const n of count.values()) if (n === 1) { lock = true; break; }
-    }
-    locked.set(v, lock);
-    return lock;
-  };
-  const len2 = (a, b) => (P[a * 3] - P[b * 3]) ** 2 + (P[a * 3 + 1] - P[b * 3 + 1]) ** 2 + (P[a * 3 + 2] - P[b * 3 + 2]) ** 2;
-  const maxR = Math.max(...dabs.map((d) => d[3])), lim2 = (0.8 * detailLen(maxR)) ** 2;
-  const normal = (t, swapFrom = -1, swapTo = -1, at = null) => {
-    const v = [0, 1, 2].map((k) => F[t * 3 + k]), q = v.map((u) => (u === swapFrom ? at : [P[u * 3], P[u * 3 + 1], P[u * 3 + 2]]));
-    const ux = q[1][0] - q[0][0], uy = q[1][1] - q[0][1], uz = q[1][2] - q[0][2], wx = q[2][0] - q[0][0], wy = q[2][1] - q[0][1], wz = q[2][2] - q[0][2];
-    return [uy * wz - uz * wy, uz * wx - ux * wz, ux * wy - uy * wx];
-  };
-  let merged = 0;
-  for (let pass = 0; pass < 8; pass++) {
-    const edges = [];
-    for (const t of inside) if (!dead[t]) for (let k = 0; k < 3; k++) {
-      const a = F[t * 3 + k], b = F[t * 3 + (k + 1) % 3];
-      if (a < b) { const d = len2(a, b); if (d < lim2) edges.push([d, a, b]); }
-    }
-    if (!edges.length) break;
-    edges.sort((x, y) => x[0] - y[0]);
-    let did = 0;
-    for (const [, a0, b0] of edges) {
-      let a = a0, b = b0;  // b goes, a stays (moved to the middle unless one end is locked)
-      const la = isLocked(a), lb = isLocked(b);
-      if (la && lb) continue;
-      if (lb) [a, b] = [b, a];
-      const fa = facesOf(a), fb = facesOf(b);
-      if (!fa.size || !fb.size || len2(a, b) >= lim2) continue;
-      const shared = [...fb].filter((t) => fa.has(t));
-      if (!shared.length) continue;  // no longer an edge
-      const ra = ring(a), rb = ring(b), common = [...ra].filter((u) => rb.has(u));
-      if (common.length !== shared.length) continue;  // would pinch the surface
-      const at = la || lb ? [P[a * 3], P[a * 3 + 1], P[a * 3 + 2]]
-        : [(P[a * 3] + P[b * 3]) / 2, (P[a * 3 + 1] + P[b * 3 + 1]) / 2, (P[a * 3 + 2] + P[b * 3 + 2]) / 2];
-      let flips = false;
-      for (const t of [...fa, ...fb]) {
-        if (shared.includes(t)) continue;
-        const n0 = normal(t), moved = fb.has(t) ? normal(t, b, a, at) : normal(t, a, a, at);
-        if (n0[0] * moved[0] + n0[1] * moved[1] + n0[2] * moved[2] <= 0) { flips = true; break; }
-      }
-      if (flips) continue;
-      for (const t of shared) { dead[t] = 1; for (let k = 0; k < 3; k++) facesOf(F[t * 3 + k]).delete(t); }
-      for (const t of fb) { for (let k = 0; k < 3; k++) if (F[t * 3 + k] === b) F[t * 3 + k] = a; fa.add(t); }
-      fb.clear();
-      P[a * 3] = at[0]; P[a * 3 + 1] = at[1]; P[a * 3 + 2] = at[2];
-      for (const u of [a, ...ra]) locked.delete(u);
-      merged++; did++;
-    }
-    if (!did) break;
-  }
-  if (!merged) return null;
-  // compact: live faces, the vertices they use
-  const map = new Int32Array(S.nv).fill(-1);
-  let nv = 0, nf = 0;
-  for (let t = 0; t < nf0; t++) if (!dead[t] && !(F[t * 3] === F[t * 3 + 1] && F[t * 3 + 1] === F[t * 3 + 2]))
-    for (let k = 0; k < 3; k++) { const v = F[t * 3 + k]; if (map[v] < 0) map[v] = nv++; }
-  const np = new Float32Array(nv * 3), nc = new Uint8Array(nv * 3);
-  for (let v = 0; v < S.nv; v++) if (map[v] >= 0) { np.set(P.subarray(v * 3, v * 3 + 3), map[v] * 3); nc.set(col8.subarray(v * 3, v * 3 + 3), map[v] * 3); }
-  const ni = [];
-  for (let t = 0; t < nf0; t++) if (!dead[t] && !(F[t * 3] === F[t * 3 + 1] && F[t * 3 + 1] === F[t * 3 + 2])) { ni.push(map[F[t * 3]], map[F[t * 3 + 1]], map[F[t * 3 + 2]]); nf++; }
-  return { pos: np, col8: nc, idx: Uint32Array.from(ni), before: nf0, after: nf };
 }
 function decimateDab(at) {
   const hit = pick(at, [S.mesh]);
@@ -1245,14 +1031,14 @@ function sculptEnd() {
     return;
   }
   if (st.t === 'decimate') {
-    const next = st.dabs.length ? decimate(st.dabs) : null;
+    const next = st.dabs.length ? SMesh.decimate(S, st.dabs, SMesh.mergeLength(S.e0, density())) : null;
     ghost.dabs = []; updateGhostDabs();
     if (next) {
       pushUndo({ type: 'full', state: captureState(), spheres: S.spheres.slice() });
-      applyState(buildSculptState(next.pos, next.col8, next.idx));
+      applyState(SMesh.buildSculptState(next.pos, next.col8, next.idx));
       S.dirty = true; holes.moved = true;
       flash(`decimated: ${next.before.toLocaleString()} → ${next.after.toLocaleString()} faces`);
-    } else flash('nothing to merge there: the edges are already longer than the Detail size');
+    } else flash(`nothing to merge there: the mesh is already as sparse as ÷${density()} (or the edges are on its border)`);
     updateStatus(); updateButtons();
     return;
   }
@@ -1264,11 +1050,14 @@ function sculptEnd() {
       .catch(fail).finally(() => { ghost.dabs = []; updateGhostDabs(); });
     return;
   }
-  if (S.bvhDirty) { S.bvh.refit(); S.bvhDirty = false; }
+  if (S.bvhDirty) { SMesh.refitAll(S); S.bvhDirty = false; }
   if (st.preFull) {  // Adaptive detail added vertices: undo goes back to the mesh before, then the moves before that
     pushUndo({ type: 'group', entries: [{ type: 'full', state: st.preFull, spheres: S.spheres.slice() }, st.seg1] });
     S.dirty = true; holes.moved = true;
-    flash(`Adaptive detail added ${st.added.toLocaleString()} vertices under the stroke (${S.nf.toLocaleString()} faces now)`);
+    // the extra BVHs hold as many triangles as the main one: one BVH again (a short pause, here only)
+    if (SMesh.wantsRebuild(S)) applyState(SMesh.buildSculptState(S.pos.slice(), S.col8.slice(), S.idx.slice()));
+    flash(`Adaptive detail added ${st.added.toLocaleString()} vertices under the stroke (${S.nf.toLocaleString()} faces now)`
+      + (st.capped ? `: it stopped at ${STROKE_BUDGET.toLocaleString()}, the most one stroke adds. Brush again to add more` : ''));
     updateStatus(); updateButtons();
     return;
   }
@@ -1315,7 +1104,7 @@ function sculptSwap(entry) {  // apply an undo entry and return its inverse
   }
   if (entry.tris.length) { S.geom.index.clearUpdateRanges(); S.geom.index.needsUpdate = true; }
   updateNormals(entry.verts);
-  flushGeometry(); S.bvh.refit(); S.bvhDirty = false;
+  flushGeometry(); SMesh.refitAll(S); S.bvhDirty = false;
   requestRender();
   return { type: 'stroke', verts: entry.verts, old, tris };
 }
@@ -1370,7 +1159,7 @@ async function meshOp(kind, params, label) {
     if ((kind === 'cap' && !info.capped) || (kind === 'pieces' && !info.removed_pieces)) return info;  // nothing changed: no undo step
     const m = decodeMesh(await r.arrayBuffer());
     pushUndo({ type: 'full', state: captureState(), spheres: S.spheres.slice() });
-    applyState(buildSculptState(m.pos, m.col8, m.idx));
+    applyState(SMesh.buildSculptState(m.pos, m.col8, m.idx));
     S.dirty = true;
     return info;
   } finally { setBusy(null); updateStatus(); updateButtons(); }
