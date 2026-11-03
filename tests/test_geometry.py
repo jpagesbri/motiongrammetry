@@ -440,3 +440,155 @@ def test_on_open_edge_marks_closest_points_on_boundary_edges_only():
     assert 0 < got.sum() < (k < 3).sum(), "some points lie on open edges, most edges are shared"
     # a closed mesh has no open edges
     assert not _on_open_edge(np.asarray(m.triangles).astype(np.int64), tri % len(m.triangles), uv).any()
+
+
+# ---- boundary loops at vertices of any valence ------------------------------------------------
+def _cone_fan(k):
+    """A closed double cone: k faces round the top vertex 0 and k round the bottom vertex k + 1."""
+    ring = 1 + np.arange(k)
+    nxt = 1 + (np.arange(k) + 1) % k
+    f = np.concatenate([np.stack([np.zeros(k, int), ring, nxt], 1), np.stack([np.full(k, k + 1), nxt, ring], 1)])
+    t = 2 * np.pi * np.arange(k) / k
+    v = np.concatenate([[[0, 0, 1.0]], np.stack([np.cos(t), np.sin(t), np.zeros(k)], 1), [[0, 0, -1.0]]])
+    return v, f.astype(np.int64)
+
+
+def _pole_sphere(res=40):
+    """Open3D's sphere: its top pole has 2 * res faces round it (80 at resolution 40)."""
+    s = o3d.geometry.TriangleMesh.create_sphere(1.0, res)
+    v, f = np.asarray(s.vertices), np.asarray(s.triangles).astype(np.int64)
+    return v, f, int(np.argmax(v[:, 2]))
+
+
+def _cyclic(loop):  # a loop read from its smallest vertex, so loops compare whatever their start
+    i = int(np.argmin(loop))
+    return tuple(int(x) for x in loop[i:] + loop[:i])
+
+
+def _check_loops(f, loops):
+    """What every caller relies on: each open edge in exactly one loop, each loop closed, the rim
+    half-edges loop[i] -> loop[i + 1] being the faces' own (the lids are wound against them), no
+    vertex twice in a loop (a bow-tie on the rim is split into two loops)."""
+    he = {(int(a), int(b)) for a, b in np.concatenate([f[:, [0, 1]], f[:, [1, 2]], f[:, [2, 0]]])}
+    open_he = {(a, b) for a, b in he if (b, a) not in he}
+    seen = []
+    for loop in loops:
+        assert len(loop) >= 3 and len(set(loop)) == len(loop)
+        edges = list(zip(loop, loop[1:] + loop[:1]))  # closed: the last vertex runs back to the first
+        assert all(e in open_he for e in edges), "consecutive vertices form an open edge, in the faces' winding"
+        seen += edges
+    assert len(seen) == len(set(seen)) and set(seen) == open_he, "every open edge in exactly one loop"
+
+
+def test_boundary_loops_finds_a_hole_at_a_vertex_of_valence_80():
+    from motiongrammetry.clean import boundary_loops
+
+    v, f, pole = _pole_sphere(40)
+    fan = np.flatnonzero((f == pole).any(1))
+    assert len(fan) == 80
+    gone = f[fan[0]]
+    loops = boundary_loops(np.delete(f, fan[0], 0))
+    assert [_cyclic(l) for l in loops] == [_cyclic(gone[::-1].tolist())], "the rim runs against the missing face"
+    # two faces apart round the pole: two holes touching at it, one loop each
+    loops = boundary_loops(np.delete(f, fan[[0, 40]], 0))
+    assert sorted(_cyclic(l) for l in loops) == sorted(_cyclic(f[i][::-1].tolist()) for i in fan[[0, 40]])
+    # a hole whose rim passes the pole: faces of the next ring taken out, the pole's own fan kept
+    ring = np.flatnonzero(np.isin(f, f[fan].ravel()).any(1) & ~(f == pole).any(1))
+    g = np.delete(f, ring[:10], 0)
+    loops = boundary_loops(g)
+    _check_loops(g, loops)
+    assert len(loops) == 1
+
+
+@pytest.mark.parametrize("k", [65, 300, 2000])
+def test_boundary_loops_finds_a_hole_at_a_vertex_of_any_valence(k):
+    from motiongrammetry.clean import boundary_loops
+
+    _, f = _cone_fan(k)
+    assert [_cyclic(l) for l in boundary_loops(f[1:])] == [(0, 2, 1)]  # face (0, 1, 2) gone
+    # half the top fan gone: the rim is the top vertex, then the ring back from k // 2 + 1 to 1
+    want = [0] + list(range(k // 2 + 1, 0, -1))
+    assert [_cyclic(l) for l in boundary_loops(f[k // 2:])] == [_cyclic(want)]
+
+
+def _holed_meshes():
+    """(faces, number of holes) for meshes built with a known number of holes."""
+    v, f, pole = _pole_sphere(40)
+    fan = np.flatnonzero((f == pole).any(1))
+    cen = v[f].mean(1)
+    _, cone = _cone_fan(300)
+    yield f, 0
+    yield np.delete(f, fan[:1], 0), 1
+    yield np.delete(f, fan[[0, 20, 40, 60]], 0), 4  # four touching at the pole
+    yield np.delete(f, fan[:30], 0), 1
+    yield f[(np.abs(cen[:, 0]) < 0.8)], 2  # a tube: two rims
+    yield f[(cen[:, 0] < 0.8) & (cen[:, 2] > -0.9) & (np.linalg.norm(cen - [0, 1, 0], axis=1) > 0.3)], 3
+    yield cone, 0
+    yield cone[1:], 1
+    yield np.delete(cone, [0, 100, 200, 450], 0), 4  # three at the top vertex, one at the bottom
+    yield np.delete(cone, np.r_[0:50, 150:200], 0), 2  # two wide openings meeting at the top vertex
+    yield np.delete(cone, [5, 305], 0), 1  # the two faces on either side of a ring edge: one hole round both poles
+    yield cone[300:], 1  # the bottom fan alone: a disc with its rim of 300
+
+
+@pytest.mark.parametrize("case", range(12))
+def test_boundary_loops_rims_are_whole_and_ordered_whatever_the_numbering(case):
+    from motiongrammetry.clean import boundary_loops
+
+    f, holes = list(_holed_meshes())[case]
+    loops = boundary_loops(f)
+    assert len(loops) == holes
+    _check_loops(f, loops)
+    want = sorted(map(_cyclic, loops))
+    rng = np.random.default_rng(case)
+    g = f[rng.permutation(len(f))]
+    assert sorted(map(_cyclic, boundary_loops(g))) == want, "face order doesn't matter"
+    perm = rng.permutation(int(f.max()) + 1)
+    inv = np.argsort(perm)
+    got = [inv[l].tolist() for l in boundary_loops(perm[g])]
+    assert sorted(map(_cyclic, got)) == want, "vertex numbering doesn't matter"
+
+
+def test_boundary_loops_of_nothing_and_of_a_closed_mesh():
+    from motiongrammetry.clean import boundary_loops
+
+    assert boundary_loops(np.zeros((0, 3), np.int64)) == []
+    assert boundary_loops(_pole_sphere(40)[1]) == [] and boundary_loops(_cone_fan(500)[1]) == []
+
+
+def _clean_report(v, f):
+    from motiongrammetry import meshfix
+
+    r = meshfix.inspect(v, f)
+    return {k: r[k] for k in ("holes", "open_edges", "nonmanifold_edges", "pillow_faces", "flipped_faces")}
+
+
+ZERO = {"holes": 0, "open_edges": 0, "nonmanifold_edges": 0, "pillow_faces": 0, "flipped_faces": 0}
+
+
+@pytest.mark.parametrize("mesh", ["sphere", "fan"])
+def test_holes_at_a_busy_vertex_get_closed(mesh):
+    """Close holes (Sanitize), Close all holes and closing the holes at one vertex, where the walk
+    round that vertex from one open edge to the next passes more than 64 faces."""
+    from motiongrammetry import meshfix, meshops
+    from motiongrammetry.clean import boundary_loops
+
+    if mesh == "sphere":
+        v, f, pole = _pole_sphere(40)
+        far = int(np.argmin(np.linalg.norm(v[f].mean(1) - [1, 0, 0], axis=1)))
+        f = np.delete(f, np.r_[np.flatnonzero((f == pole).any(1))[:2], far], 0)  # one at the pole, one far off
+        holes, at_pole = 2, 1
+    else:
+        v, f = _cone_fan(300)
+        pole = 0
+        f = np.delete(f, np.r_[0:3, 150, 400], 0)  # two at the top vertex, one at the bottom
+        holes, at_pole = 3, 2
+    c = np.full((len(v), 3), 150, np.uint8)
+    assert len(boundary_loops(f)) == holes
+    V, F, _, info = meshfix.sanitize(v, f, c, ["holes"], hole_size=1.0)
+    assert info["steps"][0]["closed_holes"] == holes and _clean_report(V, F) == ZERO
+    V, F, _, info = meshops.cap(v, f, c)  # Close all holes
+    assert info["capped"] == holes and _clean_report(V, F) == ZERO
+    V, F, _, info = meshops.cap(v, f, c, seeds=np.array([pole]))  # the holes at that vertex only
+    assert info["capped"] == at_pole and len(boundary_loops(F)) == holes - at_pole
+    assert _clean_report(V, F) == {**ZERO, "holes": 1, "open_edges": 3}, "only the other hole is left"
