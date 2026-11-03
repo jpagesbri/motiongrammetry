@@ -9,3 +9,4 @@ workspaces/
 datasets/
 .pytest_cache/
 .shots/
+uv.lock

@@ -10,6 +10,9 @@ the image with that version, and the About page and `mg --version` show it.
 
 ## Unreleased
 
+- **One lock file**: `uv.lock` was out of date (version 0.1.0, no scipy) and nothing used it; CI and
+  the install guide use `requirements-lock.txt`. It is removed and ignored, so `uv run` no longer
+  leaves a changed file behind.
 - **Version of a checkout**: run from a git checkout, `mg --version` and the About page add the
   branch (`0.2.0-fix-some-bug`, or `-main` past a release), so a local instance says which code
   it runs; installed copies and the Docker image show the plain version.
