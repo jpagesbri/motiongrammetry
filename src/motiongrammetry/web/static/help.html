@@ -326,15 +326,15 @@ how fine the new mesh is; holes update as you cut and fill.</p>
 </table>
 <p><b>Adaptive detail</b> (a tick box under the brush): when the mesh is too coarse to shape, each dab first adds vertices
 around itself, up to the <b>Density</b> below it, and splits the triangles beside them too, so no crack opens. The density is a
-factor of the scan as the pipeline made it, where you brush: <b>×2</b> (the default) is twice the vertices it had there,
-<b>×4</b> four times with edges half as long, up to <b>×8</b>. A part the scan left coarse (often the top of a head) gets the same
-factor of its own density, not of the rest of the scan's. It doesn't depend on the zoom or the brush size, and brushing an
-area again at the same factor adds nothing more. It works with Draw, Dig in, Inflate, Deflate,
-Smooth, Flatten and Pinch, on the surface under the brush only (not the other side of a thin part). One stroke adds at most
-50,000 vertices and says so when it stops; brush again to add more. A stroke and the vertices it added undo together.
-<b>Decimate</b> uses the same control the other way (÷). What it leaves becomes the reference there: Adaptive detail
-afterwards adds its factor to the simplified area (×1.5 after ÷4 adds about half, it doesn't bring back the scan's
-detail), and Decimating the same area again simplifies it further.</p>
+factor of the mesh where you brush, as it is when you start the stroke: <b>×2</b> (the default) is twice the vertices it had
+there, <b>×4</b> four times with edges half as long, up to <b>×8</b>. A coarse part gets the same factor of its own density, and
+what earlier strokes did counts: after Decimate ÷4, ×1.5 adds about half to what Decimate left. One stroke counts once:
+going over the same area again before you let go adds nothing more, while a new stroke adds its factor again (×1.5 twice is
+×2.25). It doesn't depend on the zoom or the brush size. It works with Draw, Dig in, Inflate, Deflate, Smooth, Flatten and
+Pinch, on the surface under the brush only (not the other side of a thin part). One stroke adds at most 50,000 vertices and
+says so when it stops; brush again to add more. A stroke and the vertices it added undo together.
+<b>Decimate</b> uses the same control the other way (÷), also from the mesh as it is: ÷2 after Adaptive detail halves the
+refined area, and ÷2 twice is ÷4.</p>
 <p>Also: <b>Close all holes</b> (each lid is an even mesh that follows its rim: flat where the rim is flat, curved
 where it rises), <b>Remove loose pieces</b>, <kbd>[</kbd> <kbd>]</kbd> brush size, <kbd>Ctrl</kbd> inverts,
 <kbd>Ctrl+Z</kbd> / <kbd>Ctrl+Shift+Z</kbd> undo and redo, <kbd>Ctrl+S</kbd> save.</p>

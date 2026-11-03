@@ -67,9 +67,9 @@ mg ui --root ~/scans --port 9000
   flatten, pinch, grab, decimate (edge collapses inside the stroke down to the Density ÷k,
   applied on release, open edges and the stroke's border locked, no folds), cut away, with an option
   to cap what a cut opens; **Adaptive detail** (tick box) splits edges around each dab first, up to the
-  Density ×k (1.5–8, default 2: k times the vertices the pipeline's clean mesh has at that place,
-  looked up per vertex in that mesh, which the editor also loads for a custom mesh; where Decimate
-  simplified, what it left is the reference instead; at most 50,000 new vertices per stroke), by longest-edge bisection with the neighbours split too (no cracks), so
+  Density ×k (1.5–8, default 2: k times the vertices the mesh has at that place when the stroke
+  starts, each vertex's mean edge then; vertices added during the stroke inherit it, so one stroke
+  counts once and a new one applies the factor again; at most 50,000 new vertices per stroke), by longest-edge bisection with the neighbours split too (no cracks), so
   the brushes always have vertices to shape; fill + merge to add
   volume, e.g. close the hole of a ring shape: by default only the region around the fill spheres
   is rebuilt (`meshops.local_merge`: the union surface at the mesh's own edge length, cut along the

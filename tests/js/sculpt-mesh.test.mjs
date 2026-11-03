@@ -19,10 +19,7 @@ function sphere(detail = 30, bump = 0.01, jitter = 0.3) {
   }
   return scan(new Float32Array(p), new Uint32Array(g.index.array));
 }
-// A mesh as the editor loads a scan: its density reference is (a copy of) the mesh itself.
-function scan(pos, idx) {
-  return M.buildSculptState(pos, new Uint8Array(pos.length).fill(200), idx, null, new M.ScanDensity(pos.slice(), idx.slice()));
-}
+function scan(pos, idx) { return M.buildSculptState(pos, new Uint8Array(pos.length).fill(200), idx); }
 // Two parallel plates 2 edge lengths apart, as the two sides of a thin part.
 function plates(n = 60) {
   const pos = [], idx = [];
@@ -51,8 +48,11 @@ function density(S, c, r, e0) {
   }
   return near(S, c, r) / A / (2 / (Math.sqrt(3) * e0 * e0));
 }
-function refineAt(S, c, r, k, budget) {  // as a dab: refined out to twice the brush radius
-  const next = M.refine(S, c, 2 * r, k, budget);
+// A dab of Adaptive detail, refined under the brush (radius r); `stroke`: false for a later dab
+// of the same stroke (the reference stays the mesh as it was when the stroke began).
+function refineAt(S, c, r, k, budget, stroke = true) {
+  if (stroke) M.beginStroke(S);
+  const next = M.refine(S, c, r, k, budget);
   return next ? M.grownState(S, next) : S;
 }
 // every edge on exactly two faces and every vertex's faces one fan: closed, no crack, no bow-tie
@@ -78,6 +78,11 @@ function assertClosedManifold(S) {
 }
 
 const base = sphere(), e0 = M.medianEdge(base.pos, base.idx);
+function localEdge(S, c) {  // median edge of the triangles within 3 median edges of c
+  const f = M.facesNear(S, c, 3 * M.medianEdge(S.pos, S.idx)), e = [];
+  for (const t of f) e.push(Math.sqrt(M.longest(S.pos, S.idx, t)[0]));
+  return e.sort((a, b) => a - b)[e.length >> 1];
+}
 const spots = [0, 1500, 4000, 7000].map((v) => vec(base, v));
 
 test('×k gives k times the scan density in the brushed area (±25%)', () => {
@@ -96,8 +101,8 @@ test('the same factor gives the same density at any brush size (zoom)', () => {
   assert.ok(Math.abs(a / b - 1) < 0.2, `${a.toFixed(2)} vs ${b.toFixed(2)}`);
 });
 
-test('brushing the same area again at the same factor adds (almost) nothing', () => {
-  const c = spots[2], r = 8 * e0, once = refineAt(base, c, r, 4), twice = refineAt(once, c, r, 4);
+test('one stroke counts once: passing over the same area again before letting go adds (almost) nothing', () => {
+  const c = spots[2], r = 8 * e0, once = refineAt(base, c, r, 4), twice = refineAt(once, c, r, 4, Infinity, false);
   assert.ok(twice.nv - once.nv <= 0.02 * (once.nv - base.nv), `${once.nv - base.nv} then ${twice.nv - once.nv} more`);
 });
 
@@ -113,8 +118,8 @@ test('refining and decimating keep the mesh closed and manifold (nothing for the
   for (const [i, c] of spots.entries()) S = refineAt(S, c, (6 + 4 * i) * e0, [2, 4, 8, 3][i]);
   assertClosedManifold(S);
   for (const c of spots) {
-    const out = M.decimate(S, [[c.x, c.y, c.z, 10 * e0]], 2);
-    if (out) S = M.buildSculptState(out.pos, out.col8, out.idx, out.e0v, base.density);
+    M.beginStroke(S); const out = M.decimate(S, [[c.x, c.y, c.z, 10 * e0]], 2);
+    if (out) S = M.buildSculptState(out.pos, out.col8, out.idx);
   }
   assertClosedManifold(S);
 });
@@ -126,7 +131,7 @@ test('÷k gives about 1/k of the scan density (±40% on this synthetic mesh)', (
   for (const k of [2, 4]) {
     for (const c of spots.slice(0, 2)) {
       const out = M.decimate(base, [[c.x, c.y, c.z, 12 * e0]], k);
-      const S = M.buildSculptState(out.pos, out.col8, out.idx, out.e0v, base.density), r = 8 * e0;
+      const S = M.buildSculptState(out.pos, out.col8, out.idx), r = 8 * e0;
       const got = density(base, c, r, e0) / density(S, c, r, e0);
       assert.ok(got > 0.6 * k && got < 1.4 * k, `÷${k}: got ÷${got.toFixed(2)}`);
     }
@@ -169,31 +174,39 @@ test('refining leaves the other side of a thin part alone', () => {
   for (let v = S.nv; v < T.nv; v++) assert.equal(T.pos[v * 3 + 2], 0, 'a vertex was added on the far plate');
 });
 
-test('×k is relative to the scan where you brush, also on a much coarser part of it', () => {
+test('×k is relative to the mesh where you brush, also on a much coarser part of it', () => {
   // a scan whose top is ~3 times coarser than the rest (her_face's top of the head: 7-11 times its
   // median edge): ×1.5 there used to mean ×1.5 of the *typical* density, which gave ×60-115 there
   const out = M.decimate(base, [[0, 0, 1, 0.8]], 9), coarse = scan(out.pos, out.idx);
   let top = 0;
   for (let v = 0; v < coarse.nv; v++) if (coarse.pos[v * 3 + 2] > coarse.pos[top * 3 + 2]) top = v;
-  const c = vec(coarse, top), e = coarse.density.at(c.x, c.y, c.z);
+  const c = vec(coarse, top), e = localEdge(coarse, c);
   assert.ok(e > 2 * M.medianEdge(coarse.pos, coarse.idx), `the top is not coarse enough to test (${e})`);
   const r = 6 * e, next = M.refine(coarse, c, 2 * r, 1.5), S = next ? M.grownState(coarse, next) : coarse;
   const got = near(S, c, r) / near(coarse, c, r);
   assert.ok(got > 1.1 && got < 2.2, `×1.5 gave ×${got.toFixed(1)}`);
 });
 
-test('after Decimate, ×k is relative to what it left, and a second Decimate simplifies further', () => {
+test('each stroke works from the mesh as it is: after Decimate, ×k of what it left; strokes compound', () => {
   // the owner's choice on #37: ÷4 on the top of the head, then ×1.5 there, adds ~50%, not 6×
   const c = spots[0], R = 14 * e0, r = 8 * e0;
-  const out = M.decimate(base, [[c.x, c.y, c.z, R]], 4);
-  const dec = M.buildSculptState(out.pos, out.col8, out.idx, out.e0v, base.density);
+  M.beginStroke(base); const out = M.decimate(base, [[c.x, c.y, c.z, R]], 4);
+  const dec = M.buildSculptState(out.pos, out.col8, out.idx);
   const once = refineAt(dec, c, r, 1.5), got = near(once, c, r) / near(dec, c, r);
   assert.ok(got > 1.1 && got < 2.2, `×1.5 after ÷4 gave ×${got.toFixed(2)}`);
-  const twice = refineAt(once, c, r, 1.5);
-  assert.ok(twice.nv - once.nv <= 0.05 * (once.nv - dec.nv) + 5, `brushing again added ${twice.nv - once.nv} more`);
-  const half = M.decimate(base, [[c.x, c.y, c.z, R]], 2);
-  const h1 = M.buildSculptState(half.pos, half.col8, half.idx, half.e0v, base.density);
-  const out2 = M.decimate(h1, [[c.x, c.y, c.z, R]], 2), h2 = M.buildSculptState(out2.pos, out2.col8, out2.idx, out2.e0v, base.density);
+  const again = refineAt(once, c, r, 1.5), more = near(again, c, r) / near(once, c, r);  // a new stroke: ×1.5 again
+  assert.ok(more > 1.1 && more < 2.2, `a second ×1.5 stroke gave ×${more.toFixed(2)}`);
+  M.beginStroke(base); const half = M.decimate(base, [[c.x, c.y, c.z, R]], 2);
+  const h1 = M.buildSculptState(half.pos, half.col8, half.idx);
+  M.beginStroke(h1); const out2 = M.decimate(h1, [[c.x, c.y, c.z, R]], 2), h2 = M.buildSculptState(out2.pos, out2.col8, out2.idx);
   const n0 = near(base, c, r), n1 = near(h1, c, r), n2 = near(h2, c, r);
   assert.ok(n2 < 0.75 * n1, `÷2 twice: ${n0} → ${n1} → ${n2} vertices in the area`);
+});
+
+test('Decimate after Adaptive detail is relative to the refined mesh', () => {
+  const c = spots[1], r = 8 * e0, fine = refineAt(base, c, r, 4);
+  M.beginStroke(fine);
+  const out = M.decimate(fine, [[c.x, c.y, c.z, 1.5 * r]], 2), S = M.buildSculptState(out.pos, out.col8, out.idx);
+  const got = near(fine, c, r) / near(S, c, r);
+  assert.ok(got > 1.4 && got < 3, `÷2 after ×4 gave ÷${got.toFixed(2)} of the refined mesh`);
 });
