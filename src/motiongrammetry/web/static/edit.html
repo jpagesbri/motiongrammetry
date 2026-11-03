@@ -83,6 +83,29 @@
   .scanpanel .noimg { border: 1px dashed var(--line); }
   .scanpanel small { display: block; color: var(--muted); font-size: 11px; }
   .center { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); pointer-events: none; text-align: center; }
+  /* modals: as on the Generate screen (Replace the video, Delete) */
+  .modal { position: fixed; inset: 0; z-index: 40; background: rgba(5,7,10,.55); display: grid; place-items: center; }
+  .win { width: min(640px, 94vw); max-height: 92vh; background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+    box-shadow: 0 20px 60px rgba(0,0,0,.6); display: flex; flex-direction: column; overflow: hidden; }
+  .win-head { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+  .win-head .x { margin-left: auto; background: none; border: 0; color: var(--muted); cursor: pointer; font-size: 16px; }
+  .win-body { padding: 12px 18px 16px; overflow: auto; }
+  .win-body p { margin: 4px 0 10px; line-height: 1.5; }
+  .fixes { display: grid; gap: 2px; margin: 6px 0 10px; }
+  .fix { display: grid; grid-template-columns: 22px 1fr auto; gap: 2px 8px; align-items: start; padding: 7px 8px; border-radius: 7px; }
+  .fix:hover { background: var(--panel2); }
+  .fix input[type=checkbox] { margin: 2px 0 0; }
+  .fix b { font-weight: 600; }
+  .fix .found { grid-column: 2; font-size: 12px; color: var(--muted); }
+  .fix .found.bad { color: var(--warn); }
+  .fix .est { font: 11px var(--mono); color: var(--muted); white-space: nowrap; padding-top: 2px; }
+  .fix input[type=number] { width: 58px; background: var(--bg); border: 1px solid var(--line); border-radius: 5px; padding: 1px 4px; }
+  .sumline { font-size: 12px; color: var(--muted); }
+  .changes { margin: 6px 0 10px; padding-left: 18px; line-height: 1.6; }
+  .changes .t { font: 11px var(--mono); color: var(--muted); }
+  .probs { margin: 4px 0 6px; padding-left: 16px; }
+  .probs li { margin: 3px 0; }
+  .probs .fixhint { color: var(--muted); }
 </style>
 <link rel="stylesheet" href="/topbar.css">
 <script type="importmap">
@@ -95,6 +118,36 @@
 </head>
 <body>
 <div class="scanpanel" id="scanPanel" hidden></div>
+<div class="modal" id="sanModal" hidden>
+  <div class="win">
+    <div class="win-head"><b>Sanitize mesh</b><span class="muted" id="sanScan"></span><button class="x" id="sanClose" title="close (Esc)">✕</button></div>
+    <div class="win-body">
+      <div id="sanForm">
+        <p class="sumline" id="sanSum">checking the mesh…</p>
+        <div class="fixes" id="sanFixes"></div>
+        <p class="sumline" id="sanEst"></p>
+        <div class="btns"><button class="btn primary" id="sanGo">Run the fixes</button><button class="btn" id="sanCancel">Cancel</button></div>
+      </div>
+      <div id="sanDone" hidden>
+        <p id="sanDoneHead"></p>
+        <ul class="changes" id="sanChanges"></ul>
+        <p class="sumline" id="sanAfter"></p>
+        <div class="btns"><button class="btn primary" id="sanOk">Close</button><button class="btn" id="sanUndo" title="Ctrl+Z">Undo all of it</button></div>
+      </div>
+      <div class="err" id="sanErr"></div>
+    </div>
+  </div>
+</div>
+<div class="modal" id="chkModal" hidden>
+  <div class="win">
+    <div class="win-head"><b id="chkTitle">Check the mesh first</b><button class="x" id="chkClose" title="close (Esc)">✕</button></div>
+    <div class="win-body">
+      <p id="chkText"></p>
+      <ul class="probs" id="chkList"></ul>
+      <div class="btns"><button class="btn primary" id="chkFix">Sanitize mesh…</button><button class="btn" id="chkGo"></button><button class="btn" id="chkCancel">Cancel</button></div>
+    </div>
+  </div>
+</div>
 <div class="app">
   <header class="topbar">
     <b>motiongrammetry</b>
@@ -114,6 +167,7 @@
       </div>
       <div id="modeNote" class="note"></div>
       <div id="modeWarn" class="warn" hidden></div>
+      <div id="meshWarn" class="warn" hidden></div>
       <div id="editTex" hidden>
         <div class="btns"><button class="btn primary" id="texEdits" title="run the texture step on your edited mesh: the photos projected again (about a minute on the GPU)">Texture my edits</button>
           <button class="btn" id="carryTex" title="no photos: your edited mesh gets its own layout, coloured from the nearest point of this texture (seconds)">Carry the texture over</button></div>
@@ -181,6 +235,9 @@
       <div class="btns">
         <button class="btn" id="closeBtn" title="cap every opening with a smoothed lid">Close all holes</button>
         <button class="btn" id="piecesBtn" title="delete pieces smaller than a tenth of the main one, e.g. a part a cut separated">Remove loose pieces</button>
+      </div>
+      <div class="btns">
+        <button class="btn" id="sanBtn" title="check the mesh for what breaks texturing (duplicate and degenerate faces, bow-ties, holes, flipped faces, floaters, self-intersections) and repair what you choose, in one undo step">Sanitize mesh…</button>
       </div>
     </section>
     <section>
@@ -594,6 +651,7 @@ function renderModeInfo() {
     warn = 'The textured model is older than the clean mesh: re-run texture first.';
   $('modeWarn').hidden = !warn; $('modeWarn').textContent = warn;
   $('editTex').hidden = !edited; $('texEdits').hidden = !wsState.can_texture;
+  if (m === 'paint') showMeshCheck(edited); else { checkSeq.n++; $('meshWarn').hidden = true; }
 }
 document.querySelectorAll('[data-layout]').forEach((b) => b.addEventListener('click', () => {
   layout = b.dataset.layout;
@@ -1188,6 +1246,7 @@ async function meshOp(kind, params, label) {
     const r = await fetch(`/api/workspaces/${ws}/edit/op?kind=${kind}`, { method: 'POST', body, headers: { 'Content-Type': 'application/octet-stream' } });
     if (!r.ok) { let m = r.statusText; try { m = (await r.json()).error; } catch {} throw new Error(m); }
     const info = JSON.parse(r.headers.get('X-Op-Info') || '{}');
+    if (info.unchanged) return info;  // sanitize found nothing to change: no undo step
     if ((kind === 'cap' && !info.capped) || (kind === 'pieces' && !info.removed_pieces)) return info;  // nothing changed: no undo step
     const m = decodeMesh(await r.arrayBuffer());
     pushUndo({ type: 'full', state: captureState(), spheres: S.spheres.slice() });
@@ -1347,6 +1406,204 @@ $('closeBtn').addEventListener('click', () => meshOp('cap', {}, 'closing holes�
   .then((info) => info && flash(info.capped ? `closed ${info.capped} hole${info.capped > 1 ? 's' : ''}` : 'no open holes')).catch(fail));
 $('piecesBtn').addEventListener('click', () => meshOp('pieces', { keep: 0.1 }, 'removing loose pieces…')
   .then((info) => info && flash(info.removed_pieces ? `removed ${info.removed_pieces} piece${info.removed_pieces > 1 ? 's' : ''} (${info.removed_faces.toLocaleString()} faces)` : 'no loose pieces')).catch(fail));
+
+// ---- Sanitize mesh (meshfix.py): the editor's mesh checked on the server, the chosen fixes run as
+// one op (one undo step). Times are the server's estimates for this mesh on this machine.
+const escH = (t) => String(t).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch]);
+const nf = (n) => Number(n).toLocaleString();
+const plural = (n, one, many) => `${nf(n)} ${n === 1 ? one : (many || one + 's')}`;
+const secs = (s) => (s < 0.1 ? '< 0.1 s' : s < 60 ? `~${s < 10 ? s.toFixed(1) : Math.round(s)} s` : `~${Math.floor(s / 60)} min ${Math.round(s % 60)} s`);
+const SAN = { check: null, want: null, running: false };
+const SAN_FIXES = [
+  ['duplicates', 'Remove degenerate and duplicate faces', 'faces with no area, the same face twice, and "pillows" (the same face both ways round), which crash OpenMVS texturing'],
+  ['manifold', 'Make it manifold', 'removes bow-tie vertices and the extra faces on edges shared by three or more, with their faces: tick Close holes for the small openings that leaves'],
+  ['pieces', 'Remove small loose pieces', 'floaters and pieces a cut separated'],
+  ['orient', 'Recompute normals and orientation', 'every face wound the same way as its neighbours, each piece facing out'],
+  ['holes', 'Close holes', 'with the same smooth lids as Close all holes, the ones up to the size given'],
+  ['unreferenced', 'Remove unreferenced vertices', 'points no face uses'],
+  ['intersections', 'Detect self-intersections', 'faces that cut through other faces: reported, not changed'],
+];
+function sanFound(id) {  // what the check found for a fix: [text, something to fix]
+  const r = SAN.check.report;
+  if (id === 'duplicates') {
+    const parts = [r.degenerate_faces && plural(r.degenerate_faces, 'degenerate face'), r.duplicate_faces && plural(r.duplicate_faces, 'duplicate'),
+      r.pillow_faces && plural(r.pillow_faces, 'pillow'), r.flat_pieces && plural(r.flat_pieces, 'piece') + ' with no area'].filter(Boolean);
+    return parts.length ? [parts.join(', '), true] : ['none found', false];
+  }
+  if (id === 'manifold') {
+    const parts = [r.bowtie_vertices && plural(r.bowtie_vertices, 'bow-tie vertex', 'bow-tie vertices'), r.nonmanifold_edges && plural(r.nonmanifold_edges, 'non-manifold edge')].filter(Boolean);
+    return parts.length ? [parts.join(', '), true] : ['already manifold', false];
+  }
+  if (id === 'pieces') {
+    const k = Number($('sanPiece')?.value ?? 5) / 100, small = r.piece_sizes.filter((x) => x < k);
+    const faces = r.piece_faces.slice(r.piece_sizes.length - small.length).reduce((a, b) => a + b, 0);
+    return r.pieces <= 1 ? ['one piece', false] : [`${plural(r.pieces, 'piece')}: ${small.length ? `${nf(small.length)} smaller than that (${plural(faces, 'face')}) go` : 'none that small'}`, small.length > 0];
+  }
+  if (id === 'orient') return r.flipped_faces ? [`${plural(r.flipped_faces, 'face')} wound against their neighbours`, true] : ['consistent (each piece is still turned to face out)', false];
+  if (id === 'holes') {
+    const k = Number($('sanHole')?.value ?? 10) / 100, n = r.hole_sizes.filter((x) => x <= k).length;
+    return r.holes ? [`${plural(r.holes, 'hole')}: ${nf(n)} that small get closed${n < r.holes ? `, ${nf(r.holes - n)} larger stay open` : ''}`, n > 0] : ['no holes (the fixes above may open some)', false];
+  }
+  if (id === 'unreferenced') return r.unreferenced_vertices ? [plural(r.unreferenced_vertices, 'vertex', 'vertices'), true] : ['none', false];
+  if (id === 'intersections') return r.intersecting_faces ? [`${plural(r.intersecting_faces, 'face')} cut through another: Merge (whole mesh) rebuilds the surface without them`, true] : ['none found', false];
+  return ['', false];
+}
+function sanRender() {
+  const c = SAN.check, est = c.seconds || {};
+  $('sanFixes').innerHTML = SAN_FIXES.map(([id, name, what]) => {
+    const extra = id === 'holes' ? ` up to <input type="number" id="sanHole" min="1" max="1000" step="1" value="${SAN.hole ?? 10}" title="the longest rim closed, as a share of the model's size (its bounding box diagonal)">% of the model's size around`
+      : id === 'pieces' ? ` smaller than <input type="number" id="sanPiece" min="0.1" max="100" step="0.1" value="${SAN.piece ?? 5}" title="as a share of the largest piece's area">% of the largest`
+      : '';
+    return `<label class="fix" title="${escH(what)}"><input type="checkbox" data-fix="${id}"><span><b>${name}</b>${extra}</span>
+      <span class="est" data-est="${id}">${secs(est[id] || 0)}</span><span class="found" data-found="${id}"></span></label>`;
+  }).join('');
+  for (const [id] of SAN_FIXES) $('sanFixes').querySelector(`[data-fix=${id}]`).checked = SAN.want ? SAN.want.includes(id) : sanFound(id)[1] && id !== 'intersections';
+  $('sanFixes').querySelectorAll('input[type=number]').forEach((el) => el.addEventListener('input', () => {
+    SAN.hole = Number($('sanHole').value); SAN.piece = Number($('sanPiece').value); sanFoundText(); }));
+  $('sanFixes').querySelectorAll('[data-fix]').forEach((el) => el.addEventListener('change', sanTotal));
+  sanFoundText();
+}
+function sanFoundText() {
+  for (const [id] of SAN_FIXES) {
+    const [t, bad] = sanFound(id), el = $('sanFixes').querySelector(`[data-found=${id}]`);
+    el.textContent = t; el.classList.toggle('bad', bad);
+  }
+  sanTotal();
+}
+function sanChosen() { return [...$('sanFixes').querySelectorAll('[data-fix]:checked')].map((el) => el.dataset.fix); }
+function sanTotal() {
+  const c = SAN.check, ids = sanChosen(), m = c.machine || {};
+  const total = ids.reduce((a, id) => a + (c.seconds[id] || 0), 0);
+  $('sanEst').textContent = (ids.length ? `${plural(ids.length, 'fix', 'fixes')}: about ${secs(total).replace(/^~/, '')} in all` : 'no fix chosen')
+    + ` · on this machine's CPU (${m.cpu || '?'}, ${m.threads || '?'} threads; these fixes don't use the GPU)`;
+  $('sanEst').title = c.basis || '';
+  $('sanGo').disabled = !ids.length || SAN.running;
+}
+async function openSanitize(want) {
+  if (!S.mesh) return;
+  if (busy) return;
+  SAN.want = want || null; SAN.check = null;
+  $('sanScan').textContent = '· ' + ws; $('sanErr').textContent = '';
+  $('sanForm').hidden = false; $('sanDone').hidden = true; $('sanFixes').innerHTML = ''; $('sanEst').textContent = '';
+  $('sanSum').textContent = `checking ${nf(S.nf)} faces… (the first check also times the fixes on this machine: a few seconds)`;
+  $('sanGo').disabled = true;
+  $('sanModal').hidden = false;
+  try {
+    const mesh = encodeMesh(), pj = new TextEncoder().encode('{}');
+    const body = new Uint8Array(4 + pj.length + mesh.length);
+    new DataView(body.buffer).setUint32(0, pj.length, true); body.set(pj, 4); body.set(mesh, 4 + pj.length);
+    SAN.check = await api(`/api/workspaces/${ws}/edit/op?kind=inspect`, { method: 'POST', body, headers: { 'Content-Type': 'application/octet-stream' } });
+    if ($('sanModal').hidden) return;
+    const r = SAN.check.report, n = SAN.check.problems.length;
+    $('sanSum').textContent = `${plural(r.faces, 'face')}, ${plural(r.vertices, 'vertex', 'vertices')} · `
+      + (n ? `${plural(n, 'problem')} that break or spoil texturing (in amber below)` : 'nothing that breaks texturing')
+      + ' · the fixes run in this order; Undo takes them all back in one step';
+    sanRender();
+  } catch (e) { $('sanErr').textContent = e.message; $('sanSum').textContent = 'the check failed'; }
+}
+function closeSanitize() { if (!SAN.running) $('sanModal').hidden = true; }
+const SAN_SAY = {
+  duplicates: (s) => s.removed_faces ? `removed ${plural(s.removed_faces, 'face')}: ${nf(s.degenerate)} degenerate, ${nf(s.duplicates)} duplicate, ${nf(s.pillows)} pillow` : 'no degenerate or duplicate faces',
+  manifold: (s) => s.removed_faces ? `removed ${plural(s.bowtie_vertices, 'bow-tie vertex', 'bow-tie vertices')} and ${plural(s.nonmanifold_edge_faces, 'face')} on non-manifold edges (${plural(s.removed_faces, 'face')} in all)` : 'already manifold',
+  pieces: (s) => s.removed_pieces ? `removed ${plural(s.removed_pieces, 'piece')} (${plural(s.removed_faces, 'face')})` : 'no piece that small',
+  orient: (s) => (s.flipped_faces ? `turned ${plural(s.flipped_faces, 'face')} round` + (s.pieces_turned_out ? ` (${plural(s.pieces_turned_out, 'piece')} were inside out)` : '') : 'orientation already consistent')
+    + (s.not_orientable ? ' · the mesh is not orientable (a Möbius-like twist): only whole pieces were turned' : '') + ' · normals recomputed',
+  holes: (s) => (s.closed_holes ? `closed ${plural(s.closed_holes, 'hole')} (${plural(s.added_faces, 'new face')})` : 'no hole that small') + (s.left_open ? `, ${nf(s.left_open)} larger left open` : ''),
+  unreferenced: (s) => s.removed_vertices ? `removed ${plural(s.removed_vertices, 'vertex', 'vertices')}` : 'none',
+  intersections: (s) => s.intersecting_faces ? `${plural(s.intersecting_faces, 'face')} cut through another (${plural(s.intersecting_pairs, 'pair')}): not changed; Merge with "whole mesh" rebuilds the surface without them` : 'no self-intersections',
+};
+async function runSanitize() {
+  const fixes = sanChosen();
+  if (!fixes.length || SAN.running) return;
+  SAN.running = true; $('sanGo').disabled = true; $('sanErr').textContent = '';
+  const est = fixes.reduce((a, id) => a + (SAN.check.seconds[id] || 0), 0);
+  $('sanEst').textContent = `running ${plural(fixes.length, 'fix', 'fixes')} (about ${secs(est).replace(/^~/, '')})…`;
+  try {
+    const info = await meshOp('sanitize', { fixes, hole_size: Number($('sanHole').value) / 100, piece_size: Number($('sanPiece').value) / 100 },
+      `sanitizing the mesh… (about ${secs(est).replace(/^~/, '')})`);
+    if (!info) throw new Error('another mesh operation is running: try again when it has finished');
+    const took = info.steps.reduce((a, s) => a + s.seconds, 0);
+    $('sanDoneHead').innerHTML = info.unchanged
+      ? 'Nothing needed changing: the mesh is as it was (no undo step).'
+      : `Done in ${took.toFixed(1)} s: ${plural(info.faces_in, 'face')} → ${plural(info.faces_out, 'face')}. <b>Undo</b> (Ctrl+Z) takes all of it back in one step; <b>Save</b> keeps it.`;
+    $('sanChanges').innerHTML = info.steps.map((s) => `<li>${escH(SAN_SAY[s.fix](s))} <span class="t">${s.seconds.toFixed(2)} s</span></li>`).join('');
+    const a = info.after, left = [a.holes && plural(a.holes, 'hole') + ' left open', a.pieces > 1 && plural(a.pieces, 'piece'),
+      a.bowtie_vertices && plural(a.bowtie_vertices, 'bow-tie vertex', 'bow-tie vertices'), a.nonmanifold_edges && plural(a.nonmanifold_edges, 'non-manifold edge'),
+      (a.pillow_faces + a.duplicate_faces + a.degenerate_faces) && plural(a.pillow_faces + a.duplicate_faces + a.degenerate_faces, 'broken face'),
+      a.flipped_faces && plural(a.flipped_faces, 'flipped face')].filter(Boolean);
+    $('sanAfter').textContent = 'Checked again: ' + (left.length ? left.join(', ') + '.' : 'no pillows, duplicates or degenerate faces, manifold, consistently wound, no holes, one piece.');
+    $('sanUndo').hidden = info.unchanged;
+    $('sanForm').hidden = true; $('sanDone').hidden = false;
+    flash(info.unchanged ? 'sanitize: nothing needed changing' : `mesh sanitized: ${nf(info.faces_out)} faces · Undo takes it all back · Save keeps it`);
+  } catch (e) { $('sanErr').textContent = e.message; sanTotal(); }
+  SAN.running = false;
+}
+$('sanBtn').addEventListener('click', () => openSanitize());
+$('sanGo').addEventListener('click', runSanitize);
+$('sanOk').addEventListener('click', closeSanitize);
+$('sanUndo').addEventListener('click', () => { doUndo(); closeSanitize(); flash('sanitize undone'); });
+for (const id of ['sanClose', 'sanCancel']) $(id).addEventListener('click', closeSanitize);
+$('sanModal').addEventListener('click', (e) => { if (e.target === $('sanModal')) closeSanitize(); });
+for (const m of ['sanModal', 'chkModal']) $(m).addEventListener('keydown', (e) => {  // the editor's shortcuts stay out of the modals
+  if (e.key === 'Escape') { if (m === 'sanModal') closeSanitize(); else closeCheck(null); }
+  e.stopPropagation();
+});
+
+// ---- the mesh checked before painting and texturing (#12): what breaks or spoils it, how much of the
+// mesh, and the fix. The saved meshes are checked on the server (cached until they change).
+const checkSeq = { n: 0 };
+function probList(problems) {
+  return problems.map((p) => `<li><b>${escH(p.title[0].toUpperCase() + p.title.slice(1))}</b>: ${nf(p.count)}`
+    + ` (${p.share < 0.0001 ? '< 0.01' : (100 * p.share).toFixed(p.share < 0.01 ? 2 : 1)}% of the faces). ${escH(p.effect[0].toUpperCase() + p.effect.slice(1))}.`
+    + ` <span class="fixhint">Fix: ${escH(p.fix)}.</span></li>`).join('');
+}
+async function showMeshCheck(edited) {
+  const n = ++checkSeq.n;
+  $('meshWarn').hidden = true;
+  const get = (what) => api(`/api/workspaces/${ws}/edit/check?what=${what}`).catch(() => null);
+  const [paint, edits] = await Promise.all([get('paint'), edited ? get('edits') : null]);
+  if (n !== checkSeq.n || mode !== 'paint') return;
+  const parts = [];
+  for (const c of [paint, edits]) if (c?.problems?.length)
+    parts.push(`<b>Mesh check: ${escH(c.mesh)}</b> has problems that break or spoil texturing:<ul class="probs">${probList(c.problems)}</ul>`);
+  if (!parts.length) return;
+  const want = [...new Set([paint, edits].flatMap((c) => (c?.problems || []).flatMap((p) => p.fixes)))];
+  $('meshWarn').innerHTML = parts.join('')
+    + `<div class="btns" style="margin-top:4px"><button class="btn" id="meshWarnFix" title="switch to Sculpt and open Sanitize mesh with these fixes ticked; then save, and texture your edits again">Sanitize mesh…</button></div>`;
+  $('meshWarnFix').disabled = document.querySelector('[data-mode=sculpt]').disabled;
+  $('meshWarnFix').addEventListener('click', () => sanitizeFromPaint(want));
+  $('meshWarn').hidden = false;
+}
+async function sanitizeFromPaint(want) {
+  await setMode('sculpt');
+  if (mode === 'sculpt' && S.mesh) openSanitize(want);
+}
+let chkAnswer = null;
+function askMesh(action, check) {  // resolves 'go', 'fix' or null
+  $('chkTitle').textContent = `${action}: check the mesh first`;
+  $('chkText').innerHTML = `<b>${escH(check.mesh[0].toUpperCase() + check.mesh.slice(1))}</b> has problems that break or spoil texturing:`;
+  $('chkList').innerHTML = probList(check.problems);
+  $('chkGo').textContent = `${action} anyway`;
+  $('chkFix').disabled = document.querySelector('[data-mode=sculpt]').disabled;
+  $('chkModal').hidden = false; $('chkFix').focus();
+  return new Promise((ok) => { chkAnswer = ok; });
+}
+function closeCheck(answer) {
+  if ($('chkModal').hidden) return;
+  $('chkModal').hidden = true;
+  const ok = chkAnswer; chkAnswer = null; ok?.(answer);
+}
+$('chkGo').addEventListener('click', () => closeCheck('go'));
+$('chkFix').addEventListener('click', () => closeCheck('fix'));
+for (const id of ['chkClose', 'chkCancel']) $(id).addEventListener('click', () => closeCheck(null));
+$('chkModal').addEventListener('click', (e) => { if (e.target === $('chkModal')) closeCheck(null); });
+async function meshReadyFor(action) {  // before Texture my edits / Carry the texture over: true to go on
+  const check = await api(`/api/workspaces/${ws}/edit/check?what=edits`).catch(() => null);
+  if (!check?.problems?.length) return true;
+  const a = await askMesh(action, check);
+  if (a === 'fix') sanitizeFromPaint([...new Set(check.problems.flatMap((p) => p.fixes))]);
+  return a === 'go';
+}
 
 // ================================================================ PAINT
 const P = { ready: false, group: new THREE.Group(), meshes: [], layers: [], depthRT: null, depthStale: true,
@@ -1972,6 +2229,7 @@ $('discardBtn').addEventListener('click', () => {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 $('texEdits').addEventListener('click', async () => {
   if (P.dirty && !confirm('Throw away the unsaved paint and texture your edited mesh?')) return;
+  if (!(await meshReadyFor('Texture my edits'))) return;
   $('texEdits').disabled = $('carryTex').disabled = true;
   try {
     await api(`/api/workspaces/${ws}/run`, { method: 'POST', body: JSON.stringify({ stages: ['texture'], options: {} }) });
@@ -1993,6 +2251,7 @@ $('texEdits').addEventListener('click', async () => {
 });
 $('carryTex').addEventListener('click', async () => {
   if (P.dirty && !confirm('Throw away the unsaved paint and carry the texture over to your edited mesh?')) return;
+  if (!(await meshReadyFor('Carry the texture over'))) return;
   $('texEdits').disabled = $('carryTex').disabled = true; $('texInfo').textContent = 'carrying the texture over (seconds to half a minute)…';
   try {
     const r = await api(`/api/workspaces/${ws}/edit/transfer`, { method: 'POST', body: '{}' });
