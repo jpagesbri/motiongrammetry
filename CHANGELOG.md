@@ -25,6 +25,10 @@ the image with that version, and the About page and `mg --version` show it.
   duplicate faces, non-manifold parts, small loose pieces, orientation and normals, holes up to a
   size, unreferenced vertices, and reports self-intersections. Each fix shows how long it takes on
   this machine for this mesh; they run as one undo step and say what they changed (#29).
+- **Mesh check, faster**: on a million-face mesh the check takes about 6 s instead of 27 s, and
+  removing degenerate and duplicate faces 1–2 s instead of 19 s, with the same results.
+  NumPy 2.3+ finds distinct values with a hash table, which is much slower than sorting on these
+  edge keys; the check now sorts, and compares faces by one number each instead of by rows.
 - **Upload video…**: with no name typed it replaced the selected scan's video without asking, and
   with an existing scan's name typed it silently replaced *that* scan's video. Now it asks before
   replacing, refuses a name that is taken, and the server refuses a replacement nobody confirmed or
