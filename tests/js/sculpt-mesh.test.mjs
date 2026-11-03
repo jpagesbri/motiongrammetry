@@ -210,3 +210,41 @@ test('Decimate after Adaptive detail is relative to the refined mesh', () => {
   const got = near(fine, c, r) / near(S, c, r);
   assert.ok(got > 1.4 && got < 3, `÷2 after ×4 gave ÷${got.toFixed(2)} of the refined mesh`);
 });
+
+// ---- absolute density: k times the scan's typical density, the same target for every stroke
+const typ = M.typicalEdge(base);
+function absRefine(S, c, r, k) { M.beginStroke(S, typ); const n = M.refine(S, c, r, k); return n ? M.grownState(S, n) : S; }
+function absDecimate(S, c, r, k) {
+  M.beginStroke(S, typ);
+  const o = M.decimate(S, [[c.x, c.y, c.z, r]], M.absoluteDecimate(k));
+  return o ? M.buildSculptState(o.pos, o.col8, o.idx) : S;
+}
+
+test('absolute: more strokes over the same area converge instead of compounding', () => {
+  const c = spots[1], r = 8 * e0;
+  const once = absRefine(base, c, r, 4), twice = absRefine(once, c, r, 4);
+  assert.ok(once.nv > base.nv + 50, 'the first stroke added nothing');
+  assert.ok(twice.nv - once.nv <= 0.05 * (once.nv - base.nv) + 5, `a second absolute ×4 stroke added ${twice.nv - once.nv}`);
+  const d1 = absDecimate(base, c, 1.5 * r, 0.5), d2 = absDecimate(d1, c, 1.5 * r, 0.5);
+  assert.ok(near(d1, c, r) < 0.8 * near(base, c, r), 'absolute ÷2 merged nothing');
+  assert.ok(near(d2, c, r) > 0.9 * near(d1, c, r), `a second absolute ÷2 went on: ${near(d1, c, r)} → ${near(d2, c, r)}`);
+});
+
+test('absolute: Adaptive detail and Decimate meet at the same density from either side', () => {
+  const c = spots[2], r = 8 * e0, R = 1.5 * r;
+  const sparse = absDecimate(base, c, R, 0.25), dense = absRefine(base, c, R, 8);  // ÷4 and ×8 of the scan
+  assert.equal(absRefine(dense, c, r, 2).nv, dense.nv, 'absolute ×2 added vertices where the mesh is already ×8');
+  const up = absRefine(sparse, c, R, 2), down = absDecimate(dense, c, R, 2);  // both to ×2 of the scan
+  const a = near(up, c, r), b = near(down, c, r), want = 2 * near(base, c, r);
+  assert.ok(Math.abs(a / want - 1) < 0.35 && Math.abs(b / want - 1) < 0.35, `from below ${a}, from above ${b}, ×2 of the scan ${want}`);
+});
+
+test('absolute: alternating Adaptive detail and Decimate at the same target settles', () => {
+  const c = spots[0], r = 8 * e0;
+  let S = absRefine(base, c, r, 2);
+  const after = [];
+  for (let i = 0; i < 3; i++) { S = absDecimate(S, c, 0.8 * r, 2); after.push(near(S, c, 0.7 * r)); S = absRefine(S, c, r, 2); after.push(near(S, c, 0.7 * r)); }
+  const last = after.slice(-2), first = near(absRefine(base, c, r, 2), c, 0.7 * r);
+  assert.ok(Math.abs(last[1] / last[0] - 1) < 0.02, `still going back and forth: ${after}`);
+  assert.ok(last[0] > 0.85 * first, `Decimate took back too much of the refinement: ${first} → ${after}`);
+});
