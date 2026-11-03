@@ -112,6 +112,18 @@ def _parity(f: np.ndarray) -> np.ndarray:
     return f[rows, (r + 1) % 3] < f[rows, (r + 2) % 3]
 
 
+def edge_clashes(faces: np.ndarray, others: np.ndarray, n: int) -> np.ndarray:
+    """For each of `faces`, how many of its half-edges a face of `others` also runs along the same
+    way (n: the vertex count). Faces wound alike run along a shared edge opposite ways, so a face
+    wound like its neighbours scores 0 and the same face turned scores its shared edges: of a
+    "pillow" (one triangle stored both ways) the face to keep is the one that scores less."""
+    if not len(faces) or not len(others):
+        return np.zeros(len(faces), int)
+    faces, others = np.asarray(faces, np.int64), np.asarray(others, np.int64)  # the keys overflow int32
+    theirs = _unique(_edges(others, n)[3])
+    return sum(_isin(faces[:, i] * n + faces[:, (i + 1) % 3], theirs).astype(int) for i in range(3))
+
+
 def _edges(f: np.ndarray, n: int):
     """Half-edges (a, b) of every face, their face, the undirected key and the directed key."""
     he = np.concatenate([f[:, [0, 1]], f[:, [1, 2]], f[:, [2, 0]]])
@@ -348,20 +360,14 @@ def _fix_duplicates(v, f, c, **_):
     if pil.any():
         # Of a pillow the first face stays, and the editor's face order is arbitrary (its BVH reorders
         # it): turn the one kept to run along its edges the opposite way to its neighbours, as they do.
+        # (clean.repeated_faces, for the save and the clean stage, keeps that face instead.)
         _, inv, cnt = _face_sets(f)
         has_pillow = np.zeros(len(cnt), bool)
         has_pillow[inv[pil]] = True
         kept = np.flatnonzero(~drop & has_pillow[inv])
         alone = f[~drop & (cnt[inv] == 1)]
-        n = len(v)
-        theirs = np.concatenate([alone[:, [0, 1]], alone[:, [1, 2]], alone[:, [2, 0]]])
-        theirs = theirs[:, 0] * n + theirs[:, 1]
-
-        def clashes(x):  # half-edges a neighbour also runs along the same way
-            return sum(_isin(x[:, i] * n + x[:, (i + 1) % 3], theirs).astype(int) for i in range(3))
-
         fk = f[kept]
-        turn = clashes(fk[:, ::-1]) < clashes(fk)
+        turn = edge_clashes(fk[:, ::-1], alone, len(v)) < edge_clashes(fk, alone, len(v))
         f = f.copy()
         f[kept[turn]] = fk[turn][:, ::-1]
     return v, f[~drop], c, {"removed_faces": int(drop.sum()), "degenerate": int(degen.sum()),

@@ -20,6 +20,7 @@ import open3d as o3d
 import pycolmap
 
 from .mask import load_mask
+from .meshfix import edge_clashes
 from .workspace import Workspace
 
 log = logging.getLogger(__name__)
@@ -197,21 +198,36 @@ def clean_mesh(
 
 
 def repeated_faces(faces: np.ndarray) -> np.ndarray:
-    """Mask of the faces on a vertex set an earlier face already has, in either winding: every
-    face of such a set but the first."""
+    """Mask of the faces on a vertex set another face already has, in either winding: every face of
+    such a set but one. The one kept is wound like its neighbours (the faces on a vertex set of their
+    own): of a "pillow", the same triangle stored both ways, the editor's face order is arbitrary (its
+    BVH reorders faces), so the first is often the copy wound against them, and keeping it leaves a
+    flipped face (meshfix.check_file reports it). When the windings tie, as for plain same-winding
+    duplicates or a pillow with no neighbours, the earliest face stays."""
+    if not len(faces):
+        return np.zeros(0, bool)
     key = np.sort(faces, axis=1)  # the triangle's vertex set, winding-independent
-    order = np.lexsort(key.T[::-1])  # group equal vertex sets together
+    order = np.lexsort(key.T[::-1])  # group equal vertex sets together (stable: earliest first)
     skey = key[order]
-    starts = np.flatnonzero(np.r_[True, np.any(skey[1:] != skey[:-1], axis=1)])
+    group = np.empty(len(faces), int)
+    group[order] = np.cumsum(np.r_[True, np.any(skey[1:] != skey[:-1], axis=1)]) - 1
+    shared = np.bincount(group)[group] > 1
+    score = np.zeros(len(faces), int)  # half-edges run the same way as a neighbour's
+    if shared.any():
+        degenerate = (faces[:, 0] == faces[:, 1]) | (faces[:, 1] == faces[:, 2]) | (faces[:, 2] == faces[:, 0])
+        score[shared] = edge_clashes(faces[shared], faces[~shared & ~degenerate], int(faces.max()) + 1)
+    order = np.lexsort((np.arange(len(faces)), score, group))  # by set, then fewest clashes, then earliest
+    sg = group[order]
     drop = np.ones(len(faces), bool)
-    drop[order[starts]] = False  # keep the first face of each vertex set
+    drop[order[np.r_[True, sg[1:] != sg[:-1]]]] = False  # keep the best face of each vertex set
     return drop
 
 
 def broken_faces(faces: np.ndarray) -> np.ndarray:
     """Mask of the faces OpenMVS texturing can't take: a vertex used twice in one face, or a face
-    on the same three vertices as an earlier one (a "pillow"; see _remove_opposite_faces). The
-    clean stage and the editor's save drop them; a mesh saved before they did can still have them."""
+    on the same three vertices as another (a "pillow"; see _remove_opposite_faces), all but the one
+    repeated_faces keeps. The clean stage and the editor's save drop them; a mesh saved before they
+    did can still have them."""
     if not len(faces):
         return np.zeros(0, bool)
     degenerate = (faces[:, 0] == faces[:, 1]) | (faces[:, 1] == faces[:, 2]) | (faces[:, 2] == faces[:, 0])
@@ -226,8 +242,8 @@ def _remove_opposite_faces(mesh: o3d.geometry.TriangleMesh) -> int:
     such pairs (a degenerate two-face "pillow"), and OpenMVS TextureMesh aborts on them:
     ``std::out_of_range`` from ``MeshTexture::GlobalSeamLeveling``, which builds its vertex/
     patch row map from the labelling and then looks a patch up that the face does not have.
-    Two faces on the same three vertices contribute no area and no surface, so dropping the
-    later one loses nothing."""
+    Two faces on the same three vertices contribute no area and no surface, so dropping one
+    loses nothing; the one kept is the one wound like its neighbours (see repeated_faces)."""
     faces = np.asarray(mesh.triangles)
     if not len(faces):
         return 0
