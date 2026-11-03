@@ -347,6 +347,28 @@ def test_editor_saves_a_custom_mesh_and_leaves_the_pipeline_files_alone(server):
     assert call(base + "/api/workspaces/e/edit/delete", "POST", {"what": "mesh"})[0] == 404
 
 
+@pytest.mark.parametrize("wrong_first", [True, False])
+def test_editor_save_keeps_the_face_of_a_pillow_wound_like_its_neighbours(server, wrong_first):
+    """The save drops a pillow's second face; it used to keep the first, which after editing is often
+    the copy wound against its neighbours, so the saved mesh had flipped faces."""
+    import open3d as o3d
+
+    from test_geometry import assert_wound_like_its_neighbours, pillowed_box
+
+    base, app = server
+    call(base + "/api/workspaces", "POST", {"name": "p"})
+    ws = Workspace(app.root / "p")
+    ws.mesh.mkdir()
+    v, f, t = pillowed_box(wrong_first)
+    v32, f32 = v.astype(np.float32), f.astype(np.uint32)
+    body = struct.pack("<II", len(v32), len(f32)) + v32.tobytes() + np.full((len(v32), 3), 128, np.uint8).tobytes() + f32.tobytes()
+    status, r = _post_bytes(base + "/api/workspaces/p/edit/mesh", body)
+    assert status == 200 and r["faces"] == len(t), (status, r)
+    saved = o3d.io.read_triangle_mesh(str(ws.mesh / "custom" / "mesh_clean.ply"))
+    assert np.allclose(np.asarray(saved.vertices), v, atol=1e-6)  # the vertices stay as they were
+    assert_wound_like_its_neighbours(np.asarray(saved.vertices), np.asarray(saved.triangles), t)
+
+
 def test_state_gives_the_scans_typical_edge_from_the_pipeline_mesh(server):
     """The editor's absolute Density is k times the scan's typical density: the median, over the
     pipeline's clean mesh, of each vertex's mean edge averaged with its neighbours'. It stays the

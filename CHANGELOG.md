@@ -10,6 +10,11 @@ the image with that version, and the About page and `mg --version` show it.
 
 ## Unreleased
 
+- **Saving keeps the right face of a pillow**: a "pillow" is one triangle stored twice, wound both
+  ways. The editor's save and the clean stage dropped one copy but kept the first, and after editing
+  that is often the copy wound against its neighbours, so the saved mesh had flipped faces (the mesh
+  check before Paint / Texture my edits reported them). They now keep the copy wound like its
+  neighbours, as Sanitize mesh does; texturing an older mesh drops the same faces.
 - **One lock file**: `uv.lock` was out of date (version 0.1.0, no scipy) and nothing used it; CI and
   the install guide use `requirements-lock.txt`. It is removed and ignored, so `uv run` no longer
   leaves a changed file behind.

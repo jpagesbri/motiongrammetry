@@ -6,6 +6,7 @@ import cv2
 import numpy as np
 import open3d as o3d
 import pycolmap
+import pytest
 
 from motiongrammetry.clean import clean_mesh, restore_holes
 from motiongrammetry.sfm import _loop_pairs
@@ -155,6 +156,52 @@ def test_make_manifold_drops_opposite_winding_duplicate_faces():
     clean = o3d.geometry.TriangleMesh(o3d.utility.Vector3dVector(v), o3d.utility.Vector3iVector(t))
     _make_manifold(clean)
     assert len(clean.triangles) == len(t)
+
+
+def pillowed_box(wrong_first: bool):
+    """A closed box, wound outwards, with a "pillow" on some of its faces: the same face stored
+    again wound the other way, as editing leaves it. With wrong_first the wrong copy comes first
+    (the editor's BVH reorders faces, so it often does). Also: one face stored twice the same way
+    and once the other. Returns (vertices, faces with the pillows, the box's own faces)."""
+    box = o3d.geometry.TriangleMesh.create_box(1, 1, 1).subdivide_midpoint(2)
+    box.remove_duplicated_vertices()
+    v, t = np.asarray(box.vertices), np.asarray(box.triangles).astype(np.int64)
+    picked = t[[3, 40, 77, 150]]
+    extra = np.vstack([picked[:, ::-1], t[[100, 100]][:, ::-1], t[[100]]])  # 100: wrong twice, right again
+    rest = np.delete(t, [3, 40, 77, 150, 100], axis=0)
+    right = np.vstack([picked, t[[100]]])
+    f = np.vstack([extra, right[:-1], rest]) if wrong_first else np.vstack([right, extra[:-1], rest])
+    return v, f, t
+
+
+def assert_wound_like_its_neighbours(v, f, t):
+    """f is the box t again, in some order: one face per vertex set, none wound against its neighbours."""
+    from motiongrammetry import meshfix
+
+    r = meshfix.inspect(v, f)
+    assert r["pillow_faces"] == 0 and r["duplicate_faces"] == 0
+    assert r["flipped_faces"] == 0 and r["flipped_edges"] == 0, "a pillow's wrong copy was kept"
+    assert len(f) == len(t)
+    rot = lambda x: {tuple(np.roll(row, -int(np.argmin(row)))) for row in x}  # noqa: E731
+    assert rot(f) == rot(t), "the box comes back face for face, each wound as it was"
+
+
+@pytest.mark.parametrize("wrong_first", [True, False])
+def test_clean_keeps_the_face_of_a_pillow_wound_like_its_neighbours(wrong_first):
+    """The clean stage (_make_manifold) used to keep the first face of a pillow, which after editing
+    is often the copy wound against its neighbours: a flipped face in the saved mesh."""
+    from motiongrammetry import meshfix
+    from motiongrammetry.clean import _make_manifold, broken_faces
+
+    v, f, t = pillowed_box(wrong_first)
+    assert meshfix.inspect(v, t)["flipped_faces"] == 0  # the box itself is fine
+    mesh = o3d.geometry.TriangleMesh(o3d.utility.Vector3dVector(v), o3d.utility.Vector3iVector(f.astype(np.int32)))
+    _make_manifold(mesh)
+    assert_wound_like_its_neighbours(np.asarray(mesh.vertices), np.asarray(mesh.triangles), t)
+    # the texturing input (mvs._texture_input) drops what broken_faces marks: the same faces stay
+    bad = broken_faces(f)
+    assert bad.sum() == len(f) - len(t)
+    assert_wound_like_its_neighbours(v, f[~bad], t)
 
 
 def test_print_mesh_is_z_up_sized_and_flat_based(tmp_path):
