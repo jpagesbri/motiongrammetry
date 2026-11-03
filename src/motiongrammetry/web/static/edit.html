@@ -58,6 +58,8 @@
   .seg { display: inline-flex; background: rgba(22,26,33,.9); border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
   .seg button { background: none; border: 0; padding: 5px 10px; cursor: pointer; color: var(--muted); font-size: 12px; }
   .seg button.on { color: var(--text); background: var(--panel2); }
+  .densityMode { margin: -2px 0 8px 78px; }  /* under the Density slider's track */
+  .densityMode .seg button { padding: 3px 9px; font-size: 11px; }
   .status { position: absolute; left: 10px; bottom: 8px; font: 11px var(--mono); color: var(--muted);
     background: rgba(22,26,33,.85); padding: 4px 8px; border-radius: 6px; }
   .label2d { position: absolute; top: 10px; font: 11px var(--mono); color: var(--muted); background: rgba(22,26,33,.85);
@@ -136,8 +138,8 @@
       <div id="sculptOpts">
         <label class="check" title="ignore surface facing away from you, e.g. the back of a thin part"><input type="checkbox" id="frontOnly" checked> front-facing surface only</label>
         <label class="check" title="add vertices where the brush works, up to the Density below: edges longer than that are split before each dab (Draw, Dig in, Inflate, Deflate, Smooth, Flatten, Pinch). A stroke adds at most 50,000 vertices"><input type="checkbox" id="adaptive"> Adaptive detail</label>
-        <div class="slider" id="densityRow" title="how dense Adaptive detail makes the mesh, and Decimate how sparse, compared with the mesh where you brush, as it is when you start the stroke: ×4 is four times the vertices and edges half as long, ÷2 half the vertices. It doesn't depend on the zoom or the brush size; going over the same area again in one stroke adds nothing more, a new stroke applies the factor again"><span>Density</span><input type="range" id="adDensity" min="1.5" max="8" step="0.1" value="2"><span id="adDensityV"></span></div>
-        <label class="check" id="densityModeRow" title="relative: each stroke changes the density it finds by the factor (×1.5 twice is ×2.25). Absolute: both brushes aim at the factor times the scan's typical density, so you can cover an area in as many strokes as you need without changing it further: Adaptive detail adds only where the mesh is sparser, Decimate merges only where it is denser">Density is <select id="densityMode" style="width:auto"><option value="rel">relative to the mesh</option><option value="abs">absolute (× the scan)</option></select></label>
+        <div class="slider" id="densityRow" title="Relative: how much Adaptive detail multiplies the density where you brush (×4: four times the vertices, edges half as long) and how much Decimate divides it (÷2: half the vertices), from the mesh as it is when you start the stroke. Absolute: the target both brushes aim at, as a share of the scan's typical density (200%: twice as dense as the scan, 50%: half). Neither depends on the zoom or the brush size, and going over an area again in one stroke changes nothing more"><span id="densityLabel">Density</span><input type="range" id="adDensity" min="1.5" max="8" step="0.1" value="2"><span id="adDensityV"></span></div>
+        <div class="densityMode" id="densityModeRow"><span class="seg"><button data-density="rel" title="each stroke changes the density it finds: ×2 doubles the vertices where you brush, ÷2 halves them, and a new stroke does it again (×2 twice is ×4)">Relative</button><button data-density="abs" title="both brushes aim at a target density, a percentage of the scan's typical one: Adaptive detail adds only where the mesh is sparser, Decimate merges only where it is denser, so an area can take as many strokes as it needs">Absolute</button></span></div>
         <label class="check" title="W cycles through them">Display <select id="dispMode"><option value="colours">Colours</option><option value="solid">Solid grey</option>
           <option value="wire">Wireframe</option><option value="solidwire">Solid + wires</option></select></label>
         <label class="check" title="edges that border a single triangle: holes, openings, cuts left open"><input type="checkbox" id="holesChk"> highlight holes</label>
@@ -891,32 +893,32 @@ const ADAPTIVE = new Set(['draw', 'dig', 'inflate', 'deflate', 'smooth', 'flatte
 const STROKE_BUDGET = 50000;  // vertices Adaptive detail may add in one stroke
 // Relative (the default): ×k for Adaptive detail, ÷k while Decimate is the tool, of the mesh as the
 // stroke finds it. Absolute: one target for both, k times the scan's typical density (S.e0), the
-// slider on a log scale from ÷8 to ×8. Each mode keeps its own value.
+// slider on a log scale from 13% to 800%, shown in round percentages. Each mode keeps its own value.
 const DENSITY = { rel: { min: 1.5, max: 8, step: 0.1, value: 2 }, abs: { min: -3, max: 3, step: 0.05, value: 1 } };
 try { Object.assign(DENSITY, JSON.parse(localStorage.getItem('mg.density') || '{}')); } catch {}
-const absolute = () => $('densityMode').value === 'abs';
-const density = () => (absolute() ? 2 ** Number($('adDensity').value) : Number($('adDensity').value));
+let densityMode = 'rel';
+const absolute = () => densityMode === 'abs';
+// absolute targets in round percentages: 1% steps below 20%, 5% below 100%, 10% below 200%, then 25%
+const roundPct = (p) => { const q = p < 20 ? 1 : p < 100 ? 5 : p < 200 ? 10 : 25; return Math.max(1, Math.round(p / q) * q); };
+const density = () => (absolute() ? roundPct(100 * 2 ** Number($('adDensity').value)) / 100 : Number($('adDensity').value));
 const fmtK = (k) => (Math.round(k * 10) / 10).toString();
 function setDensityMode(m) {
   const d = DENSITY[m], el = $('adDensity');
-  $('densityMode').value = m; el.min = d.min; el.max = d.max; el.step = d.step; el.value = d.value;
+  densityMode = m; el.min = d.min; el.max = d.max; el.step = d.step; el.value = d.value;
+  $('densityModeRow').querySelectorAll('[data-density]').forEach((b) => b.classList.toggle('on', b.dataset.density === m));
   showDensity();
 }
+const saveDensity = () => { try { localStorage.setItem('mg.density', JSON.stringify({ mode: densityMode, rel: DENSITY.rel, abs: DENSITY.abs })); } catch {} };
 function showDensity() {
   const k = density();
-  $('adDensityV').textContent = absolute() ? (k >= 1 ? `×${fmtK(k)}` : `÷${fmtK(1 / k)}`)
+  // relative: the change (×2, ÷2); absolute: the target, as a share of the scan's typical density
+  $('densityLabel').textContent = absolute() ? 'Target' : 'Density';
+  $('adDensityV').textContent = absolute() ? `${Math.round(k * 100)}%`
     : (mode === 'sculpt' && tool.sculpt === 'decimate' ? '÷' : '×') + fmtK(k);
   $('densityRow').style.opacity = $('densityModeRow').style.opacity = $('adaptive').checked || tool.sculpt === 'decimate' ? 1 : 0.45;
 }
-$('adDensity').addEventListener('input', () => {
-  DENSITY[$('densityMode').value].value = Number($('adDensity').value);
-  try { localStorage.setItem('mg.density', JSON.stringify({ mode: $('densityMode').value, rel: DENSITY.rel, abs: DENSITY.abs })); } catch {}
-  showDensity();
-});
-$('densityMode').addEventListener('change', () => {
-  setDensityMode($('densityMode').value);
-  try { localStorage.setItem('mg.density', JSON.stringify({ mode: $('densityMode').value, rel: DENSITY.rel, abs: DENSITY.abs })); } catch {}
-});
+$('adDensity').addEventListener('input', () => { DENSITY[densityMode].value = Number($('adDensity').value); saveDensity(); showDensity(); });
+$('densityModeRow').querySelectorAll('[data-density]').forEach((b) => b.addEventListener('click', () => { setDensityMode(b.dataset.density); saveDensity(); }));
 setDensityMode(DENSITY.mode === 'abs' ? 'abs' : 'rel');
 $('adaptive').addEventListener('change', showDensity);
 // the reference a stroke works from (sculpt-mesh.js): the mesh as it is, or the scan's typical edge

@@ -335,11 +335,12 @@ Pinch, on the surface under the brush only (not the other side of a thin part). 
 says so when it stops; brush again to add more. A stroke and the vertices it added undo together.
 <b>Decimate</b> uses the same control the other way (÷), also from the mesh as it is: ÷2 after Adaptive detail halves the
 refined area, and ÷2 twice is ÷4.</p>
-<p><b>Density is: absolute</b> (under the slider) sets a target instead of a change: both brushes aim at that many times the
-scan's typical density (÷8 to ×8), whatever the mesh is now. Adaptive detail adds only where the mesh is sparser than the
+<p><b>Absolute</b> (the switch under the slider; the default is <b>Relative</b>) sets a target instead of a change: the row
+reads <b>Target</b>, and both brushes aim at that share of the scan's typical density (from 13% to 800%: 200% is twice as dense
+as the scan, 50% half), whatever the mesh is now. Adaptive detail adds only where the mesh is sparser than the
 target and Decimate merges only where it is denser, so you can cover an area in as many strokes as you need, and parts made
 denser or sparser before meet at the same density. Use it to even out an area; <b>relative to the mesh</b> (the default) to
-make a part finer or coarser than it is. Each mode keeps its own value.</p>
+make a part finer or coarser than it is (<b>Relative</b>). Each mode keeps its own value.</p>
 <p>Also: <b>Close all holes</b> (each lid is an even mesh that follows its rim: flat where the rim is flat, curved
 where it rises), <b>Remove loose pieces</b>, <kbd>[</kbd> <kbd>]</kbd> brush size, <kbd>Ctrl</kbd> inverts,
 <kbd>Ctrl+Z</kbd> / <kbd>Ctrl+Shift+Z</kbd> undo and redo, <kbd>Ctrl+S</kbd> save.</p>
