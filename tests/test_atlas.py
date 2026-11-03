@@ -315,3 +315,75 @@ def test_pieces_are_packed_by_their_outlines_without_overlapping():
     assert 0.9 * 512 <= max(W, H) <= 512
     _, W, H, _ = atlas.pack(corner_uv, chart, 40, 1.0, 4, 512, fit=True)
     assert 0.97 * 512 <= max(W, H) <= 512
+
+
+def split_over_two_images(src: Path, cut: int = 504) -> Path:
+    """The textured model src (one 1024 px image) written as OpenMVS writes a texture split over
+    several images: the image cut at x = cut into two of different widths, faces' coordinates per
+    face (texcoord) and which image each uses (texnumber). Returns split.ply (split0/1.png)."""
+    m = trimesh.load(str(src), process=False)
+    img = np.asarray(m.visual.material.image.convert("RGB"))
+    T = img.shape[1]
+    uv = np.asarray(m.visual.uv)[np.asarray(m.faces)]                     # (F, 3, 2)
+    tn = (uv[..., 0].max(1) * T > cut).astype(np.int32)
+    assert ((uv[..., 0].min(1) * T >= cut) == tn).all(), "a piece straddles the cut"
+    widths = [cut, T - cut]
+    uv = uv.copy()
+    uv[..., 0] = np.where(tn[:, None] == 0, uv[..., 0] * T / widths[0], (uv[..., 0] * T - cut) / widths[1])
+    Image.fromarray(img[:, :cut]).save(src.parent / "split0.png")
+    Image.fromarray(img[:, cut:]).save(src.parent / "split1.png")
+    v, f = np.asarray(m.vertices, np.float32), np.asarray(m.faces)
+    face = np.zeros(len(f), [("n", "u1"), ("vi", "<u4", (3,)), ("m", "u1"), ("tc", "<f4", (6,)), ("tn", "<i4")])
+    face["n"], face["vi"], face["m"], face["tc"], face["tn"] = 3, f, 6, uv.reshape(-1, 6), tn
+    head = (f"ply\nformat binary_little_endian 1.0\ncomment TextureFile split0.png\ncomment TextureFile split1.png\n"
+            f"element vertex {len(v)}\nproperty float x\nproperty float y\nproperty float z\nelement face {len(f)}\n"
+            "property list uint8 uint32 vertex_indices\nproperty list uint8 float texcoord\nproperty int texnumber\nend_header\n")
+    out = src.parent / "split.ply"
+    out.write_bytes(head.encode() + v.astype("<f4").tobytes() + face.tobytes())
+    return out
+
+
+def test_a_texture_split_over_several_images_is_read_rebuilt_carried_and_shown(tmp_path):
+    src = scattered_box(tmp_path)
+    split = split_over_two_images(src)
+    assert atlas.texture_files(split) == ["split0.png", "split1.png"]
+    # read as one sheet: the same surface, every point the colour it had in the single image
+    m, img = atlas._load(split)
+    assert img.shape == (1024, 504 + atlas.SHEET_GAP + 520, 3)
+    one = trimesh.load(str(src), process=False)
+    sheet = trimesh.Trimesh(m.vertices, m.faces, process=False)
+    sheet.visual = trimesh.visual.TextureVisuals(uv=m.visual.uv, image=Image.fromarray(img.astype(np.uint8)))
+    rng = np.random.default_rng(0)
+    faces, w = rng.integers(len(one.faces), size=3000), rng.dirichlet([4, 4, 4], 3000)
+    assert np.abs(colours_at(one, faces, w) - colours_at(sheet, faces, w)).max() < 1e-6
+    # rebuilt: one image, the same pieces and colours as from the single image
+    info = atlas.relayout(split, tmp_path / "out.ply")
+    assert info["pieces_now"] == 54 and info["pieces"] == 6 == pieces_in(tmp_path / "out.ply") and info["detail"] == 1.0
+    assert atlas.texture_files(tmp_path / "out.ply") == ["out0.png"]
+    out = trimesh.load(str(tmp_path / "out.ply"), process=False)
+    diff = np.abs(colours_at(one, faces, w) - colours_at(out, faces, w)).mean(1)
+    assert np.median(diff) < 2 and np.mean(diff) < 4
+    # and a rebuild of that (a single image again) round-trips
+    assert atlas.relayout(tmp_path / "out.ply", tmp_path / "again.ply")["size"] == info["size"]
+    # carried over to an edited mesh (here: the same surface, welded)
+    trimesh.Trimesh(one.vertices, one.faces, process=True).export(str(tmp_path / "edited.ply"))
+    carried = atlas.transfer(split, tmp_path / "edited.ply", tmp_path / "carried.ply")
+    assert carried["pieces"] == 6 and carried["new_surface"] == 0
+    # shown (GLB for the viewer and the editor): a mesh per image, in order, each with its image,
+    # so that paint on the editor's texture i is saved into image i
+    scene = atlas.textured_scene(split)
+    assert list(scene.geometry) == ["texture0", "texture1"]
+    sizes = [g.visual.material.image.size for g in scene.geometry.values()]
+    assert sizes == [(504, 1024), (520, 1024)]
+    assert sum(len(g.faces) for g in scene.geometry.values()) == len(one.faces)
+    glb = trimesh.load(file_obj=__import__("io").BytesIO(scene.export(file_type="glb")), file_type="glb")
+    assert [g.visual.material.baseColorTexture.size for g in glb.geometry.values()] == sizes
+    # a single image is left to trimesh as before
+    assert len(atlas.textured_scene(src).geometry) == 1
+
+
+def test_a_split_texture_bigger_than_the_limit_keeps_less_detail_and_says_so(tmp_path):
+    src = scattered_box(tmp_path)
+    split = split_over_two_images(src)
+    info = atlas.relayout(split, tmp_path / "small.ply", max_size=256)
+    assert max(info["size"]) <= 256 and 0.2 < info["detail"] < 0.9

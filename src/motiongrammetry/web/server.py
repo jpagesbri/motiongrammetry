@@ -707,11 +707,11 @@ class App:
             raise FileNotFoundError(kind)
 
         def build(out: Path) -> None:
-            import trimesh
+            from .. import atlas
 
-            # Raw SfM frame, no transform: the viewer applies the shared scene transform.
-            scene = trimesh.load(str(src), force="scene", process=False)
-            scene.export(str(out), file_type="glb")
+            # Raw SfM frame, no transform: the viewer applies the shared scene transform. A texture
+            # split over several images: a mesh per image, in their order (the editor paints them).
+            atlas.textured_scene(src).export(str(out), file_type="glb")
 
         return self._cached(ws, f"{kind}.glb", [src], build)
 

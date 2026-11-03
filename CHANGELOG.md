@@ -79,6 +79,11 @@ the image with that version, and the About page and `mg --version` show it.
   pieces by their outlines instead of their enclosing rectangles, so they nest into each other's
   hollows. The image is about half texture instead of a bit over a third (her_face: 38% to 51%,
   5502x5277 to 4667x4668 at the same detail), so rebuilt textures are smaller (#5).
+- **Textures split over several images** (OpenMVS splits one larger than 8192 px): the viewer, the
+  editor and GLB exports showed every face with the first image; now each image goes on its own
+  faces (and paint goes to the right one). Rebuild layout and Carry the texture over read them
+  too, and write one image, lowering the detail if it would pass 8192 px, which the message
+  says (#7).
 
 ## 0.2.0 — 2026-11-02
 

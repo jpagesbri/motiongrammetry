@@ -336,10 +336,11 @@ def gravity_alignment(recon: pycolmap.Reconstruction, mesh_vertices: np.ndarray,
 
 
 def export_glb(src: Path, dst: Path, transform: np.ndarray | None = None) -> Path:
-    """Convert a PLY (vertex colours or OpenMVS-textured) into a single GLB file."""
-    import trimesh
+    """Convert a PLY (vertex colours or OpenMVS-textured, over one image or several) into a single
+    GLB file."""
+    from .atlas import textured_scene
 
-    scene = trimesh.load(str(src), force="scene", process=False)
+    scene = textured_scene(src)
     if transform is not None:
         scene.apply_transform(transform)
     scene.export(str(dst))
