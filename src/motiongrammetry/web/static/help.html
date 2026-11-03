@@ -306,13 +306,16 @@ with what it found for each (in amber when there is something to fix) and how lo
   <tr><td>Close holes</td><td>The holes whose rim is at most the given share of the model's size (its bounding box diagonal) long,
     with the same lids as Close all holes</td></tr>
   <tr><td>Remove unreferenced vertices</td><td>Points no face uses</td></tr>
-  <tr><td>Detect self-intersections</td><td>Counts faces that cut through other faces; it doesn't change them (<b>Merge</b> with
-    <b>whole mesh</b> rebuilds the surface without them)</td></tr>
 </table>
 <p>The fixes run in that order, as <b>one undo step</b>, and the window then says what each changed and checks the result again.
 <b>Save</b> keeps it. The times are measured on this computer's processor (these fixes don't use the GPU): a short test the
 first time you open the window, then the fixes you run, scaled to the mesh's number of faces. Closing holes also depends on
 how big the holes are.</p>
+<p>Below the fixes the window also says how many faces <b>cut through other faces</b> (self-intersections), and in how many
+spots. Sanitize doesn't change them, and they don't break texturing; where the surface folds over itself they can show as a
+crease. <b>Show them</b> closes the window and marks them in red on the model, through the surface; ◀ ▶ take the view from
+spot to spot, the largest first, and <b>Hide</b> (or Esc) takes the marks away, as does any edit. Smooth or carve the spots
+that matter, or <b>Merge</b> with <b>whole mesh</b>, which rebuilds the whole surface without them.</p>
 <h3 id="sculpt">Sculpt</h3>
 <p>Left-drag on the mesh to use the tool, off it (or right-drag) to orbit, middle-drag to pan, wheel to zoom. The example: the
 shoe sat on a stool, so its underside was never filmed and the scan is open there, with a loose scrap

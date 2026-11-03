@@ -219,3 +219,22 @@ def test_of_a_pillow_the_face_kept_agrees_with_its_neighbours():
     g[7] = g[7, ::-1]
     r = meshfix.inspect(v, g)
     assert r["flipped_faces"] == 1 and r["holes"] == 0  # a flipped face is not a hole
+
+
+def test_self_intersections_come_as_spots_the_editor_can_show():
+    v, f, c = meshfix.test_mesh(4000)
+    r = meshfix.inspect(v, f, intersections=True)
+    spots, tris = r["intersection_spots"], r["intersecting_tris"]
+    assert r["intersecting_faces"] > 0 and len(tris) == 3 * r["intersecting_faces"]
+    assert sum(s["faces"] for s in spots) == r["intersecting_faces"]
+    # the face put through the surface near (0, -1, 0), and the sphere faces it crosses: one spot
+    assert len(spots) == 1 and np.linalg.norm(np.array(spots[0]["centre"]) - [0, -1, 0]) < 0.2
+    assert 0 < spots[0]["radius"] < 0.5
+    assert set(tris) <= set(range(len(v)))  # the editor's own vertex ids
+    # two separate crossings are two spots, the larger first
+    k = len(v)
+    v2 = np.concatenate([v, [[0.0, 1.2, -0.02], [0.02, 0.8, 0.02], [-0.02, 0.8, 0.02]]])
+    f2 = np.concatenate([f, [[k, k + 1, k + 2]]])
+    s2 = meshfix.inspect(v2, f2, intersections=True)["intersection_spots"]
+    assert len(s2) == 2 and s2[0]["faces"] >= s2[1]["faces"]
+    assert "intersection_spots" not in meshfix.summary(r)

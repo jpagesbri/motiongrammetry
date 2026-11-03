@@ -98,6 +98,10 @@
   .fix b { font-weight: 600; }
   .fix .found { grid-column: 2; font-size: 12px; color: var(--muted); }
   .fix .found.bad { color: var(--warn); }
+  .isect { padding: 7px 8px 7px 38px; font-size: 12px; color: var(--muted); }
+  .isect b { color: var(--fg, inherit); font-weight: 600; }
+  .isect .btn { margin-left: 6px; padding: 1px 8px; }
+  #isectBar { top: 52px; }
   .fix .est { font: 11px var(--mono); color: var(--muted); white-space: nowrap; padding-top: 2px; }
   .fix input[type=number] { width: 58px; background: var(--bg); border: 1px solid var(--line); border-radius: 5px; padding: 1px 4px; }
   .sumline { font-size: 12px; color: var(--muted); }
@@ -125,6 +129,7 @@
       <div id="sanForm">
         <p class="sumline" id="sanSum">checking the mesh…</p>
         <div class="fixes" id="sanFixes"></div>
+        <div class="isect" id="sanIsect" hidden></div>
         <p class="sumline" id="sanEst"></p>
         <div class="btns"><button class="btn primary" id="sanGo">Run the fixes</button><button class="btn" id="sanCancel">Cancel</button></div>
       </div>
@@ -267,6 +272,10 @@
       <button class="btn" id="planeFlip" title="keep the other side">Flip side</button>
       <button class="btn" id="planeCancel" title="Esc">Cancel</button>
       <label class="check" style="margin:0"><input type="checkbox" id="planeClose" checked> close the cut flat</label></div>
+    <div class="planebar" id="isectBar" hidden><span id="isectText"></span>
+      <button class="btn" id="isectPrev" title="the previous spot">◀</button>
+      <button class="btn" id="isectNext" title="the next spot">▶</button>
+      <button class="btn" id="isectHide" title="Esc">Hide</button></div>
     <div class="center" id="center">loading…</div>
     <div class="status" id="status"></div>
   </main>
@@ -607,6 +616,7 @@ async function setMode(m) {
   $('layoutOps').hidden = m !== 'paint';
   if (SM.on && m !== 'paint') seamExit();
   if (plane.n) endPlane();
+  isectHide();
   $('layoutSeg').hidden = m !== 'paint';
   renderTools();
   renderModeInfo();
@@ -1104,6 +1114,7 @@ function sculptMove(e, at) {
   flushGeometry(); requestRender();
 }
 function pushUndo(entry) {
+  isectHide();  // the marks are of the mesh as it was checked
   S.undo.push(entry);
   // whole-mesh steps hold a full copy: keep at most 6 of them, and 40 steps in all
   const heavy = (u) => u.type === 'full' || u.type === 'group';
@@ -1421,7 +1432,6 @@ const SAN_FIXES = [
   ['orient', 'Recompute normals and orientation', 'every face wound the same way as its neighbours, each piece facing out'],
   ['holes', 'Close holes', 'with the same smooth lids as Close all holes, the ones up to the size given'],
   ['unreferenced', 'Remove unreferenced vertices', 'points no face uses'],
-  ['intersections', 'Detect self-intersections', 'faces that cut through other faces: reported, not changed'],
 ];
 function sanFound(id) {  // what the check found for a fix: [text, something to fix]
   const r = SAN.check.report;
@@ -1445,7 +1455,6 @@ function sanFound(id) {  // what the check found for a fix: [text, something to 
     return r.holes ? [`${plural(r.holes, 'hole')}: ${nf(n)} that small get closed${n < r.holes ? `, ${nf(r.holes - n)} larger stay open` : ''}`, n > 0] : ['no holes (the fixes above may open some)', false];
   }
   if (id === 'unreferenced') return r.unreferenced_vertices ? [plural(r.unreferenced_vertices, 'vertex', 'vertices'), true] : ['none', false];
-  if (id === 'intersections') return r.intersecting_faces ? [`${plural(r.intersecting_faces, 'face')} cut through another: Merge (whole mesh) rebuilds the surface without them`, true] : ['none found', false];
   return ['', false];
 }
 function sanRender() {
@@ -1457,11 +1466,20 @@ function sanRender() {
     return `<label class="fix" title="${escH(what)}"><input type="checkbox" data-fix="${id}"><span><b>${name}</b>${extra}</span>
       <span class="est" data-est="${id}">${secs(est[id] || 0)}</span><span class="found" data-found="${id}"></span></label>`;
   }).join('');
-  for (const [id] of SAN_FIXES) $('sanFixes').querySelector(`[data-fix=${id}]`).checked = SAN.want ? SAN.want.includes(id) : sanFound(id)[1] && id !== 'intersections';
+  for (const [id] of SAN_FIXES) $('sanFixes').querySelector(`[data-fix=${id}]`).checked = SAN.want ? SAN.want.includes(id) : sanFound(id)[1];
   $('sanFixes').querySelectorAll('input[type=number]').forEach((el) => el.addEventListener('input', () => {
     SAN.hole = Number($('sanHole').value); SAN.piece = Number($('sanPiece').value); sanFoundText(); }));
   $('sanFixes').querySelectorAll('[data-fix]').forEach((el) => el.addEventListener('change', sanTotal));
   sanFoundText();
+  // self-intersections: found, not fixed; shown on the model to deal with by hand
+  const r = c.report, el = $('sanIsect'), spots = r.intersection_spots || [];
+  el.hidden = false;
+  el.innerHTML = r.intersecting_faces
+    ? `<b>Self-intersections:</b> ${plural(r.intersecting_faces, 'face')} cut through other faces, in ${plural(spots.length, 'spot')}. `
+      + 'Sanitize doesn\'t change them and they don\'t break texturing; where one shows as a crease, Smooth or carve it, or Merge with "whole mesh". '
+      + '<button class="btn" id="sanIsectShow" title="close this and mark them on the model, spot by spot">Show them</button>'
+    : '<b>Self-intersections:</b> none found.';
+  $('sanIsectShow')?.addEventListener('click', () => { closeSanitize(); isectShow(r); });
 }
 function sanFoundText() {
   for (const [id] of SAN_FIXES) {
@@ -1538,6 +1556,47 @@ async function runSanitize() {
   } catch (e) { $('sanErr').textContent = e.message; sanTotal(); }
   SAN.running = false;
 }
+// The faces the last check found cutting through others, drawn over the model in red (through the
+// surface too: half of each crossing is inside), with the camera taken from spot to spot. They are
+// as the check found them: any edit, undo or mode switch takes the marks away.
+const ISECT = { mesh: null, spots: [], i: 0 };
+function isectShow(r) {
+  isectHide();
+  const tris = r.intersecting_tris || [], pos = new Float32Array(tris.length * 3);
+  for (let k = 0; k < tris.length; k++) for (let j = 0; j < 3; j++) pos[k * 3 + j] = S.pos[tris[k] * 3 + j];
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  ISECT.mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: 0xff3b30, transparent: true, opacity: 0.6,
+    depthTest: false, depthWrite: false, side: THREE.DoubleSide }));
+  ISECT.mesh.renderOrder = 3;
+  root.add(ISECT.mesh);
+  ISECT.spots = r.intersection_spots || []; ISECT.i = 0;
+  $('isectBar').hidden = false;
+  isectGo(0);
+}
+function isectHide() {
+  if (!ISECT.mesh) return;
+  root.remove(ISECT.mesh); ISECT.mesh.geometry.dispose(); ISECT.mesh.material.dispose(); ISECT.mesh = null;
+  $('isectBar').hidden = true; requestRender();
+}
+function isectGo(step) {
+  const n = ISECT.spots.length;
+  if (!n) return;
+  ISECT.i = (ISECT.i + step + n) % n;
+  const s = ISECT.spots[ISECT.i];
+  $('isectText').textContent = `Self-intersections · spot ${ISECT.i + 1} of ${n} (${plural(s.faces, 'face')})`;
+  root.updateMatrixWorld(true);
+  const c = root.localToWorld(new THREE.Vector3(...s.centre));
+  const scale = new THREE.Vector3().setFromMatrixScale(root.matrixWorld).x || 1;
+  const dist = Math.max(s.radius * 3, (S.e0 || 0) * 40) * scale;
+  const dir = persp.position.clone().sub(controls.target).normalize();
+  controls.target.copy(c);
+  persp.position.copy(c).addScaledVector(dir, dist);
+  persp.lookAt(c); proj.framed(); requestRender();
+}
+$('isectPrev').addEventListener('click', () => isectGo(-1));
+$('isectNext').addEventListener('click', () => isectGo(1));
+$('isectHide').addEventListener('click', isectHide);
 $('sanBtn').addEventListener('click', () => openSanitize());
 $('sanGo').addEventListener('click', runSanitize);
 $('sanOk').addEventListener('click', closeSanitize);
@@ -2178,6 +2237,7 @@ addEventListener('keydown', (e) => {
   if (e.code === 'Space') { spaceDown = true; return; }
   if (plane.n && e.key === 'Enter') { e.preventDefault(); applyPlane(); return; }
   if (plane.n && e.key === 'Escape') { endPlane(); return; }
+  if (ISECT.mesh && e.key === 'Escape') { isectHide(); return; }
   const k = e.key.toLowerCase();
   if (SM.on && (e.ctrlKey || e.metaKey) && k === 'z' && !e.shiftKey) { e.preventDefault(); seamUndo(); return; }
   if ((e.ctrlKey || e.metaKey) && k === 'z') { e.preventDefault(); e.shiftKey ? doRedo() : doUndo(); return; }
@@ -2193,6 +2253,7 @@ addEventListener('keyup', (e) => { if (e.code === 'Space') spaceDown = false; })
 // ---------------------------------------------------------------- undo, save, status
 const anyDirty = () => S.dirty || P.dirty;
 function doUndo() {
+  isectHide();
   if (mode === 'sculpt' && S.undo.length) S.redo.push(sculptSwap(S.undo.pop()));
   else if (mode === 'paint' && P.undo.length) P.redo.push(paintSwap(P.undo.pop()));
   else return;
@@ -2200,6 +2261,7 @@ function doUndo() {
   updateStatus(); updateButtons();
 }
 function doRedo() {
+  isectHide();
   if (mode === 'sculpt' && S.redo.length) S.undo.push(sculptSwap(S.redo.pop()));
   else if (mode === 'paint' && P.redo.length) P.undo.push(paintSwap(P.redo.pop()));
   else return;
