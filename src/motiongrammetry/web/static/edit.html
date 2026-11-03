@@ -2320,12 +2320,14 @@ $('carryTex').addEventListener('click', async () => {
     await reloadPaint();
     $('texInfo').textContent = '';
     flash(`texture carried over to your edited mesh: ${r.pieces.toLocaleString()} pieces`
-      + (r.new_surface > 0.001 ? `, ${(100 * r.new_surface).toFixed(1)}% new surface coloured from around it` : '') + ' · Undo layout goes back');
+      + (r.new_surface > 0.001 ? `, ${(100 * r.new_surface).toFixed(1)}% new surface coloured from around it` : '') + lowered(r) + ' · Undo layout goes back');
   } catch (e) { $('texInfo').textContent = ''; fail(e); }
   $('texEdits').disabled = $('carryTex').disabled = false;
 });
 
 // ---- texture layout (atlas.py): the texture's pieces rebuilt by the model's sides
+// a texture too big for one 8192 px image (OpenMVS splits those over several) comes back in one, less detailed
+const lowered = (r) => (r.detail < 0.99 ? ` · detail lowered to ${Math.round(100 * r.detail)}% to fit one ${Math.max(...r.size)} px image` : '');
 const lyParams = () => ({ angle: Number($('lyAngle').value), min_size: Number($('lyMin').value) / 10 });
 function lyLabels() {
   $('lyAngleV').textContent = $('lyAngle').value + '°';
@@ -2347,7 +2349,7 @@ $('lyGo').addEventListener('click', async () => {
     const r = await api(`/api/workspaces/${ws}/edit/layout`, { method: 'POST', body: JSON.stringify(lyParams()) });
     await reloadPaint();
     $('lyInfo').textContent = '';
-    flash(`texture rebuilt: ${r.pieces_now.toLocaleString()} → ${r.pieces.toLocaleString()} pieces, ${r.size.join(' × ')} px · Undo layout goes back`);
+    flash(`texture rebuilt: ${r.pieces_now.toLocaleString()} → ${r.pieces.toLocaleString()} pieces, ${r.size.join(' × ')} px${lowered(r)} · Undo layout goes back`);
   } catch (e) { $('lyInfo').textContent = ''; fail(e); }
   $('lyGo').disabled = false;
 });
@@ -2638,7 +2640,7 @@ $('seamApply').addEventListener('click', async () => {
     seamExit(); await reloadPaint();
     flash(`texture rebuilt with your seams: ${r.pieces.toLocaleString()} pieces, ${r.size.join(' × ')} px`
       + (r.recut ? ` · ${r.recut} piece${r.recut === 1 ? '' : 's'} folded over and ${r.recut === 1 ? 'was' : 'were'} cut further to lie flat` : '')
-      + ' · Undo layout goes back');
+      + lowered(r) + ' · Undo layout goes back');
   } catch (e) { fail(e); $('seamInfo').textContent = ''; }
   $('seamApply').disabled = false;
 });

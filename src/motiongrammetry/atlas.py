@@ -219,23 +219,102 @@ def flatten(v: np.ndarray, f: np.ndarray, normals: np.ndarray, area: np.ndarray,
 
 
 # ---- the whole thing ----------------------------------------------------------------------
-def _load(src: Path, preview: int | None = None):
-    """The textured mesh and its texture (float RGB); for a preview, the texture at most twice the
-    preview's size (read at a lower resolution, it is quick)."""
+def texture_files(src: Path) -> list[str]:
+    """The images a textured PLY names (its "comment TextureFile" lines, in order: OpenMVS splits a
+    texture larger than --max-texture-size, 8192, over several, and says per face which one)."""
+    with open(src, "rb") as fh:
+        head = fh.read(1 << 16).split(b"end_header", 1)[0]
+    return [ln.split(None, 2)[2].decode().strip() for ln in head.splitlines()
+            if ln.startswith(b"comment TextureFile ") and len(ln.split(None, 2)) == 3]
+
+
+def _texnumber(m, n_images: int) -> np.ndarray:
+    """Per face, which of the model's images it is textured from (OpenMVS's "texnumber")."""
+    try:
+        tn = np.asarray(m.metadata["_ply_raw"]["face"]["data"]["texnumber"]).ravel().astype(np.int64)
+    except (KeyError, ValueError, TypeError):
+        raise ValueError(f"the model names {n_images} texture images but not which face uses which")
+    if len(tn) != len(m.faces) or tn.min() < 0 or tn.max() >= n_images:
+        raise ValueError("the model's faces name texture images it does not have")
+    return tn
+
+
+SHEET_GAP = 16  # texels between the images of a split texture laid side by side, so lookups never mix them
+
+
+def _one_sheet(m, images: list, tn: np.ndarray):
+    """A model textured from several images as one textured from them side by side (left to right,
+    SHEET_GAP apart): the same surface and colours, its coordinates moved to each face's image.
+    A vertex shared by faces of different images is split. Returns (mesh, image)."""
     import trimesh
     from PIL import Image
 
-    pngs = sorted(src.parent.glob(src.stem + "[0-9]*.png"))
-    if len(pngs) > 1:
-        raise ValueError("this model's texture is split over several images: not supported yet")
+    f, uv, v = np.asarray(m.faces), np.asarray(m.visual.uv, np.float64), np.asarray(m.vertices)
+    ws = [im.size[0] for im in images]
+    W, H = sum(ws) + SHEET_GAP * (len(images) - 1), max(im.size[1] for im in images)
+    x0 = np.concatenate([[0], np.cumsum(np.array(ws) + SHEET_GAP)[:-1]])
+    sheet = Image.new("RGB", (W, H))
+    for im, x in zip(images, x0):
+        sheet.paste(im, (int(x), 0))
+    key = np.stack([f.ravel(), np.repeat(tn, 3)], 1)
+    uniq, vid = np.unique(key, axis=0, return_inverse=True)
+    t = uniq[:, 1]
+    iw, ih = np.array([im.size[0] for im in images])[t], np.array([im.size[1] for im in images])[t]
+    px = np.stack([x0[t] + uv[uniq[:, 0], 0] * iw, (1 - uv[uniq[:, 0], 1]) * ih], 1)  # texels, y down
+    out = trimesh.Trimesh(v[uniq[:, 0]], vid.reshape(-1, 3), process=False)
+    out.visual = trimesh.visual.TextureVisuals(uv=np.stack([px[:, 0] / W, 1 - px[:, 1] / H], 1), image=sheet)
+    return out, sheet
+
+
+def _load(src: Path, preview: int | None = None):
+    """The textured mesh and its texture (float RGB); for a preview, the texture at most twice the
+    preview's size (read at a lower resolution, it is quick). A texture split over several images
+    comes as one, the images side by side (_one_sheet)."""
+    import trimesh
+    from PIL import Image
+
     m = trimesh.load(str(src), process=False)
-    img = getattr(m.visual.material, "image", None) if hasattr(m.visual, "material") else None
-    if img is None or getattr(m.visual, "uv", None) is None:
+    if getattr(m.visual, "uv", None) is None:
         raise ValueError("the model has no texture to lay out")
+    names = texture_files(src)
+    if len(names) > 1:
+        missing = [n for n in names if not (src.parent / n).exists()]
+        if missing:
+            raise ValueError(f"the model's texture images are missing: {', '.join(missing)}")
+        m, img = _one_sheet(m, [Image.open(src.parent / n).convert("RGB") for n in names], _texnumber(m, len(names)))
+    else:
+        img = getattr(m.visual.material, "image", None) if hasattr(m.visual, "material") else None
+        if img is None:
+            raise ValueError("the model has no texture to lay out")
     img = img.convert("RGB")
     if preview:
         img.thumbnail((2 * preview, 2 * preview), Image.BILINEAR)
     return m, np.asarray(img, np.float32)
+
+
+def textured_scene(src: Path):
+    """A PLY as a trimesh scene to export (GLB): a texture split over several images becomes one
+    mesh per image, in their order, each with its own material, since trimesh reads only the first
+    image (every face would show it). Anything else: as trimesh loads it."""
+    import trimesh
+    from PIL import Image
+
+    names = texture_files(src) if src.suffix.lower() == ".ply" else []
+    if len(names) < 2:
+        return trimesh.load(str(src), force="scene", process=False)
+    m = trimesh.load(str(src), process=False)
+    tn = _texnumber(m, len(names))
+    f, uv, v = np.asarray(m.faces), np.asarray(m.visual.uv), np.asarray(m.vertices)
+    scene = trimesh.Scene()
+    for i, name in enumerate(names):
+        sel = f[tn == i]
+        if not len(sel):  # keep the images' order (the editor saves paint by it): one empty face
+            sel = f[:1, [0, 0, 0]]
+        used, local = np.unique(sel, return_inverse=True)
+        part = trimesh.Trimesh(v[used], local.reshape(-1, 3), process=False)
+        part.visual = trimesh.visual.TextureVisuals(uv=uv[used], image=Image.open(src.parent / name).convert("RGB"))
+        scene.add_geometry(part, node_name=f"texture{i}", geom_name=f"texture{i}")
+    return scene
 
 
 def count_pieces(f: np.ndarray, uv: np.ndarray, v: np.ndarray) -> int:
@@ -347,11 +426,14 @@ def _layout(pv, gf, area, normals, lab, density, padding, limit, fit=False) -> d
     uniq, vid = np.unique(key, axis=0, return_inverse=True)
     vid = vid.reshape(-1, 3)
     corner_px, W, H, used = pack(corner_uv, chart, n, density, padding, limit, fit=fit)
+    tri = np.arange(len(gf) * 3).reshape(-1, 3)
+    kept = np.sqrt(np.abs(_signed_area(corner_px.reshape(-1, 2), tri)).sum()
+                   / max(np.abs(_signed_area(corner_uv.reshape(-1, 2), tri)).sum(), 1e-30)) / density
     uvs = np.zeros((len(uniq), 2))
     uvs[vid.ravel()] = (corner_px / [W, H]).reshape(-1, 2)
     uvs[:, 1] = 1 - uvs[:, 1]  # pixels count down, texture coordinates up
     return {"vertices": pv[uniq[:, 1]], "faces": vid, "uv": uvs, "W": W, "H": H, "used": used,
-            "pieces": n, "recut": recut}
+            "pieces": n, "recut": recut, "detail": min(1.0, float(kept))}
 
 
 def _write(dst: Path, vertices: np.ndarray, faces: np.ndarray, uv: np.ndarray, image: np.ndarray) -> None:
@@ -401,6 +483,8 @@ def relayout(src: Path, dst: Path, angle: float = 45.0, min_size: float = 0.005,
     _write(dst, lay["vertices"], lay["faces"], lay["uv"], new)
     info = {"pieces_now": k, "pieces": lay["pieces"], "recut": lay["recut"], "size": [lay["W"], lay["H"]],
             "used": round(lay["used"], 2), "faces": len(gf),
+            # the share of the old texture's detail kept: below 1 when it had to shrink to max_size
+            "detail": round(lay["detail"], 2) if not (preview or size) else 1.0,
             "seconds": {"segment": round(t_seg - t0, 1), "layout": round(t_pack - t_seg, 1), "bake": round(t_bake - t_pack, 1)}}
     log.info("texture layout: %d -> %d pieces, %dx%d, %.0f%% used, %.0f s", k, lay["pieces"], lay["W"], lay["H"],
              100 * info["used"], time.time() - t0)
@@ -458,7 +542,7 @@ def transfer(src: Path, mesh: Path, dst: Path, angle: float = 45.0, min_size: fl
     d = np.concatenate(far) if far else np.zeros(0)
     size = float(np.linalg.norm(np.ptp(pv, axis=0)))
     info = {"pieces_now": k, "pieces": lay["pieces"], "recut": lay["recut"], "size": [lay["W"], lay["H"]],
-            "used": round(lay["used"], 2), "faces": len(gf),
+            "used": round(lay["used"], 2), "faces": len(gf), "detail": round(lay["detail"], 2),
             # how much of the surface is new (more than 0.5% of the model's size from the old one)
             "new_surface": round(float((d > 0.005 * size).mean()), 3) if len(d) else 0.0,
             "seconds": {"layout": round(t_lay - t0, 1), "bake": round(t_bake - t_lay, 1)}}

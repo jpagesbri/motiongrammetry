@@ -395,7 +395,8 @@ by triangle at the same level of detail: the model looks the same, the flat text
 for that head, a minute to rebuild). <b>Count pieces</b> tells you the number first, and <b>Preview</b> shows the new
 texture at low resolution in the flat view, in a few seconds, without saving anything. It is saved as your custom texture;
 save or discard the paint before. <b>Undo layout</b> goes back to the layout it replaced, until you save paint or re-run
-texture. Re-running texture brings back OpenMVS's layout.</p>
+texture. Re-running texture brings back OpenMVS's layout. A texture OpenMVS split over several images (larger than
+8192 px) is rebuilt into one; if it would not fit at the same detail the detail is lowered, and the message says by how much.</p>
 <p><b>Edit seams…</b> draws the texture's seams on the model in amber, to change them by hand (best after a Rebuild layout:
 OpenMVS's own layout is a wall of lines). <b>Cut</b>: drag along the model and the seam follows the mesh's edges between
 the points you pass; a closed loop makes a new piece, and an open cut lets a curved piece (a cone, a cap) lie flat.
