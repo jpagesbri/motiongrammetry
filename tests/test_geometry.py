@@ -413,3 +413,30 @@ def test_print_report_flags_a_mostly_invented_print(tmp_path):
     out, rep = print_mesh(tmp_path / "m.ply", None, height_mm=40, pitch=0.5)  # auto
     codes = {i["code"] for i in rep["issues"]}
     assert out.is_watertight and rep["mode"] == "shell" and "print-shell" in codes and "print-invented" not in codes
+
+
+def test_on_open_edge_marks_closest_points_on_boundary_edges_only():
+    from collections import Counter
+
+    from motiongrammetry.clean import _on_open_edge
+
+    m = o3d.geometry.TriangleMesh.create_sphere(1.0, 20)
+    v, f = np.asarray(m.vertices), np.asarray(m.triangles).astype(np.int64)
+    cen = v[f].mean(1)
+    f = f[(cen[:, 2] > -0.5) & (np.linalg.norm(cen - [1, 0, 0], axis=1) > 0.4)]  # an open bottom and a hole
+    rng = np.random.default_rng(3)
+    tri = rng.integers(0, len(f), 4000)
+    uv = rng.random((4000, 2)) * 0.5
+    k = rng.integers(0, 4, 4000)  # 0..2: on the edge facing corner k; 3: inside the triangle
+    uv[k == 1, 0] = 0
+    uv[k == 2, 1] = 0
+    uv[k == 0, 1] = 1 - uv[k == 0, 0]
+    got = _on_open_edge(f, tri, uv)
+    count = Counter(tuple(sorted(e)) for t in f.tolist() for e in ((t[0], t[1]), (t[1], t[2]), (t[2], t[0])))
+    w = np.column_stack([1 - uv[:, 0] - uv[:, 1], uv[:, 0], uv[:, 1]])
+    want = [any(w[i, c] < 1e-4 and count[tuple(sorted((f[tri[i], a], f[tri[i], b])))] == 1
+                for c, (a, b) in enumerate(((1, 2), (0, 2), (0, 1)))) for i in range(len(tri))]
+    np.testing.assert_array_equal(got, want)
+    assert 0 < got.sum() < (k < 3).sum(), "some points lie on open edges, most edges are shared"
+    # a closed mesh has no open edges
+    assert not _on_open_edge(np.asarray(m.triangles).astype(np.int64), tri % len(m.triangles), uv).any()
