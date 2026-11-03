@@ -2,6 +2,7 @@
 __pycache__/
 *.egg-info/
 work*/
+!.github/workflows/
 *.mp4
 !examples/*.mp4
 workspaces/
