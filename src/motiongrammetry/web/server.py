@@ -371,6 +371,7 @@ class App:
             "raw_source": ws.mesh_producer(ws.raw_mesh()),
             "clean_source": self._clean_source(ws),
             "custom": self.custom_info(ws),
+            "scan_edge": self.scan_edge(ws),
             "preview_stale": self.preview_stale(ws),
             "orientation": self.orientation(ws),
             "version": self._version(ws),
@@ -732,6 +733,31 @@ class App:
             "layout_undo": bool(tex.exists() and (c / LAYOUT_PREVIOUS / "after").exists()
                                 and (c / LAYOUT_PREVIOUS / "after").read_text() == str(tex.stat().st_mtime_ns)),
         }
+
+    def scan_edge(self, ws: Workspace) -> float | None:
+        """The scan's typical edge: the median over the pipeline's clean mesh of each vertex's mean edge,
+        averaged with its neighbours' (as static/sculpt-mesh.js measures the mesh under a brush). The
+        editor's absolute Density (k times the scan's typical density) is relative to it, also when
+        a sculpted custom mesh is loaded."""
+        src = ws.mesh / "mesh_clean.ply"
+        if not src.exists():
+            return None
+
+        def build(out: Path) -> None:
+            import trimesh
+
+            try:
+                m = trimesh.load(str(src), process=False, force="mesh")
+                e, length, nv = m.edges_unique, m.edges_unique_length, len(m.vertices)
+                cnt = np.bincount(e.ravel(), minlength=nv)
+                mean = (np.bincount(e[:, 0], length, nv) + np.bincount(e[:, 1], length, nv)) / np.maximum(cnt, 1)
+                around = (np.bincount(e[:, 0], mean[e[:, 1]], nv) + np.bincount(e[:, 1], mean[e[:, 0]], nv)) / np.maximum(cnt, 1)
+                ref = ((mean + around) / 2)[cnt > 0]
+                out.write_text(json.dumps(float(np.median(ref)) if len(ref) else None))
+            except Exception:  # not a mesh trimesh can read: the editor measures the loaded one
+                out.write_text("null")
+
+        return json.loads(self._cached(ws, "scan_edge.json", [src], build).read_text())
 
     @staticmethod
     def clean_input(ws: Workspace) -> Path | None:

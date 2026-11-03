@@ -157,10 +157,28 @@ export function medianEdge(pos, idx) {
 // tests/js/sculpt-mesh.test.mjs checks the result.
 export const SPLIT = 1.5;   // Adaptive detail splits edges longer than SPLIT · e/√k
 export const MERGE = 0.68;  // Decimate merges edges shorter than MERGE · e·√k
-// At the start of a stroke: the mesh as it is now becomes the reference for the whole stroke.
-export function beginStroke(S) {
+// At the start of a stroke: the mesh as it is now becomes the reference for the whole stroke
+// (relative density). With `absolute` (an edge length: the scan's typical one, see typicalEdge)
+// every vertex has that reference instead, so ×k aims at k times the scan's typical density
+// everywhere: strokes over the same area converge on it instead of compounding, and Adaptive detail
+// and Decimate meet at the same target from either side.
+export function beginStroke(S, absolute = null) {
   S.ref = { pos: S.pos.slice(), adjStart: S.adjStart, adj: S.adj, nv: S.nv };  // positions move during a stroke
-  S.e0v = new Float32Array(S.nv).fill(NaN);
+  S.e0v = new Float32Array(S.nv).fill(absolute > 0 ? absolute : NaN);
+}
+// In absolute mode Decimate merges a little less than its relative ÷k would (edges √0.7 shorter):
+// otherwise, at the same target, it took back 8-13% of what Adaptive detail had just added (both
+// brushes at ×2 on her_face), and the two went back and forth; with this band the first take-back
+// is 3-4% and alternating them settles within 1%. Decimate's ÷k for an absolute target ×k.
+export const ABS_BAND = 0.7;
+export const absoluteDecimate = (k) => ABS_BAND / k;
+// The mesh's typical reference edge: the median, over (a sample of) its vertices, of the reference
+// edge a stroke would give them. The server measures the scan's the same way (scan_edge).
+export function typicalEdge(S) {
+  const R = { pos: S.pos, adjStart: S.adjStart, adj: S.adj, nv: S.nv }, E = new Float32Array(S.nv).fill(NaN);
+  const step = Math.max(1, Math.floor(S.nv / 20000)), e = [];
+  for (let v = 0; v < S.nv; v += step) { const l = edgeAt({ ref: R }, S.pos, E, v); if (l > 0) e.push(l); }
+  return e.length ? e.sort((a, b) => a - b)[e.length >> 1] : 0;
 }
 function meanEdge(R, v) {
   const { pos, adjStart, adj } = R;

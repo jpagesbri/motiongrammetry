@@ -137,6 +137,7 @@
         <label class="check" title="ignore surface facing away from you, e.g. the back of a thin part"><input type="checkbox" id="frontOnly" checked> front-facing surface only</label>
         <label class="check" title="add vertices where the brush works, up to the Density below: edges longer than that are split before each dab (Draw, Dig in, Inflate, Deflate, Smooth, Flatten, Pinch). A stroke adds at most 50,000 vertices"><input type="checkbox" id="adaptive"> Adaptive detail</label>
         <div class="slider" id="densityRow" title="how dense Adaptive detail makes the mesh, and Decimate how sparse, compared with the mesh where you brush, as it is when you start the stroke: ×4 is four times the vertices and edges half as long, ÷2 half the vertices. It doesn't depend on the zoom or the brush size; going over the same area again in one stroke adds nothing more, a new stroke applies the factor again"><span>Density</span><input type="range" id="adDensity" min="1.5" max="8" step="0.1" value="2"><span id="adDensityV"></span></div>
+        <label class="check" id="densityModeRow" title="relative: each stroke changes the density it finds by the factor (×1.5 twice is ×2.25). Absolute: both brushes aim at the factor times the scan's typical density, so you can cover an area in as many strokes as you need without changing it further: Adaptive detail adds only where the mesh is sparser, Decimate merges only where it is denser">Density is <select id="densityMode" style="width:auto"><option value="rel">relative to the mesh</option><option value="abs">absolute (× the scan)</option></select></label>
         <label class="check" title="W cycles through them">Display <select id="dispMode"><option value="colours">Colours</option><option value="solid">Solid grey</option>
           <option value="wire">Wireframe</option><option value="solidwire">Solid + wires</option></select></label>
         <label class="check" title="edges that border a single triangle: holes, openings, cuts left open"><input type="checkbox" id="holesChk"> highlight holes</label>
@@ -648,6 +649,7 @@ async function loadSculpt() {
   setDisplay(display);
   Object.assign(S, st);
   S.undo = []; S.redo = []; S.dirty = false; S.spheres = []; updateSpheres();
+  S.e0 = wsState.scan_edge || SMesh.typicalEdge(S);  // absolute Density's unit: the scan's typical edge
 }
 // Everything that describes the current mesh (sculpt-mesh.js builds it). Topology edits (cap, plane
 // cut, merge) build a new state; undo swaps whole states back, BVHs and all, so earlier stroke steps
@@ -887,14 +889,38 @@ function grabMove(delta) {
 // vertices are appended), so a stroke's moves before it still undo.
 const ADAPTIVE = new Set(['draw', 'dig', 'inflate', 'deflate', 'smooth', 'flatten', 'pinch']);
 const STROKE_BUDGET = 50000;  // vertices Adaptive detail may add in one stroke
-const density = () => Number($('adDensity').value);
-function showDensity() {  // the same control: ×k for Adaptive detail, ÷k while Decimate is the tool
-  const k = density().toFixed(1).replace(/\.0$/, '');
-  $('adDensityV').textContent = (mode === 'sculpt' && tool.sculpt === 'decimate' ? '÷' : '×') + k;
-  $('densityRow').style.opacity = $('adaptive').checked || tool.sculpt === 'decimate' ? 1 : 0.45;
+// Relative (the default): ×k for Adaptive detail, ÷k while Decimate is the tool, of the mesh as the
+// stroke finds it. Absolute: one target for both, k times the scan's typical density (S.e0), the
+// slider on a log scale from ÷8 to ×8. Each mode keeps its own value.
+const DENSITY = { rel: { min: 1.5, max: 8, step: 0.1, value: 2 }, abs: { min: -3, max: 3, step: 0.05, value: 1 } };
+try { Object.assign(DENSITY, JSON.parse(localStorage.getItem('mg.density') || '{}')); } catch {}
+const absolute = () => $('densityMode').value === 'abs';
+const density = () => (absolute() ? 2 ** Number($('adDensity').value) : Number($('adDensity').value));
+const fmtK = (k) => (Math.round(k * 10) / 10).toString();
+function setDensityMode(m) {
+  const d = DENSITY[m], el = $('adDensity');
+  $('densityMode').value = m; el.min = d.min; el.max = d.max; el.step = d.step; el.value = d.value;
+  showDensity();
 }
-$('adDensity').addEventListener('input', showDensity);
+function showDensity() {
+  const k = density();
+  $('adDensityV').textContent = absolute() ? (k >= 1 ? `×${fmtK(k)}` : `÷${fmtK(1 / k)}`)
+    : (mode === 'sculpt' && tool.sculpt === 'decimate' ? '÷' : '×') + fmtK(k);
+  $('densityRow').style.opacity = $('densityModeRow').style.opacity = $('adaptive').checked || tool.sculpt === 'decimate' ? 1 : 0.45;
+}
+$('adDensity').addEventListener('input', () => {
+  DENSITY[$('densityMode').value].value = Number($('adDensity').value);
+  try { localStorage.setItem('mg.density', JSON.stringify({ mode: $('densityMode').value, rel: DENSITY.rel, abs: DENSITY.abs })); } catch {}
+  showDensity();
+});
+$('densityMode').addEventListener('change', () => {
+  setDensityMode($('densityMode').value);
+  try { localStorage.setItem('mg.density', JSON.stringify({ mode: $('densityMode').value, rel: DENSITY.rel, abs: DENSITY.abs })); } catch {}
+});
+setDensityMode(DENSITY.mode === 'abs' ? 'abs' : 'rel');
 $('adaptive').addEventListener('change', showDensity);
+// the reference a stroke works from (sculpt-mesh.js): the mesh as it is, or the scan's typical edge
+const beginDensityStroke = () => SMesh.beginStroke(S, absolute() ? S.e0 : null);
 // Before a dab with Adaptive detail on: the long edges under the brush are split (not beyond its
 // circle: refining out to twice the radius tripled the area a stroke changed, unseen).
 // The first time in a stroke, the state before it is kept: undoing the stroke goes back to it.
@@ -932,7 +958,7 @@ function sculptStart(e, at) {
   }
   if (t === 'decimate') {
     if (!pick(at, [S.mesh])) return false;
-    SMesh.beginStroke(S);  // ÷k of the mesh as it is now, however often the stroke passes
+    beginDensityStroke();  // however often the stroke passes, it counts once
     S.stroke = { id: (S.stroke?.id || 0) + 1, t, verts: [], old: [], tris: [], dabs: [], lastXY: { x: at.x, y: at.y } };
     decimateDab(at);
     return true;
@@ -946,7 +972,7 @@ function sculptStart(e, at) {
   if (!hit) return false;
   camLocal.copy(camera.position).applyMatrix4(rootInv);
   const st = S.stroke = { id: (S.stroke?.id || 0) + 1, t, verts: [], old: [], tris: [], last: null };
-  if (ADAPTIVE.has(t) && $('adaptive').checked) SMesh.beginStroke(S);  // ×k of the mesh as it is now, however often the stroke passes
+  if (ADAPTIVE.has(t) && $('adaptive').checked) beginDensityStroke();  // however often the stroke passes, it counts once
   const pLocal = hit.point.clone().applyMatrix4(rootInv);
   const r = worldRadius(brush.radius, hit.point, at.r);
   if (t === 'grab') {
@@ -1034,7 +1060,8 @@ function sculptEnd() {
     return;
   }
   if (st.t === 'decimate') {
-    const next = st.dabs.length ? SMesh.decimate(S, st.dabs, density()) : null;
+    // relative: ÷k; absolute: down to k times the scan's typical density (÷ 1/k)
+    const next = st.dabs.length ? SMesh.decimate(S, st.dabs, absolute() ? SMesh.absoluteDecimate(density()) : density()) : null;
     ghost.dabs = []; updateGhostDabs();
     if (next) {
       pushUndo({ type: 'full', state: captureState(), spheres: S.spheres.slice() });

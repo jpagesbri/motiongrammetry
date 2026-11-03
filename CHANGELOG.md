@@ -44,7 +44,8 @@ the image with that version, and the About page and `mg --version` show it.
   brush size. A coarse part gets the same factor of its own density, and Decimate uses the control
   the other way (÷2 is half the vertices). One stroke counts once, however often it passes over an
   area; a new stroke applies the factor again, also after the other tool (×1.5 after ÷4 adds about
-  half to what Decimate left). Measured on the shoe, orbit and her_face, the result is within about 25% of the factor. Adaptive detail now works
+  half to what Decimate left). **Density is: absolute** sets a target instead (÷8 to ×8 of the scan's
+  typical density) that both brushes aim at, so an area can take as many strokes as it needs. Measured on the shoe, orbit and her_face, the result is within about 25% of the factor. Adaptive detail now works
   only on the surface under the brush (not the other side of a thin part), and one stroke adds at
   most 50,000 vertices and says so. It no longer pauses about half a second each time it adds
   vertices on a dense mesh. It also no longer leaves small cracks, which the save then cut out with
