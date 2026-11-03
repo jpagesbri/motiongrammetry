@@ -143,12 +143,12 @@ def test_failed_rerun_drops_completion_stamp(ws, monkeypatch):
 
 
 def test_sigterm_unwinds_despite_glog_handlers():
-    # pycolmap's glog kills the process on SIGTERM unless our handler wins.
+    # pycolmap's glog kills the process on SIGTERM unless our handler wins. 'ready' is printed inside
+    # the try: the signal can land while print() is still returning.
     code = ("import time, sys\n"
             "from motiongrammetry.pipeline import install_signal_handlers\n"
             "install_signal_handlers()\n"
-            "print('ready', flush=True)\n"
-            "try:\n    time.sleep(30)\n"
+            "try:\n    print('ready', flush=True)\n    time.sleep(30)\n"
             "except KeyboardInterrupt:\n    print('unwound', flush=True); sys.exit(130)\n")
     proc = subprocess.Popen([sys.executable, "-c", code], stdout=subprocess.PIPE, text=True,
                             env=dict(os.environ, PYTHONPATH="src"))
