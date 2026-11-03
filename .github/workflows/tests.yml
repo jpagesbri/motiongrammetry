@@ -27,6 +27,11 @@ jobs:
         with:
           version: "0.9.5"   # the same uv as docker/Dockerfile
 
+      # The editor's browser code that runs in Node (tests/js, through tests/test_js.py) needs 22.15+.
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+
       # Open3D's wheel links libGL and libgomp even when nothing is drawn.
       - name: System libraries
         run: sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends libgl1 libegl1 libgomp1
