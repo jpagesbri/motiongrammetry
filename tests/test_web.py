@@ -347,27 +347,6 @@ def test_editor_saves_a_custom_mesh_and_leaves_the_pipeline_files_alone(server):
     assert call(base + "/api/workspaces/e/edit/delete", "POST", {"what": "mesh"})[0] == 404
 
 
-def test_state_gives_the_scan_density_from_the_pipeline_mesh(server):
-    """The editor's density factors (Adaptive detail ×k, Decimate ÷k) are relative to the median
-    edge of the pipeline's clean mesh, also when a sculpted custom mesh is loaded."""
-    import open3d as o3d
-
-    base, app = server
-    call(base + "/api/workspaces", "POST", {"name": "d"})
-    ws = Workspace(app.root / "d")
-    assert call(base + "/api/workspaces/d/state")[1]["scan_edge"] is None  # no mesh yet
-    ws.mesh.mkdir()
-    box = o3d.geometry.TriangleMesh.create_box(1, 1, 1).subdivide_midpoint(2)  # edges 0.25 and 0.35
-    o3d.io.write_triangle_mesh(str(ws.mesh / "mesh_clean.ply"), box)
-    edge = call(base + "/api/workspaces/d/state")[1]["scan_edge"]
-    assert 0.25 <= edge <= 0.36
-    (ws.mesh / "custom").mkdir()
-    o3d.io.write_triangle_mesh(str(ws.mesh / "custom" / "mesh_clean.ply"), box.subdivide_midpoint(1))
-    assert call(base + "/api/workspaces/d/state")[1]["scan_edge"] == edge  # the scan's, not the edit's
-    (ws.mesh / "mesh_clean.ply").write_text("not a mesh")
-    assert call(base + "/api/workspaces/d/state")[1]["scan_edge"] is None  # the editor measures its own
-
-
 def test_editor_saves_a_custom_texture(server):
     import open3d as o3d
 

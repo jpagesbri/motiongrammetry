@@ -136,7 +136,7 @@
       <div id="sculptOpts">
         <label class="check" title="ignore surface facing away from you, e.g. the back of a thin part"><input type="checkbox" id="frontOnly" checked> front-facing surface only</label>
         <label class="check" title="add vertices where the brush works, up to the Density below: edges longer than that are split before each dab (Draw, Dig in, Inflate, Deflate, Smooth, Flatten, Pinch). A stroke adds at most 50,000 vertices"><input type="checkbox" id="adaptive"> Adaptive detail</label>
-        <div class="slider" id="densityRow" title="how dense Adaptive detail makes the mesh, and Decimate how sparse, compared with the scan as it came out of the pipeline: ×4 is four times the vertices and edges half as long, ÷2 half the vertices. It doesn't depend on the zoom or the brush size, and brushing an area again at the same factor adds nothing more"><span>Density</span><input type="range" id="adDensity" min="1.5" max="8" step="0.1" value="2"><span id="adDensityV"></span></div>
+        <div class="slider" id="densityRow" title="how dense Adaptive detail makes the mesh, and Decimate how sparse, compared with the scan as it came out of the pipeline, where you brush: ×4 is four times the vertices and edges half as long, ÷2 half the vertices. It doesn't depend on the zoom or the brush size, and brushing an area again at the same factor adds nothing more"><span>Density</span><input type="range" id="adDensity" min="1.5" max="8" step="0.1" value="2"><span id="adDensityV"></span></div>
         <label class="check" title="W cycles through them">Display <select id="dispMode"><option value="colours">Colours</option><option value="solid">Solid grey</option>
           <option value="wire">Wireframe</option><option value="solidwire">Solid + wires</option></select></label>
         <label class="check" title="edges that border a single triangle: holes, openings, cuts left open"><input type="checkbox" id="holesChk"> highlight holes</label>
@@ -611,8 +611,8 @@ const S = { spheres: [], mesh: null, geom: null, pos: null, nor: null, idx: null
   adjStart: null, adj: null, vfStart: null, vf: null, mark: null, stamp: 0, fmark: null, fstamp: 0,
   undo: [], redo: [], dirty: false, stroke: null, bvhDirty: false, lastRefit: 0 };
 
-async function loadSculpt() {
-  const g = await loadGLB(`/api/workspaces/${ws}/mesh/${wsState.custom?.mesh ? 'custom_clean' : 'clean'}.glb?t=${Date.now()}`);
+// A GLB's meshes as one geometry with positions (and colours) only, in the scan's frame.
+function glbGeometry(g) {
   g.scene.updateMatrixWorld(true);
   const parts = [];
   g.scene.traverse((o) => {
@@ -624,13 +624,22 @@ async function loadSculpt() {
     parts.push(geo);
   });
   if (!parts.length) throw new Error('the clean mesh has no triangles');
-  const geo = parts.length === 1 ? parts[0] : mergeGeometries(parts);
+  return parts.length === 1 ? parts[0] : mergeGeometries(parts);
+}
+async function loadSculpt() {
+  const custom = wsState.custom?.mesh;
+  const geo = glbGeometry(await loadGLB(`/api/workspaces/${ws}/mesh/${custom ? 'custom_clean' : 'clean'}.glb?t=${Date.now()}`));
   const nv = geo.attributes.position.count;
   // Colours stay as bytes for saving; the display uses the same attribute.
   const c = geo.attributes.color, col8 = new Uint8Array(nv * 3).fill(255);  // no colours: white, as before
   if (c) for (let i = 0; i < nv; i++) for (let k = 0; k < 3; k++) {
     const v = c.getComponent(i, k); col8[i * 3 + k] = c.normalized || c.array instanceof Float32Array ? Math.round(v * 255) : v;
   }
+  // The density factors are relative to the scan as the pipeline made it, where you brush: its
+  // clean mesh, also when a custom (sculpted) one is loaded.
+  let ref = geo;
+  if (custom) try { ref = glbGeometry(await loadGLB(`/api/workspaces/${ws}/mesh/clean.glb?t=${Date.now()}`)); } catch { /* no pipeline mesh: the loaded one */ }
+  S.density = new SMesh.ScanDensity(new Float32Array(ref.attributes.position.array), new Uint32Array(ref.index.array));
   const st = SMesh.buildSculptState(new Float32Array(geo.attributes.position.array), col8, new Uint32Array(geo.index.array));
   // Both sides drawn, the back darkened: a folded triangle or an open cut shows as a dark patch,
   // not as a hole you see through.
@@ -645,14 +654,12 @@ async function loadSculpt() {
   setDisplay(display);
   Object.assign(S, st);
   S.undo = []; S.redo = []; S.dirty = false; S.spheres = []; updateSpheres();
-  // the density unit: the pipeline's clean mesh (from the server), or the loaded mesh when unknown
-  S.e0 = wsState.scan_edge || SMesh.medianEdge(S.pos, S.idx);
 }
 // Everything that describes the current mesh (sculpt-mesh.js builds it). Topology edits (cap, plane
 // cut, merge) build a new state; undo swaps whole states back, BVHs and all, so earlier stroke steps
 // stay valid. States share BVH objects (Adaptive detail keeps the main one): applying one points them
 // at its arrays again and refits them.
-const STATE_KEYS = ['geom', 'bvh', 'extra', 'pos', 'nor', 'idx', 'col8', 'nv', 'nf', 'adjStart', 'adj', 'vfStart', 'vf', 'mark', 'fmark', 'touch'];
+const STATE_KEYS = ['geom', 'bvh', 'extra', 'pos', 'nor', 'idx', 'col8', 'e0v', 'nv', 'nf', 'adjStart', 'adj', 'vfStart', 'vf', 'mark', 'fmark', 'touch'];
 const captureState = () => Object.fromEntries(STATE_KEYS.map((k) => [k, S[k]]));
 function applyState(st) {
   const old = S.geom;
@@ -880,7 +887,7 @@ function grabMove(delta) {
 }
 
 // ---- adaptive detail and decimate (sculpt-mesh.js): the mesh's density changed where the brush
-// works, as a factor of the scan's own density (S.e0, its median edge). Adaptive detail splits the
+// works, as a factor of the scan's own density there (S.density). Adaptive detail splits the
 // edges longer than its target around a dab before it moves anything, so a brush always has vertices
 // to shape; Decimate merges the short ones when you let go. Adaptive detail keeps every vertex id (new
 // vertices are appended), so a stroke's moves before it still undo.
@@ -899,9 +906,8 @@ $('adaptive').addEventListener('change', showDensity);
 function adaptiveDetail(c, r) {
   const st = S.stroke;
   if (!$('adaptive').checked || !ADAPTIVE.has(st.t) || st.capped) return;
-  const lim = SMesh.refineLength(S.e0, density());
-  if (!SMesh.needsDetail(S, c, r, lim)) return;
-  const next = SMesh.refine(S, c, r * 2, lim, STROKE_BUDGET - (st.added || 0));
+  if (!SMesh.needsDetail(S, c, r, density())) return;
+  const next = SMesh.refine(S, c, r * 2, density(), STROKE_BUDGET - (st.added || 0));
   if (next?.capped) st.capped = true;
   if (!next) return;
   if (!st.preFull) {
@@ -1031,11 +1037,11 @@ function sculptEnd() {
     return;
   }
   if (st.t === 'decimate') {
-    const next = st.dabs.length ? SMesh.decimate(S, st.dabs, SMesh.mergeLength(S.e0, density())) : null;
+    const next = st.dabs.length ? SMesh.decimate(S, st.dabs, density()) : null;
     ghost.dabs = []; updateGhostDabs();
     if (next) {
       pushUndo({ type: 'full', state: captureState(), spheres: S.spheres.slice() });
-      applyState(SMesh.buildSculptState(next.pos, next.col8, next.idx));
+      applyState(SMesh.buildSculptState(next.pos, next.col8, next.idx, next.e0v));
       S.dirty = true; holes.moved = true;
       flash(`decimated: ${next.before.toLocaleString()} → ${next.after.toLocaleString()} faces`);
     } else flash(`nothing to merge there: the mesh is already as sparse as ÷${density()} (or the edges are on its border)`);
@@ -1055,7 +1061,7 @@ function sculptEnd() {
     pushUndo({ type: 'group', entries: [{ type: 'full', state: st.preFull, spheres: S.spheres.slice() }, st.seg1] });
     S.dirty = true; holes.moved = true;
     // the extra BVHs hold as many triangles as the main one: one BVH again (a short pause, here only)
-    if (SMesh.wantsRebuild(S)) applyState(SMesh.buildSculptState(S.pos.slice(), S.col8.slice(), S.idx.slice()));
+    if (SMesh.wantsRebuild(S)) applyState(SMesh.buildSculptState(S.pos.slice(), S.col8.slice(), S.idx.slice(), S.e0v.slice()));
     flash(`Adaptive detail added ${st.added.toLocaleString()} vertices under the stroke (${S.nf.toLocaleString()} faces now)`
       + (st.capped ? `: it stopped at ${STROKE_BUDGET.toLocaleString()}, the most one stroke adds. Brush again to add more` : ''));
     updateStatus(); updateButtons();

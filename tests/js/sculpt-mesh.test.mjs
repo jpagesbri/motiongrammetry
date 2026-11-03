@@ -17,7 +17,11 @@ function sphere(detail = 30, bump = 0.01, jitter = 0.3) {
     p[i] += 2 * jitter * e * rnd(); p[i + 1] += 2 * jitter * e * rnd(); p[i + 2] += 2 * jitter * e * rnd();
     const s = (1 + bump * rnd()) / Math.hypot(p[i], p[i + 1], p[i + 2]); p[i] *= s; p[i + 1] *= s; p[i + 2] *= s;
   }
-  return M.buildSculptState(new Float32Array(p), new Uint8Array(p.length).fill(200), new Uint32Array(g.index.array));
+  return scan(new Float32Array(p), new Uint32Array(g.index.array));
+}
+// A mesh as the editor loads a scan: its density reference is (a copy of) the mesh itself.
+function scan(pos, idx) {
+  return M.buildSculptState(pos, new Uint8Array(pos.length).fill(200), idx, null, new M.ScanDensity(pos.slice(), idx.slice()));
 }
 // Two parallel plates 2 edge lengths apart, as the two sides of a thin part.
 function plates(n = 60) {
@@ -30,7 +34,7 @@ function plates(n = 60) {
       idx.push(a, b, d, a, d, c);
     }
   }
-  return M.buildSculptState(new Float32Array(pos), new Uint8Array(pos.length).fill(200), new Uint32Array(idx));
+  return scan(new Float32Array(pos), new Uint32Array(idx));
 }
 const vec = (S, v) => new THREE.Vector3(S.pos[v * 3], S.pos[v * 3 + 1], S.pos[v * 3 + 2]);
 const near = (S, c, r) => { let n = 0; for (let v = 0; v < S.nv; v++) if (vec(S, v).distanceToSquared(c) <= r * r) n++; return n; };
@@ -48,7 +52,7 @@ function density(S, c, r, e0) {
   return near(S, c, r) / A / (2 / (Math.sqrt(3) * e0 * e0));
 }
 function refineAt(S, c, r, k, budget) {  // as a dab: refined out to twice the brush radius
-  const next = M.refine(S, c, 2 * r, M.refineLength(e0, k), budget);
+  const next = M.refine(S, c, 2 * r, k, budget);
   return next ? M.grownState(S, next) : S;
 }
 // every edge on exactly two faces and every vertex's faces one fan: closed, no crack, no bow-tie
@@ -98,7 +102,7 @@ test('brushing the same area again at the same factor adds (almost) nothing', ()
 });
 
 test('a stroke stops at its budget and says so', () => {
-  const next = M.refine(base, spots[0], 30 * e0, M.refineLength(e0, 8), 500);
+  const next = M.refine(base, spots[0], 30 * e0, 8, 500);
   assert.ok(next.added <= 500 && next.capped);
   const S = M.grownState(base, next);
   assertClosedManifold(S);  // stopping part-way leaves no crack either
@@ -109,8 +113,8 @@ test('refining and decimating keep the mesh closed and manifold (nothing for the
   for (const [i, c] of spots.entries()) S = refineAt(S, c, (6 + 4 * i) * e0, [2, 4, 8, 3][i]);
   assertClosedManifold(S);
   for (const c of spots) {
-    const out = M.decimate(S, [[c.x, c.y, c.z, 10 * e0]], M.mergeLength(e0, 2));
-    if (out) S = M.buildSculptState(out.pos, out.col8, out.idx);
+    const out = M.decimate(S, [[c.x, c.y, c.z, 10 * e0]], 2);
+    if (out) S = M.buildSculptState(out.pos, out.col8, out.idx, out.e0v, base.density);
   }
   assertClosedManifold(S);
 });
@@ -121,8 +125,8 @@ test('refining and decimating keep the mesh closed and manifold (nothing for the
 test('÷k gives about 1/k of the scan density (±40% on this synthetic mesh)', () => {
   for (const k of [2, 4]) {
     for (const c of spots.slice(0, 2)) {
-      const out = M.decimate(base, [[c.x, c.y, c.z, 12 * e0]], M.mergeLength(e0, k));
-      const S = M.buildSculptState(out.pos, out.col8, out.idx), r = 8 * e0;
+      const out = M.decimate(base, [[c.x, c.y, c.z, 12 * e0]], k);
+      const S = M.buildSculptState(out.pos, out.col8, out.idx, out.e0v, base.density), r = 8 * e0;
       const got = density(base, c, r, e0) / density(S, c, r, e0);
       assert.ok(got > 0.6 * k && got < 1.4 * k, `÷${k}: got ÷${got.toFixed(2)}`);
     }
@@ -160,7 +164,20 @@ test('normals after refining match a full recompute', () => {
 
 test('refining leaves the other side of a thin part alone', () => {
   const S = plates(), e0 = M.medianEdge(S.pos, S.idx), c = new THREE.Vector3(0.5, 0.5, 0);
-  const next = M.refine(S, c, 6 * e0, M.refineLength(e0, 4));  // the sphere reaches the far plate
+  const next = M.refine(S, c, 6 * e0, 4);  // the sphere reaches the far plate
   const T = M.grownState(S, next);
   for (let v = S.nv; v < T.nv; v++) assert.equal(T.pos[v * 3 + 2], 0, 'a vertex was added on the far plate');
+});
+
+test('×k is relative to the scan where you brush, also on a much coarser part of it', () => {
+  // a scan whose top is ~3 times coarser than the rest (her_face's top of the head: 7-11 times its
+  // median edge): ×1.5 there used to mean ×1.5 of the *typical* density, which gave ×60-115 there
+  const out = M.decimate(base, [[0, 0, 1, 0.8]], 9), coarse = scan(out.pos, out.idx);
+  let top = 0;
+  for (let v = 0; v < coarse.nv; v++) if (coarse.pos[v * 3 + 2] > coarse.pos[top * 3 + 2]) top = v;
+  const c = vec(coarse, top), e = coarse.density.at(c.x, c.y, c.z);
+  assert.ok(e > 2 * M.medianEdge(coarse.pos, coarse.idx), `the top is not coarse enough to test (${e})`);
+  const r = 6 * e, next = M.refine(coarse, c, 2 * r, 1.5), S = next ? M.grownState(coarse, next) : coarse;
+  const got = near(S, c, r) / near(coarse, c, r);
+  assert.ok(got > 1.1 && got < 2.2, `×1.5 gave ×${got.toFixed(1)}`);
 });
