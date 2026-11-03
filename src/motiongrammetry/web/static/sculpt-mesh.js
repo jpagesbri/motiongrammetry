@@ -13,7 +13,7 @@ import { MeshBVH, acceleratedRaycast } from 'three-mesh-bvh';
 
 const BVH_OPTS = { maxLeafTris: 8 };
 
-export function buildSculptState(pos, col8, index, e0v = null, density = null) {
+export function buildSculptState(pos, col8, index) {
   const geom = new THREE.BufferGeometry();
   geom.setAttribute('position', new THREE.BufferAttribute(pos, 3).setUsage(THREE.DynamicDrawUsage));
   geom.setAttribute('color', new THREE.BufferAttribute(col8, 3, true));
@@ -24,9 +24,8 @@ export function buildSculptState(pos, col8, index, e0v = null, density = null) {
   geom.boundsTree = bvh;
   const nv = pos.length / 3, idx = geom.index.array;
   const st = { geom, bvh, extra: [], pos, nor: geom.attributes.normal.array, idx, col8, nv, nf: idx.length / 3,
-    e0v: e0v || new Float32Array(nv).fill(NaN),
     ...adjacency(idx, nv), mark: new Uint32Array(nv), fmark: new Uint32Array(idx.length / 3), touch: new Uint32Array(nv) };
-  if (density) st.density = density;
+  beginStroke(st);
   return st;
 }
 export function adjacency(idx, nv) {
@@ -145,51 +144,43 @@ export function medianEdge(pos, idx) {
   return e[e.length >> 1];
 }
 
-// ---- density: ×k means k times the vertices (and faces) the original scan had where you brush,
-// edges √k shorter. "Where you brush": a scan is often much coarser in some places than others
-// (her_face's top of the head has edges 7-11 times its median), so each vertex gets the scan's own
-// edge length at its place (S.e0v, looked up in S.density, the pipeline's clean mesh, on first use;
-// a new vertex inherits the mean of the edge it splits). A factor of the scan's typical density
-// instead turned ×1.5 into ×60-115 on those coarse patches. The same factor gives the same result at
-// any zoom or brush size, and brushing an area again adds (almost) nothing: the target comes from
-// the original scan, so it is a ceiling and doesn't compound.
+// ---- density: ×k means k times the vertices (and faces) the mesh had where you brush when the
+// stroke began, edges √k shorter; ÷k the reverse. Each stroke works from the mesh as it is then,
+// whatever earlier Decimate or Adaptive detail strokes did (×1.5 twice is ×2.25, ÷2 twice is ÷4),
+// and a stroke counts once: brushing over the same area again before letting go adds (or merges)
+// nothing more, because each vertex's reference edge (S.e0v) is read from the mesh as it was at the
+// start (S.ref, beginStroke) and a vertex added during the stroke inherits the mean of the edge it
+// split. Where the mesh is coarse (her_face has patches with edges 7-11 times its median) it gets
+// the same factor of its own density: a factor of the typical density gave ×60-115 there. The
+// result doesn't depend on the zoom or the brush size.
 // SPLIT and MERGE were calibrated on the shoe, orbit, plant and her_face (see the PR of #13);
 // tests/js/sculpt-mesh.test.mjs checks the result.
 export const SPLIT = 1.5;   // Adaptive detail splits edges longer than SPLIT · e/√k
 export const MERGE = 0.68;  // Decimate merges edges shorter than MERGE · e·√k
-// The scan's density: each vertex's edge length (the mean of its edges, then averaged once with its
-// neighbours'), found for any point through the nearest triangle.
-export class ScanDensity {
-  constructor(pos, idx) {
-    const nv = pos.length / 3, sum = new Float64Array(nv), cnt = new Uint32Array(nv);
-    for (let t = 0; t < idx.length / 3; t++) for (let k = 0; k < 3; k++) {
-      const a = idx[t * 3 + k], b = idx[t * 3 + (k + 1) % 3];
-      const l = Math.hypot(pos[a * 3] - pos[b * 3], pos[a * 3 + 1] - pos[b * 3 + 1], pos[a * 3 + 2] - pos[b * 3 + 2]);
-      sum[a] += l; cnt[a]++; sum[b] += l; cnt[b]++;
-    }
-    const L = new Float32Array(nv), s2 = new Float64Array(nv), c2 = new Uint32Array(nv);
-    for (let v = 0; v < nv; v++) L[v] = cnt[v] ? sum[v] / cnt[v] : 0;
-    for (let t = 0; t < idx.length / 3; t++) for (let k = 0; k < 3; k++) {
-      const a = idx[t * 3 + k], b = idx[t * 3 + (k + 1) % 3];
-      s2[a] += L[b]; c2[a]++; s2[b] += L[a]; c2[b]++;
-    }
-    for (let v = 0; v < nv; v++) if (c2[v]) L[v] = (L[v] + s2[v] / c2[v]) / 2;
-    this.L = L;
-    this.geom = new THREE.BufferGeometry();
-    this.geom.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    this.geom.setIndex(new THREE.BufferAttribute(idx, 1));
-    this.bvh = new MeshBVH(this.geom, BVH_OPTS);  // reorders this.geom's index, read through it below
-    this._p = new THREE.Vector3(); this._hit = {};
-  }
-  at(x, y, z) {
-    const h = this.bvh.closestPointToPoint(this._p.set(x, y, z), this._hit), f = this.geom.index.array, t = h.faceIndex;
-    return (this.L[f[t * 3]] + this.L[f[t * 3 + 1]] + this.L[f[t * 3 + 2]]) / 3;
-  }
+// At the start of a stroke: the mesh as it is now becomes the reference for the whole stroke.
+export function beginStroke(S) {
+  S.ref = { pos: S.pos.slice(), adjStart: S.adjStart, adj: S.adj, nv: S.nv };  // positions move during a stroke
+  S.e0v = new Float32Array(S.nv).fill(NaN);
 }
-// The reference edge of vertex v (positions p, reference edges E), looked up on first use.
+function meanEdge(R, v) {
+  const { pos, adjStart, adj } = R;
+  let s = 0, n = 0;
+  for (let j = adjStart[v]; j < adjStart[v + 1]; j++) {
+    const u = adj[j];
+    s += Math.hypot(pos[v * 3] - pos[u * 3], pos[v * 3 + 1] - pos[u * 3 + 1], pos[v * 3 + 2] - pos[u * 3 + 2]); n++;
+  }
+  return n ? s / n : 0;
+}
+// The reference edge of vertex v (reference edges E): the mean of its edges at the stroke's start,
+// averaged with its neighbours' (a scan's edges are uneven), looked up on first use.
 function edgeAt(S, p, E, v) {
   let l = E[v];
-  if (!(l > 0)) E[v] = l = S.density.at(p[v * 3], p[v * 3 + 1], p[v * 3 + 2]);
+  if (!(l > 0)) {
+    const R = S.ref, m = meanEdge(R, v);
+    let s = 0, n = 0;
+    for (let j = R.adjStart[v]; j < R.adjStart[v + 1]; j++) { s += meanEdge(R, R.adj[j]); n++; }
+    E[v] = l = n ? (m + s / n) / 2 : m;
+  }
   return l;
 }
 export function needsDetail(S, c, r, k) {
@@ -206,7 +197,7 @@ export class Grow {  // a typed array with room to append
   out() { return this.a.slice(0, this.n); }
 }
 // Longest-edge bisection: every triangle of the surface within R of c whose longest edge is longer
-// than SPLIT · e/√k (e: the scan's edge there) has that edge split at its middle, round after round,
+// than SPLIT · e/√k (e: the reference edge there) has that edge split at its middle, round after round,
 // until none is. A triangle with 1, 2 or 3 split edges becomes 2, 3 or 4 (its first piece keeps its
 // slot), and the triangles across a split edge are split too, so no crack opens. It stops adding
 // vertices at `budget`. Returns { pos, col8, idx, e0v, added, changed (slots < nf that now hold a
@@ -289,7 +280,7 @@ export function grownState(S, next) {
   const st = { geom, bvh: S.bvh, pos, nor, idx, col8, e0v, nv, nf,
     mark: new Uint32Array(nv), fmark: new Uint32Array(nf), touch: new Uint32Array(nv) };
   st.touch.set(S.touch);
-  if (S.density) st.density = S.density;
+  st.ref = S.ref;
   // the vertices whose normal changes: those of every triangle that changed or is new
   const around = new Set();
   for (const t of changed) for (let k = 0; k < 3; k++) around.add(idx[t * 3 + k]);
@@ -320,7 +311,7 @@ export function vertexNormal(st, v) {
 // Rebuild everything (one BVH) when the extra BVHs hold as many triangles as the main one.
 export const wantsRebuild = (S) => S.extra.reduce((n, x) => n + x.end - x.start, 0) > S.nf - S.extra.reduce((n, x) => n + x.end - x.start, 0);
 
-// Merge the edges shorter than MERGE · e·√k (e: the scan's edge there) inside the dabs ([x, y, z, r] each), shortest first. A merge is
+// Merge the edges shorter than MERGE · e·√k (e: the reference edge there) inside the dabs ([x, y, z, r] each), shortest first. A merge is
 // skipped when it would fold a triangle or pinch the surface (the two ends share more neighbours
 // than the triangles on the edge); vertices on the mesh's open edges and on the dabs' border stay
 // put, so nothing outside changes. Returns the compacted arrays and face counts, or null.
@@ -404,28 +395,9 @@ export function decimate(S, dabs, k) {
   let nv = 0, nf = 0;
   for (let t = 0; t < nf0; t++) if (!dead[t] && !emptied(F, t))
     for (let k = 0; k < 3; k++) { const v = F[t * 3 + k]; if (map[v] < 0) map[v] = nv++; }
-  // the vertices Decimate worked on: in the dabs and free to move (not on their border or an open edge)
-  const worked = new Uint8Array(nv);
-  for (const t of inside) for (let j = 0; j < 3; j++) {
-    const u = F[t * 3 + j];
-    if (map[u] >= 0 && !worked[map[u]] && !isLocked(u)) { worked[map[u]] = 1; edgeAt(S, P, E, u); }
-  }
-  const np = new Float32Array(nv * 3), nc = new Uint8Array(nv * 3), ne = new Float32Array(nv);
-  for (let v = 0; v < S.nv; v++) if (map[v] >= 0) { np.set(P.subarray(v * 3, v * 3 + 3), map[v] * 3); nc.set(col8.subarray(v * 3, v * 3 + 3), map[v] * 3); ne[map[v]] = E[v]; }
+  const np = new Float32Array(nv * 3), nc = new Uint8Array(nv * 3);
+  for (let v = 0; v < S.nv; v++) if (map[v] >= 0) { np.set(P.subarray(v * 3, v * 3 + 3), map[v] * 3); nc.set(col8.subarray(v * 3, v * 3 + 3), map[v] * 3); }
   const ni = [];
   for (let t = 0; t < nf0; t++) if (!dead[t] && !emptied(F, t)) { ni.push(map[F[t * 3]], map[F[t * 3 + 1]], map[F[t * 3 + 2]]); nf++; }
-  // What Decimate leaves becomes the reference there (the owner's choice, on #37): Adaptive detail's
-  // ×k afterwards is relative to it, not to the denser scan, and a second Decimate simplifies further.
-  // Each vertex it worked on takes the longer of its reference edge and the mean of its edges now, so
-  // where nothing was merged the reference stays the scan's.
-  const sum = new Float64Array(nv), cnt = new Uint32Array(nv);
-  for (let i = 0; i < ni.length; i += 3) for (let j = 0; j < 3; j++) {
-    const a = ni[i + j], b = ni[i + (j + 1) % 3];
-    if (!worked[a] && !worked[b]) continue;
-    const l = Math.hypot(np[a * 3] - np[b * 3], np[a * 3 + 1] - np[b * 3 + 1], np[a * 3 + 2] - np[b * 3 + 2]);
-    if (worked[a]) { sum[a] += l; cnt[a]++; }
-    if (worked[b]) { sum[b] += l; cnt[b]++; }
-  }
-  for (let v = 0; v < nv; v++) if (worked[v] && cnt[v]) ne[v] = Math.max(ne[v], sum[v] / cnt[v]);
-  return { pos: np, col8: nc, idx: Uint32Array.from(ni), e0v: ne, before: nf0, after: nf };
+  return { pos: np, col8: nc, idx: Uint32Array.from(ni), before: nf0, after: nf };
 }

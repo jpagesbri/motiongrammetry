@@ -39,11 +39,12 @@ the image with that version, and the About page and `mg --version` show it.
   is framed again when a re-run SfM moves the scene or the first mesh appears (#22).
 - **Adaptive detail and Decimate: Density instead of Detail.** The Detail slider was a share of the
   brush radius, so it depended on the zoom: most of its range did nothing on a normal scan, and 3%
-  multiplied the vertices by 10–30. The new **Density** control is a factor of the scan's own
-  density where you brush (from the pipeline's clean mesh), so a part the scan left coarse gets the
-  same factor of its own density: ×1.5 to ×8, default ×2, the same at any zoom or brush size. Brushing an area again adds nothing more. Decimate uses it the other way (÷2 is half the
-  vertices), and what it leaves becomes the reference there: ×1.5 afterwards adds about half to the
-  simplified area instead of bringing back the scan's density. Measured on four scans, the result is within 25% of the factor. Adaptive detail now works
+  multiplied the vertices by 10–30. The new **Density** control is a factor of the mesh's density
+  where you brush, as it is when the stroke starts: ×1.5 to ×8, default ×2, the same at any zoom or
+  brush size. A coarse part gets the same factor of its own density, and Decimate uses the control
+  the other way (÷2 is half the vertices). One stroke counts once, however often it passes over an
+  area; a new stroke applies the factor again, also after the other tool (×1.5 after ÷4 adds about
+  half to what Decimate left). Measured on the shoe, orbit and her_face, the result is within about 25% of the factor. Adaptive detail now works
   only on the surface under the brush (not the other side of a thin part), and one stroke adds at
   most 50,000 vertices and says so. It no longer pauses about half a second each time it adds
   vertices on a dense mesh. It also no longer leaves small cracks, which the save then cut out with
