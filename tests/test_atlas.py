@@ -387,3 +387,78 @@ def test_a_split_texture_bigger_than_the_limit_keeps_less_detail_and_says_so(tmp
     split = split_over_two_images(src)
     info = atlas.relayout(split, tmp_path / "small.ply", max_size=256)
     assert max(info["size"]) <= 256 and 0.2 < info["detail"] < 0.9
+
+
+def open_box_with_insole(folder: Path) -> tuple[Path, np.ndarray, np.ndarray]:
+    """A box open at the top (y = 0.5), its sides green and its bottom blue, with a red "insole"
+    inside at y = 0.3, like the shoe scanned from above: textured.ply (+ textured0.png). Each face
+    its own small triangle of its colour's block in the texture. Returns it and the welded geometry."""
+    box = trimesh.creation.box()
+    v, f = box.vertices, box.faces
+    for _ in range(4):
+        v, f = trimesh.remesh.subdivide(v, f)
+    m = trimesh.Trimesh(v, f, process=True)
+    m.update_faces(m.triangles_center[:, 1] < 0.5 - 1e-6)
+    sv, sf = np.array([[-.4, .3, -.4], [.4, .3, -.4], [.4, .3, .4], [-.4, .3, .4]]), np.array([[0, 2, 1], [0, 3, 2]])
+    for _ in range(3):
+        sv, sf = trimesh.remesh.subdivide(sv, sf)
+    sole = trimesh.Trimesh(sv, sf, process=False)
+    geo = trimesh.util.concatenate([m, sole])
+    geo.remove_unreferenced_vertices()
+    tri = geo.triangles
+    part = np.where(np.arange(len(tri)) >= len(m.faces), 2, np.where(geo.triangles_center[:, 1] < -0.5 + 1e-6, 1, 0))
+    colours = np.array([[40, 160, 60], [40, 60, 180], [220, 30, 30]], np.uint8)  # side, bottom, insole
+    img = np.zeros((64, 64, 3), np.uint8)
+    for k, c in enumerate(colours):
+        img[:, 16 * k:16 * k + 16] = c
+    corner = np.array([[4, 4], [12, 4], [4, 12]], float)
+    uv = (corner[None] + (16 * part)[:, None, None] * [1, 0]) / 64
+    uv[..., 1] = 1 - uv[..., 1]
+    out = trimesh.Trimesh(tri.reshape(-1, 3), np.arange(3 * len(tri)).reshape(-1, 3), process=False)
+    out.visual = trimesh.visual.TextureVisuals(uv=uv.reshape(-1, 2), image=Image.fromarray(img))
+    Image.fromarray(img).save(folder / "textured0.png")
+    head, rest = out.export(file_type="ply").split(b"end_header\n", 1)
+    head = head.replace(b"\nelement vertex", b"\ncomment TextureFile textured0.png\nelement vertex", 1)
+    (folder / "textured.ply").write_bytes(head + b"end_header\n" + rest)
+    return folder / "textured.ply", np.asarray(geo.vertices), np.asarray(geo.faces)
+
+
+def colours_near(m, pts: np.ndarray, faces: np.ndarray | None = None) -> np.ndarray:
+    """The texture's colours at the points of m (or of its faces given) nearest to pts."""
+    import open3d as o3d
+
+    faces = np.arange(len(m.faces)) if faces is None else faces
+    scene = o3d.t.geometry.RaycastingScene()
+    scene.add_triangles(o3d.core.Tensor(np.asarray(m.vertices, np.float32)),
+                        o3d.core.Tensor(np.asarray(m.faces)[faces].astype(np.uint32)))
+    r = scene.compute_closest_points(o3d.core.Tensor(pts.astype(np.float32)))
+    u = r["primitive_uvs"].numpy().astype(float)
+    return colours_at(m, faces[r["primitive_ids"].numpy().astype(np.int64)], np.stack([1 - u.sum(1), u[:, 0], u[:, 1]], 1))
+
+
+def test_a_closed_hole_takes_a_smooth_blend_of_its_rim_not_what_lies_behind_it(tmp_path):
+    from motiongrammetry import meshops
+
+    src, v, f = open_box_with_insole(tmp_path)
+    # the editor's cap closes the box's open top (not the insole's edge): a lid at y = 0.5
+    rim = np.flatnonzero(np.abs(v[:, 1] - 0.5) < 1e-6)
+    V, F, _, info = meshops.cap(v, f, np.zeros((len(v), 3), np.uint8), seeds=rim)
+    assert info["capped"] == 1
+    trimesh.Trimesh(V, F, process=False).export(str(tmp_path / "capped.ply"))
+    res = atlas.transfer(src, tmp_path / "capped.ply", tmp_path / "carried.ply")
+    assert res["new_surface"] > 0.05
+    out = trimesh.load(str(tmp_path / "carried.ply"), process=False)
+    # the lid's colours, on a grid over it
+    lid = np.flatnonzero(out.triangles_center[:, 1] > 0.5 - 1e-3)
+    g = np.linspace(-0.35, 0.35, 15)
+    pts = np.stack(np.meshgrid(g, [0.5], g), -1).reshape(-1, 3)
+    col = colours_near(out, pts, lid)
+    # the nearest old point of the lid's middle is the red insole 0.2 below it: none of it shows
+    # (it did: the insole was copied onto the lid, ringed by the sides' colours stretched in streaks)
+    assert col[:, 0].max() < 100, "the insole behind the lid shows through"
+    # the sides' green, blended evenly
+    assert np.abs(col - [40, 160, 60]).max() < 25 and col.std(0).max() < 8
+    # the rest keeps its own colours: the sides' outside is green, the insole red
+    for p, want in (([0.5, 0, 0], [40, 160, 60]), ([0, 0.3, 0], [220, 30, 30]), ([0, -0.5, 0], [40, 60, 180])):
+        got = colours_near(out, np.array([p], float))[0]
+        assert np.abs(got - want).max() < 12, (p, got)
