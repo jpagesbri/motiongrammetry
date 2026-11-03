@@ -85,7 +85,11 @@ mg ui --root ~/scans --port 9000
   sides with an angle and a minimum piece size, or **Edit seams…** with the seams drawn on the
   model, cut along mesh edges and joined with a brush; see `atlas.py`; after a sculpt, **Texture
   my edits** runs the texture stage on the edited mesh and **Carry the texture over** transfers the
-  old texture to it by nearest point, `atlas.transfer`),
+  old texture to it by nearest point, `atlas.transfer`; before either, and in Paint, the saved mesh
+  is checked for what breaks or spoils texturing - pillows, bow-tie vertices, non-manifold edges,
+  degenerate faces, pieces that flatten to no area, flipped faces - with how much of the mesh and
+  the fix; **Sanitize mesh…** in Sculpt checks the mesh being edited and runs the fixes ticked, each
+  with a time estimate for this machine and face count, as one undo step: see `meshfix.py`),
   with undo. Edits are saved as a **custom version** in `mesh/custom/` and never change the
   pipeline's files: a sculpt writes `custom/mesh_clean.ply` (its exports are made when asked); the
   texture stage then projects the photos onto the custom mesh (when it is newer than the clean

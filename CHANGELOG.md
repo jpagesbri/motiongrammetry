@@ -17,6 +17,14 @@ the image with that version, and the About page and `mg --version` show it.
   and head); it is now GitHub's own mark, kept once in `topbar.css` (#20).
 - **CONTRIBUTING.md and a pull request template**: a branch per change, a local instance to try
   it, and a list of what the approver has to validate before the merge.
+- **Mesh check and Sanitize mesh**: Paint, **Texture my edits** and **Carry the texture over** now
+  check the mesh first and say what would break or spoil texturing (opposite-winding "pillow"
+  faces, bow-tie vertices, non-manifold edges, degenerate faces, pieces that flatten to no area,
+  flipped faces), how much of the mesh it is and the fix (#12). The sculpt editor's new
+  **Sanitize mesh…** shows what the check found and repairs what you tick: degenerate and
+  duplicate faces, non-manifold parts, small loose pieces, orientation and normals, holes up to a
+  size, unreferenced vertices, and reports self-intersections. Each fix shows how long it takes on
+  this machine for this mesh; they run as one undo step and say what they changed (#29).
 - **Upload video…**: with no name typed it replaced the selected scan's video without asking, and
   with an existing scan's name typed it silently replaced *that* scan's video. Now it asks before
   replacing, refuses a name that is taken, and the server refuses a replacement nobody confirmed or

@@ -286,6 +286,33 @@ your edited shape a texture of its own:</p>
 <p>Either way the result becomes your <b>custom textured model</b> (next to your custom mesh), the pipeline's own textured
 model is left alone, and <b>paint saved before that is replaced</b> (you are asked first). Then paint. If it comes out
 wrong, <b>Undo layout</b> goes back from a carry-over; re-running texture goes back to the photos.</p>
+<h3 id="sanitize">Mesh check and Sanitize mesh</h3>
+<p>Some meshes break texturing or spoil it: two faces on the same three points, wound opposite ways (a <b>pillow</b>; OpenMVS
+crashes on them), <b>bow-tie</b> vertices where two fans of faces touch at a point, edges with three or more faces, faces with
+no area, pieces that flatten to no area (Carry the texture over can't lay them out) and faces wound against their
+neighbours. Paint checks the textured model and your edited mesh when it opens, and <b>Texture my edits</b> and <b>Carry the
+texture over</b> check again before they start: each problem is named with how much of the mesh it affects and the fix.
+<b>Sanitize mesh…</b> there takes you to Sculpt with the fixes for them ticked; you can also go ahead anyway.</p>
+<p>In Sculpt, <b>Sanitize mesh…</b> (under Mesh) checks the mesh as it is now, unsaved edits included, and lists the fixes
+with what it found for each (in amber when there is something to fix) and how long it will take:</p>
+<table>
+  <tr><th>Fix</th><th>What it does</th></tr>
+  <tr><td>Remove degenerate and duplicate faces</td><td>Faces with no area, the same face twice, pillows (of a pillow the face
+    wound like its neighbours stays)</td></tr>
+  <tr><td>Make it manifold</td><td>Removes bow-tie vertices and the extra faces on edges shared by three or more. That opens small
+    holes: tick Close holes too</td></tr>
+  <tr><td>Remove small loose pieces</td><td>Pieces smaller than the share of the largest piece's area you give</td></tr>
+  <tr><td>Recompute normals and orientation</td><td>Every face wound the same way as its neighbours, each piece facing out</td></tr>
+  <tr><td>Close holes</td><td>The holes whose rim is at most the given share of the model's size (its bounding box diagonal) long,
+    with the same lids as Close all holes</td></tr>
+  <tr><td>Remove unreferenced vertices</td><td>Points no face uses</td></tr>
+  <tr><td>Detect self-intersections</td><td>Counts faces that cut through other faces; it doesn't change them (<b>Merge</b> with
+    <b>whole mesh</b> rebuilds the surface without them)</td></tr>
+</table>
+<p>The fixes run in that order, as <b>one undo step</b>, and the window then says what each changed and checks the result again.
+<b>Save</b> keeps it. The times are measured on this computer's processor (these fixes don't use the GPU): a short test the
+first time you open the window, then the fixes you run, scaled to the mesh's number of faces. Closing holes also depends on
+how big the holes are.</p>
 <h3 id="sculpt">Sculpt</h3>
 <p>Left-drag on the mesh to use the tool, off it (or right-drag) to orbit, middle-drag to pan, wheel to zoom. The example: the
 shoe sat on a stool, so its underside was never filmed and the scan is open there, with a loose scrap
