@@ -28,6 +28,8 @@ from pathlib import Path
 
 import numpy as np
 
+from .meshfix import isin_sorted
+
 log = logging.getLogger(__name__)
 
 
@@ -390,7 +392,7 @@ def from_seams(gf: np.ndarray, adj: np.ndarray, adj_edges: np.ndarray, seams: np
     n = int(gf.max()) + 1
     key = lambda pairs: (np.minimum(pairs[:, 0], pairs[:, 1]).astype(np.int64) * n  # noqa: E731
                          + np.maximum(pairs[:, 0], pairs[:, 1]))
-    keep = ~np.isin(key(adj_edges), key(e[cut]))
+    keep = ~isin_sorted(key(adj_edges), key(e[cut]))
     return _components(len(gf), adj[keep, 0], adj[keep, 1])
 
 

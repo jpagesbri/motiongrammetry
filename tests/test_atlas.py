@@ -462,3 +462,17 @@ def test_a_closed_hole_takes_a_smooth_blend_of_its_rim_not_what_lies_behind_it(t
     for p, want in (([0.5, 0, 0], [40, 160, 60]), ([0, 0.3, 0], [220, 30, 30]), ([0, -0.5, 0], [40, 60, 180])):
         got = colours_near(out, np.array([p], float))[0]
         assert np.abs(got - want).max() < 12, (p, got)
+
+
+def test_from_seams_joins_faces_across_every_edge_but_the_seams():
+    m = trimesh.creation.icosphere(3)
+    gf, adj, adj_edges = m.faces.astype(np.int64), m.face_adjacency, m.face_adjacency_edges
+    rng = np.random.default_rng(5)
+    seams = (rng.random((len(gf), 3)) < 0.3) @ (1 << np.arange(3))  # bit k: edge corner k -> k + 1
+    lab = atlas.from_seams(gf, adj, adj_edges, seams.astype(np.uint8))
+    # reference: an edge is cut when any face marks it; faces join across the others
+    cut = {tuple(sorted((t[k], t[(k + 1) % 3]))) for t, s in zip(gf.tolist(), seams) for k in range(3) if s >> k & 1}
+    keep = np.array([tuple(sorted(e)) not in cut for e in adj_edges.tolist()])
+    want = atlas._components(len(gf), adj[keep, 0], adj[keep, 1])
+    np.testing.assert_array_equal(lab, want)
+    assert 1 < lab.max() + 1 < len(gf), "some pieces, not one, not one per face"

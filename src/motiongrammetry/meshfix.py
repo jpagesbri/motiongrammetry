@@ -36,20 +36,26 @@ ZERO_AREA = 1e-6  # a face is zero-area when its height is below this share of i
 
 # ---- measures --------------------------------------------------------------------------------
 # NumPy 2.3+ answers a plain np.unique (and np.isin, which calls it) with a hash table, ~20x slower
-# than sorting on the integer edge keys used here; these two sort instead.
-def _unique(x: np.ndarray) -> np.ndarray:
-    """Sorted distinct values of x."""
+# than sorting on large integer keys (edges, vertex ids); these two sort instead. clean, meshops and
+# atlas use them too.
+def unique_sorted(x: np.ndarray) -> np.ndarray:
+    """np.unique(x) for integer arrays: the sorted distinct values of x, flattened."""
     s = np.sort(np.asarray(x).ravel())
     return s[np.concatenate([[True], s[1:] != s[:-1]])] if len(s) else s
 
 
-def _isin(x: np.ndarray, keys: np.ndarray) -> np.ndarray:
-    """np.isin(x, keys) for integer arrays, by binary search in the sorted distinct keys."""
-    k = _unique(keys)
+def isin_sorted(x: np.ndarray, keys: np.ndarray) -> np.ndarray:
+    """np.isin(x, keys) for integer arrays, by binary search in the sorted distinct keys: a bool
+    array of x's shape. Falls back to np.isin when the two have no common integer type (int64
+    with uint64)."""
+    x, keys = np.asarray(x), np.asarray(keys)
+    if np.result_type(x, keys).kind not in "iu":
+        return np.isin(x, keys)
+    k = unique_sorted(keys)
     if not len(k):
-        return np.zeros(np.shape(x), bool)
+        return np.zeros(x.shape, bool)
     i = np.minimum(np.searchsorted(k, x), len(k) - 1)
-    return k[i] == x
+    return np.asarray(k[i] == x)
 
 
 def _cross(v: np.ndarray, f: np.ndarray) -> np.ndarray:
@@ -65,7 +71,7 @@ def model_size(v: np.ndarray, f: np.ndarray) -> float:
     """Diagonal of the bounding box of the vertices the faces use."""
     if not len(f):
         return 0.0
-    p = v[_unique(f)]
+    p = v[unique_sorted(f)]
     return float(np.linalg.norm(p.max(0) - p.min(0)))
 
 
@@ -120,8 +126,8 @@ def edge_clashes(faces: np.ndarray, others: np.ndarray, n: int) -> np.ndarray:
     if not len(faces) or not len(others):
         return np.zeros(len(faces), int)
     faces, others = np.asarray(faces, np.int64), np.asarray(others, np.int64)  # the keys overflow int32
-    theirs = _unique(_edges(others, n)[3])
-    return sum(_isin(faces[:, i] * n + faces[:, (i + 1) % 3], theirs).astype(int) for i in range(3))
+    theirs = unique_sorted(_edges(others, n)[3])
+    return sum(isin_sorted(faces[:, i] * n + faces[:, (i + 1) % 3], theirs).astype(int) for i in range(3))
 
 
 def _edges(f: np.ndarray, n: int):
@@ -201,7 +207,7 @@ def intersection_spots(v: np.ndarray, f: np.ndarray, pairs: np.ndarray) -> list[
 
     if not len(pairs):
         return []
-    bad = _unique(pairs)
+    bad = unique_sorted(pairs)
     k, n = len(bad), len(v)
     # a graph of the bad faces (0..k-1) and their vertices (k..k+n-1), plus the crossings
     pos = np.searchsorted(bad, pairs)
@@ -213,7 +219,7 @@ def intersection_spots(v: np.ndarray, f: np.ndarray, pairs: np.ndarray) -> list[
     out = []
     for i in range(int(lab.max()) + 1):
         ff = bad[lab == i]
-        p = v[_unique(f[ff])]
+        p = v[unique_sorted(f[ff])]
         c = p.mean(0)
         out.append({"centre": [round(float(x), 6) for x in c],
                     "radius": round(float(np.linalg.norm(p - c, axis=1).max()), 6), "faces": int(len(ff))})
@@ -258,7 +264,7 @@ def inspect(v: np.ndarray, f: np.ndarray, intersections: bool = False) -> dict:
     u, uc = np.unique(und, return_counts=True)
     rep["nonmanifold_edges"] = int((uc > 2).sum())
     rep["open_edges"] = int((uc == 1).sum())
-    two = _isin(und, u[uc == 2])
+    two = isin_sorted(und, u[uc == 2])
     d, dc = np.unique(dirk[two], return_counts=True)
     rep["flipped_edges"] = int((dc > 1).sum())  # two faces running along an edge the same way
     # how many faces the orientation fix would turn (only run when some edge says it has work)
@@ -280,11 +286,11 @@ def inspect(v: np.ndarray, f: np.ndarray, intersections: bool = False) -> dict:
     if intersections:
         pairs = self_intersections(v, g)
         rep["intersecting_pairs"] = int(len(pairs))
-        rep["intersecting_faces"] = int(len(_unique(pairs))) if len(pairs) else 0
+        rep["intersecting_faces"] = int(len(unique_sorted(pairs))) if len(pairs) else 0
         # where they are, for the editor to show: the spots, and the faces as vertex ids (the
         # editor's own: g only drops and turns faces, it keeps the vertices)
         rep["intersection_spots"] = intersection_spots(v, g, pairs)
-        rep["intersecting_tris"] = g[_unique(pairs)[:SPOT_FACES]].ravel().tolist() if len(pairs) else []
+        rep["intersecting_tris"] = g[unique_sorted(pairs)[:SPOT_FACES]].ravel().tolist() if len(pairs) else []
     return rep
 
 
@@ -493,7 +499,7 @@ def _fix_unreferenced(v, f, c, **_):
 def _fix_intersections(v, f, c, **_):
     pairs = self_intersections(v, f)
     return v, f, c, {"intersecting_pairs": int(len(pairs)),
-                     "intersecting_faces": int(len(_unique(pairs))) if len(pairs) else 0}
+                     "intersecting_faces": int(len(unique_sorted(pairs))) if len(pairs) else 0}
 
 
 STEPS = {"duplicates": _fix_duplicates, "manifold": _fix_manifold, "pieces": _fix_pieces, "orient": _fix_orient,

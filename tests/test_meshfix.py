@@ -238,3 +238,71 @@ def test_self_intersections_come_as_spots_the_editor_can_show():
     s2 = meshfix.inspect(v2, f2, intersections=True)["intersection_spots"]
     assert len(s2) == 2 and s2[0]["faces"] >= s2[1]["faces"]
     assert "intersection_spots" not in meshfix.summary(r)
+
+
+# ---- the sorting stand-ins for np.unique / np.isin (NumPy 2.3+ hashes, ~20x slower) ----------
+def _random_int_arrays(seed=0, rounds=300):
+    """Pairs (x, keys) of integer arrays of every kind the helpers must take."""
+    rng = np.random.default_rng(seed)
+    dtypes = (np.int8, np.int16, np.int32, np.int64, np.uint8, np.uint16, np.uint32, np.uint64)
+    for r in range(rounds):
+        dt = dtypes[r % len(dtypes)]
+        kd = dtypes[rng.integers(len(dtypes))] if r % 3 == 0 else dt  # a third: keys of another int type
+        info, kinfo = np.iinfo(dt), np.iinfo(kd)
+        # small ranges give many duplicates; the full range reaches the type's limits
+        span = int(rng.integers(1, 20)) if r % 2 else None
+        def draw(d, inf, size):
+            if span is None:
+                return rng.integers(inf.min, inf.max, size, dtype=d, endpoint=True)
+            lo = max(inf.min, -span)
+            return rng.integers(lo, lo + 2 * span, size, dtype=d)
+        shape = [(0,), (1,), (int(rng.integers(2, 300)),), (int(rng.integers(1, 20)), 3), (4, 0)][r % 5]
+        nk = [0, 1, int(rng.integers(2, 50)), int(rng.integers(50, 2000))][(r // 5) % 4]
+        x = draw(dt, info, shape)
+        keys = draw(kd, kinfo, (nk,))
+        if r % 7 == 0 and len(x.ravel()) and nk:  # make sure some hit
+            keys[: min(nk, x.size)] = x.ravel()[: min(nk, x.size)].astype(kd, casting="unsafe")
+        if r % 11 == 0:
+            keys = keys.reshape(-1, 1)  # keys as a column: np.isin flattens them
+        yield x, keys
+
+
+def test_unique_sorted_matches_np_unique_on_random_integer_arrays():
+    for x, keys in _random_int_arrays(1):
+        for a in (x, keys):
+            want = np.unique(a)
+            got = meshfix.unique_sorted(a)
+            assert got.dtype == want.dtype and got.shape == want.shape
+            np.testing.assert_array_equal(got, want)
+    # near the int64 limits, and negative
+    big = np.array([2**63 - 1, -2**63, 0, -1, 2**63 - 1, -2**63, 5], np.int64)
+    np.testing.assert_array_equal(meshfix.unique_sorted(big), np.unique(big))
+    np.testing.assert_array_equal(meshfix.unique_sorted(big.reshape(7, 1)), np.unique(big))
+
+
+def test_isin_sorted_matches_np_isin_on_random_integer_arrays():
+    n = 0
+    for x, keys in _random_int_arrays(2):
+        want = np.isin(x, keys)
+        got = meshfix.isin_sorted(x, keys)
+        assert got.dtype == bool and got.shape == x.shape, (x.dtype, keys.dtype, x.shape)
+        np.testing.assert_array_equal(got, want, err_msg=f"{x.dtype} in {keys.dtype}")
+        n += int(want.sum())
+    assert n > 100, "the random cases do hit"
+    # empty keys: all False, x's shape
+    assert meshfix.isin_sorted(np.arange(6).reshape(2, 3), np.array([], np.int64)).shape == (2, 3)
+    assert not meshfix.isin_sorted(np.arange(6), np.array([], np.int64)).any()
+    # unsorted keys with duplicates, negative values, values past both ends of the keys
+    x = np.array([[-9, -3, 0], [4, 7, 100]], np.int64)
+    keys = np.array([7, -3, 7, 4, -3], np.int32)
+    np.testing.assert_array_equal(meshfix.isin_sorted(x, keys), np.isin(x, keys))
+    # near the int64 limits (edge keys a * n + b of a large mesh still fit)
+    big = np.array([2**63 - 1, -2**63, 2**62 + 3, -1], np.int64)
+    probe = np.array([2**63 - 1, 2**63 - 2, -2**63, -2**63 + 1, 2**62 + 3, 2**62 + 2, -1, 0], np.int64)
+    np.testing.assert_array_equal(meshfix.isin_sorted(probe, big), np.isin(probe, big))
+    # uint64 with int64 has no common integer type: still np.isin's answer
+    u = np.array([2**64 - 1, 3, 0], np.uint64)
+    np.testing.assert_array_equal(meshfix.isin_sorted(u, np.array([-1, 3], np.int64)), np.isin(u, np.array([-1, 3])))
+    # a scalar and a list, like np.isin
+    assert meshfix.isin_sorted(np.int64(4), keys).shape == () and bool(meshfix.isin_sorted(np.int64(4), keys))
+    np.testing.assert_array_equal(meshfix.isin_sorted([1, 4, 7], [7, 1]), [True, False, True])

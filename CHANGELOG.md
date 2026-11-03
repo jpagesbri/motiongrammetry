@@ -10,6 +10,13 @@ the image with that version, and the About page and `mg --version` show it.
 
 ## Unreleased
 
+- **Hand-drawn seams and solidify skip NumPy's slow hash**: NumPy 2.3+ answers `np.isin` and a
+  plain `np.unique` with a hash table, about 20x slower than sorting on large integer keys. #40
+  fixed this for the mesh check. Now the texture layout's hand-drawn seams, the print solidify's
+  open-edge test, and Restore / the voxel merge sort instead. With seams on a 1M-face mesh, the
+  seam lookup takes 0.35 s instead of 0.94 s. On a 1M-face partial scan, the open-edge test
+  takes 0.37 s instead of 0.49 s. Results are exactly the same.
+
 - **Close holes is faster**: Sanitize mesh's Close holes (and the editor's Close all holes / Cap)
   sorted each lid's triangles into inside and outside one at a time in Python, with a numpy call
   per triangle edge. A hole with a fine rim gets a lid of up to 80,000 points, so on the 1M-face

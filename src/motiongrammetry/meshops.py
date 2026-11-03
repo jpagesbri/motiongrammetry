@@ -26,6 +26,7 @@ import struct
 import numpy as np
 
 from .clean import boundary_loops, close_holes
+from .meshfix import unique_sorted
 
 log = logging.getLogger(__name__)
 
@@ -325,11 +326,11 @@ def _union_sdf(v, f, sph, lo, dims, h):
     shell_of = np.asarray(shells.cluster_connected_triangles()[0])
     axes = [lo[i] + h * np.arange(dims[i]) for i in range(3)]
     sdf = np.full(dims, np.float32(1e9))
-    for s_id in np.unique(shell_of):
+    for s_id in unique_sorted(shell_of):
         sf = fc[shell_of == s_id]
         if len(sf) < 4:
             continue
-        sv = vc[np.unique(sf)]
+        sv = vc[unique_sorted(sf)]
         a = np.maximum(np.floor((sv.min(0) - lo) / h).astype(int) - 2, 0)
         b = np.minimum(np.ceil((sv.max(0) - lo) / h).astype(int) + 3, dims)
         if (a >= b).any():
@@ -561,7 +562,7 @@ def restore(v, f, c, raw_v, raw_f, spheres):
     new = cand[~present]
     if not len(new):
         return v, f, c, {"restored_faces": 0}
-    used = np.unique(new)
+    used = unique_sorted(new)
     remap = np.full(len(raw_v), -1, np.int64)
     remap[used] = len(v) + np.arange(len(used))
     V = np.concatenate([v, raw_v[used]])

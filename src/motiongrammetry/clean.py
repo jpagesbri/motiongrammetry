@@ -20,7 +20,7 @@ import open3d as o3d
 import pycolmap
 
 from .mask import load_mask
-from .meshfix import edge_clashes
+from .meshfix import edge_clashes, isin_sorted, unique_sorted
 from .workspace import Workspace
 
 log = logging.getLogger(__name__)
@@ -500,7 +500,7 @@ def _on_open_edge(f: np.ndarray, tri: np.ndarray, uv: np.ndarray, eps: float = 1
         sel = np.flatnonzero(w[:, k] < eps)
         if len(sel):
             ea, eb = f[tri[sel], a].astype(np.int64), f[tri[sel], b].astype(np.int64)
-            out[sel] |= np.isin(np.minimum(ea, eb) * n + np.maximum(ea, eb), open_keys)
+            out[sel] |= isin_sorted(np.minimum(ea, eb) * n + np.maximum(ea, eb), open_keys)
     return out
 
 
@@ -576,7 +576,7 @@ def solidify(v: np.ndarray, f: np.ndarray, pitch: float = 0.3, min_wall: float =
         wall = d < pitch * 0.87
         lab, _ = ndimage.label(~wall)
         faces6 = [lab[0], lab[-1], lab[:, 0], lab[:, -1], lab[:, :, 0], lab[:, :, -1]]
-        border = np.unique(np.concatenate([x.ravel() for x in faces6]))
+        border = unique_sorted(np.concatenate([x.ravel() for x in faces6]))
         outside = np.isin(lab, border[border > 0])
         # Blocking voxels on the outer skin take the side of the nearest triangle (else the
         # surface would sit up to 0.87 voxel too far out).
