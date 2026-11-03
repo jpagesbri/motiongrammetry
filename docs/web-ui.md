@@ -69,8 +69,8 @@ mg ui --root ~/scans --port 9000
   to cap what a cut opens; **Adaptive detail** (tick box) splits edges around each dab first, up to the
   Density ×k (1.5–8, default 2: k times the vertices the mesh has at that place when the stroke
   starts, each vertex's mean edge then; vertices added during the stroke inherit it, so one stroke
-  counts once and a new one applies the factor again; or, with **Density is: absolute**, a target
-  for both brushes of k times the scan's typical edge, `scan_edge` from the server, which strokes
+  counts once and a new one applies the factor again; or, with the **Absolute** switch, a target
+  for both brushes as a share of the scan's typical density (13–800%; from the scan's typical edge, `scan_edge` from the server), which strokes
   converge on; at most 50,000 new vertices per stroke), by longest-edge bisection with the neighbours split too (no cracks), so
   the brushes always have vertices to shape; fill + merge to add
   volume, e.g. close the hole of a ring shape: by default only the region around the fill spheres
