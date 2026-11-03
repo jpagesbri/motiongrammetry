@@ -12,8 +12,9 @@ which makes painting on the flat texture hopeless. Here:
    neighbour that faces most the same way;
 2. flatten: each piece by least squares conformal maps (LSCM, Levy et al. 2002), at the texel
    density of the surface; a piece that folds over is split again;
-3. pack: each piece turned to its smallest enclosing rectangle, the rectangles in shelves, at
-   the detail the photo texture had (lowered only if the image would pass 8192 texels);
+3. pack: each piece by its outline (drawn on a grid with its margin, turned by quarter turns,
+   dropped where it overlaps nothing, so pieces nest in each other's hollows), at the detail the
+   photo texture had (lowered only if the image would pass 8192 texels);
 4. bake: the geometry does not change, only the texture coordinates, so each new texel takes the
    colour of the same point of the same triangle in the old texture (bilinear), and a margin
    around every piece is filled from its edge so filtering shows no seams.
@@ -487,46 +488,109 @@ def _min_rect(p: np.ndarray) -> np.ndarray:
     return rot
 
 
+_TURNS = [np.eye(2), np.array([[0.0, -1.0], [1.0, 0.0]]), -np.eye(2), np.array([[0.0, 1.0], [-1.0, 0.0]])]
+
+
+def _outline(q: np.ndarray, padding: int, cell: int) -> np.ndarray:
+    """The grid cells (cell x cell texels) a piece covers: its triangles q ((k, 3, 2) texels, x right,
+    y down, from padding up) drawn with their edges, grown by padding texels. Conservative: a texel
+    the piece or its margin touches is always in a covered cell."""
+    import cv2
+
+    ext = np.ceil(q.reshape(-1, 2).max(0)).astype(np.int64) + padding + 2
+    hc, wc = -(-int(ext[1]) // cell), -(-int(ext[0]) // cell)
+    m = np.zeros((hc * cell, wc * cell), np.uint8)
+    pts = list(np.round(q * 16).astype(np.int32))           # 4 bits of sub-texel precision
+    cv2.fillPoly(m, pts, 1, lineType=cv2.LINE_8, shift=4)
+    cv2.polylines(m, pts, True, 1, lineType=cv2.LINE_8, shift=4)  # slivers fillPoly can miss
+    if padding:
+        m = cv2.dilate(m, np.ones((2 * padding + 1, 2 * padding + 1), np.uint8))
+    return m.reshape(hc, cell, wc, cell).max((1, 3))
+
+
+def _drop(pieces: list, s: float, padding: int, side: float):
+    """One packing pass at s texels per unit (see pack): positions in texels per piece, W, H; None if
+    the canvas (about side texels) was too small."""
+    import cv2
+
+    biggest = max(float(np.ptp(q.reshape(-1, 2), 0).max()) for _, q, _ in pieces) * s + 2 * padding + 2
+    span = max(side, biggest)
+    cell = max(1, int(np.ceil(span / 1200)))                # the grid: at most ~1200 cells across
+    C = int(np.ceil(span / cell)) + 2
+    occ = np.zeros((C, C), np.uint8)
+    cur_w = cur_h = 0
+    out = {}
+    for c in sorted(range(len(pieces)), key=lambda c: -pieces[c][2]):
+        _, q, _ = pieces[c]
+        best = None
+        for turn in _TURNS:
+            qq = (q.reshape(-1, 2) @ turn.T) * s
+            qq = qq - qq.min(0) + padding
+            m = _outline(qq.reshape(-1, 3, 2), padding, cell)
+            h, w = m.shape
+            if h > C or w > C:
+                continue
+            # Beyond the square that holds the pieces so far everything is free, so a place past
+            # its side never beats one just at it: search only that far.
+            S = max(cur_w, cur_h)
+            sub = occ[:min(C, S + h), :min(C, S + w)]
+            if sub.shape[0] < h or sub.shape[1] < w:
+                continue
+            hits = (cv2.matchTemplate(sub, m, cv2.TM_CCORR) if sub.shape != m.shape
+                    else np.array([[float((sub.astype(np.int64) * m).sum())]], np.float32))
+            ys, xs = np.arange(hits.shape[0]), np.arange(hits.shape[1])
+            # the smallest square holding everything, then the place nearest the corner
+            key = (np.maximum(np.maximum(cur_h, ys + h)[:, None], np.maximum(cur_w, xs + w)[None, :]).astype(np.int64)
+                   * (4 * C) + ys[:, None] + xs[None, :])
+            key[hits > 0.5] = np.iinfo(np.int64).max
+            k = int(np.argmin(key))
+            if key.flat[k] == np.iinfo(np.int64).max:
+                continue
+            if best is None or key.flat[k] < best[0]:
+                y, x = divmod(k, hits.shape[1])
+                best = (key.flat[k], x, y, m, qq)
+        if best is None:
+            return None
+        _, x, y, m, qq = best
+        occ[y:y + m.shape[0], x:x + m.shape[1]] |= m
+        cur_w, cur_h = max(cur_w, x + m.shape[1]), max(cur_h, y + m.shape[0])
+        out[c] = qq.reshape(-1, 3, 2) + [x * cell, y * cell]
+    ext = np.concatenate([p.reshape(-1, 2) for p in out.values()]).max(0)
+    return out, int(np.ceil(ext[0])) + padding + 1, int(np.ceil(ext[1])) + padding + 1
+
+
 def pack(corner_uv: np.ndarray, chart: np.ndarray, n: int, density: float, padding: int, limit: int,
          fit: bool = False):
-    """Lay the pieces out in one image: each turned to its smallest rectangle, the rectangles in
-    shelves (tallest first, each into the first shelf with room). corner_uv: (F, 3, 2) per piece, in surface units; density: texels per
-    unit, lowered until the image fits in limit (fit: scaled to fill limit instead).
+    """Lay the pieces out in one image by their outlines, not their enclosing rectangles: each
+    piece, turned to its smallest rectangle and then by quarter turns, is drawn on a grid with a
+    margin of padding texels, and dropped where it overlaps no other, keeping the image as small
+    and square as it can (largest pieces first) - so pieces nest in each other's hollows.
+    corner_uv: (F, 3, 2) per piece, in surface units; density: texels per unit, lowered until the
+    image fits in limit (fit: scaled to fill limit instead).
     Returns ((F, 3, 2) pixel positions, x right and y down, W, H, share of the image used)."""
     order = np.argsort(chart, kind="stable")
     bounds = np.searchsorted(chart[order], np.arange(n + 1))
-    local = np.zeros_like(corner_uv)
-    ext = np.zeros((n, 2))
+    pieces = []
     for c in range(n):
         f = order[bounds[c]:bounds[c + 1]]
         p = corner_uv[f].reshape(-1, 2)
-        q = p @ _min_rect(p - p.mean(0)).T
-        q -= q.min(0)
-        local[f] = q.reshape(-1, 3, 2)
-        ext[c] = q.max(0)
-    area = float(np.abs(_signed_area(corner_uv.reshape(-1, 2), np.arange(corner_uv.size // 2).reshape(-1, 3))).sum())
+        q = (p - p.mean(0)) @ _min_rect(p - p.mean(0)).T
+        pieces.append((f, q.reshape(-1, 3, 2), float(np.abs(_signed_area(q, np.arange(len(q)).reshape(-1, 3))).sum())))
+    area = sum(a for _, _, a in pieces)
     s = density if not fit else limit / max(np.sqrt(area / 0.5), 1e-20)
-    for _ in range(40):
-        size = np.ceil(ext * s).astype(np.int64) + 2 * padding
-        width = int(max(size[:, 0].max(), np.ceil(np.sqrt((size[:, 0] * size[:, 1]).sum() * 1.15))))
-        pos = np.zeros((n, 2), np.int64)
-        shelves = []  # [y, height, x used]: tallest pieces first, each into the first shelf it fits
-        for c in np.argsort(-size[:, 1], kind="stable"):
-            w, h = size[c]
-            for sh in shelves:
-                if sh[2] + w <= width and h <= sh[1]:
-                    pos[c] = (sh[2], sh[0])
-                    sh[2] += w
-                    break
-            else:
-                y = shelves[-1][0] + shelves[-1][1] if shelves else 0
-                shelves.append([y, h, w])
-                pos[c] = (0, y)
-        W, H = width, int(shelves[-1][0] + shelves[-1][1])
+    grow = 1.6  # the canvas: this much wider than a square the pieces would fill half of
+    for _ in range(12):
+        got = _drop(pieces, s, padding, grow * np.sqrt(area * s * s / 0.5))
+        if got is None:
+            grow *= 1.5
+            continue
+        placed, W, H = got
         if max(W, H) <= limit and (not fit or max(W, H) >= 0.97 * limit):
             break
-        s *= (limit / max(W, H)) * (0.99 if max(W, H) > limit else 1.0)
-    px = local * s + (pos[chart] + padding)[:, None, :]
+        s *= (limit / max(W, H)) * (0.98 if max(W, H) > limit else 1.0)
+    px = np.zeros_like(corner_uv)
+    for c, (f, _, _) in enumerate(pieces):
+        px[f] = placed[c]
     used = float(np.abs(_signed_area(px.reshape(-1, 2), np.arange(px.size // 2).reshape(-1, 3))).sum()) / (W * H)
     return px, W, H, used
 

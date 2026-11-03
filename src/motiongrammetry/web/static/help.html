@@ -389,7 +389,8 @@ until you <kbd>Ctrl</kbd>+click a new source. On the flat texture, clone copies 
 pieces (20,000 for a head) and the flat texture is hard to paint on. <b>Rebuild layout</b> cuts it again by the model's sides:
 faces stay together while they face the same way (measured on a smoothed copy, so the scan's noise does not count),
 <b>Angle</b> is how far one piece may turn and <b>Min. piece</b> the smallest piece, as a share of the surface (smaller ones
-join their neighbour). Each piece is flattened and packed into a new image, and the colours are copied across triangle
+join their neighbour). Each piece is flattened and packed into a new image by its outline, so pieces nest into each
+other's hollows (about half the image is texture), and the colours are copied across triangle
 by triangle at the same level of detail: the model looks the same, the flat texture shows whole parts (about 250 pieces
 for that head, a minute to rebuild). <b>Count pieces</b> tells you the number first, and <b>Preview</b> shows the new
 texture at low resolution in the flat view, in a few seconds, without saving anything. It is saved as your custom texture;
