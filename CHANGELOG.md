@@ -175,6 +175,21 @@ the image with that version, and the About page and `mg --version` show it.
   streaks stretched from the rim. New surface now takes a smooth blend of the colours around it,
   fading in from the old surface with no edge (#6).
 
+### Fixed
+
+- **`mg export --out` into a folder that isn't there yet** (#50): `--out exports/` wrote a file
+  named `exports`, and the next export replaced it without a word. Now a trailing `/`, an existing
+  folder, or a new name without an extension is a folder: it is made (with its parents) and each
+  export goes inside under its own name (`work-print.stl`). A new name with an extension is the
+  file, with its missing folders made, and a warning if the extension isn't the export's. A file
+  that is already there is still replaced, but the last line says so (`-> … (replaced the file
+  that was there)`), and it always names the file written. A path that can't be a folder (inside a
+  file) is a clear error before the export starts, not a traceback. `mg export --help` lists the
+  rules.
+- **`mg export-2dgs --out` no longer deletes a folder that isn't its dataset**: it replaced
+  whatever folder `--out` named, as a whole. It now refuses a folder that holds other files (no
+  `run_2dgs.sh` from an earlier export), and a file.
+
 ## 0.2.0 — 2026-11-02
 
 - **Export**: pick the contents to take out (textured model, clean mesh, 3D print, raw mesh,

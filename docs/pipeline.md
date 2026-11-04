@@ -42,6 +42,22 @@ mg check work/                                    # what would fail, and why
 mg logs work/ --list                              # run history
 ```
 
+Taking files out with `mg export` (made when asked, reused until the scan changes; several
+contents make one zip, `work-export.zip`, with a folder per content):
+
+```bash
+mg export work/ textured --out exports/           # -> exports/work-textured.glb (exports/ made if missing)
+mg export work/ print --out exports/              # -> exports/work-print.stl, next to it
+mg export work/ print:3mf --out shoe.3mf          # -> shoe.3mf
+```
+
+`--out` is a folder when it ends in `/`, is a folder already, or is a new name without an
+extension (`--out exports`); a missing folder is made, with its parents, and the file goes inside
+under its own name. A new name with an extension is the file itself (its missing folders are
+made too, and a warning says so if the extension isn't the export's). A file that is already there
+is replaced, and the last line says so: `-> …/work-print.stl (replaced the file that was there)`.
+That line always names the file written. Without `--out`, the file goes in the current folder.
+
 Or stage by stage (each reads/writes `work/`, see `workspace.py`):
 
 ```bash
@@ -56,7 +72,7 @@ mg texture work
 GPU surface reconstruction with 2DGS:
 
 ```bash
-mg export-2dgs work --masked          # -> work/splat/
+mg export-2dgs work --masked          # -> work/splat/ (or --out DIR: a new or empty folder, or an earlier dataset, replaced)
 # on a CUDA machine with https://github.com/hbb1/2d-gaussian-splatting:
 work/splat/run_2dgs.sh
 # back here:

@@ -43,6 +43,11 @@ def export_2dgs(ws: Workspace, out: Path | None = None, masked: bool = False, re
     if not src_sparse.exists():
         raise RuntimeError(f"no undistorted model in {ws.dense}; run `mg sfm` or `mg vggt` first")
     out = out or ws.root / "splat"
+    if out.exists() and not out.is_dir():
+        raise RuntimeError(f"{out} is a file: give a folder for the 2DGS dataset")
+    if out.exists() and any(out.iterdir()) and not (out / "run_2dgs.sh").is_file():
+        raise RuntimeError(f"{out} is not empty and holds no earlier 2DGS dataset (no run_2dgs.sh): "
+                           "give a new or empty folder, it is replaced as a whole")
     if out.exists():
         shutil.rmtree(out)
     (out / "images").mkdir(parents=True)

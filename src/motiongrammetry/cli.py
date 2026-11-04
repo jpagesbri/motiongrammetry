@@ -164,8 +164,11 @@ def cmd_export_2dgs(a: argparse.Namespace) -> int:
     from .splat import export_2dgs
 
     ws = Workspace(a.work)
-    out = export_2dgs(ws, Path(a.out) if a.out else None, a.masked)
-    print(f"2DGS dataset -> {out}\n  run: {out / 'run_2dgs.sh'} on a CUDA machine, then\n"
+    out = Path(a.out) if a.out else ws.root / "splat"
+    replaced = out.exists()
+    out = export_2dgs(ws, out, a.masked)
+    print(f"2DGS dataset -> {out}{' (replaced the dataset that was there)' if replaced else ''}\n"
+          f"  run: {out / 'run_2dgs.sh'} on a CUDA machine, then\n"
           f"  mg clean {ws.root} --mesh <out/train/ours_30000/fuse_post.ply>")
     return 0
 
@@ -185,17 +188,61 @@ def cmd_export(a: argparse.Namespace) -> int:
     options = {k: v for k, v in {"up": a.up, "height_mm": a.height, "mode": a.print_mode, "stand": a.print_stand,
                                  "min_wall": a.print_min_wall, "shell": a.print_shell, "shell_side": a.print_shell_side,
                                  "base": a.print_base}.items() if v is not None}
+    out, folder = _export_target(a.out)  # checked before the export, which can take minutes
     r = exports.export(ws, {"items": items, "source": "custom" if a.custom else "pipeline", "options": options})
     src = exports.export_file(ws, r["file"])
-    out = Path(a.out) if a.out else Path.cwd()
-    dst = out / r["file"] if out.is_dir() else out
-    shutil.copyfile(src, dst)
+    dst = out / r["file"] if folder else out
     for f in r["files"]:
         print(f"{f['label']} ({f['format']}): {'reused' if f['cached'] else 'made'}, {f['size'] / 1e6:.1f} MB")
         for i in f.get("issues", []):
             print(f"  {i['level']}: {i['message']}" + (f" -> {i['hint']}" if i.get("hint") else ""))
-    print(f"-> {dst}")
+    if not folder and dst.suffix.lower() != src.suffix.lower():
+        print(f"warning: {dst.name} {f'ends in {dst.suffix}' if dst.suffix else 'has no extension'}, "
+              f"but the export is a {src.suffix} file")
+    if dst.is_dir():
+        raise SystemExit(f"mg export: {dst} is a folder; give another --out")
+    replaced = dst.exists()
+    try:
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        if not (replaced and dst.samefile(src)):  # --out into the scan's own export folder
+            shutil.copyfile(src, dst)
+    except OSError as e:
+        raise SystemExit(f"mg export: cannot write {dst}: {e.strerror or e}") from None
+    print(f"-> {dst.absolute()}" + (" (replaced the file that was there)" if replaced else ""))
     return 0
+
+
+EXPORT_OUT_RULES = """\
+--out, a file or a folder:
+  DIR/ (ends in /)      a folder, made with any missing parents; the file goes inside
+                        under its own name: <scan>-<content>.<ext> (orbit-print.stl),
+                        or <scan>-export.zip for several contents
+  an existing folder    the same
+  NAME.EXT, new         a file of that name, with any missing folders above it made;
+                        a warning if its extension isn't the export's
+  NAME, new, no ext     a folder, as with a trailing /
+  an existing file      that file
+  no --out              the current folder
+A file already there is replaced, and the last line says so:
+  -> /path/to/orbit-print.stl (replaced the file that was there)
+The last line always names the file written."""
+
+
+def _export_target(out: str | None) -> tuple[Path, bool]:
+    """Where `mg export --out` writes, and whether it is a folder (EXPORT_OUT_RULES)."""
+    if not out:
+        return Path.cwd(), True
+    p = Path(out).expanduser()
+    slash = out.endswith(("/", os.sep) + ((os.altsep,) if os.altsep else ()))
+    if slash and p.exists() and not p.is_dir():
+        raise SystemExit(f"mg export: --out {out} ends in / but {p} is a file, not a folder")
+    folder = slash or p.is_dir() or (not p.exists() and not p.suffix)
+    for anc in [p if folder else p.parent, *(p if folder else p.parent).parents]:
+        if anc.exists():  # the first folder that is there must be a folder, to make the rest in
+            if not anc.is_dir():
+                raise SystemExit(f"mg export: cannot make a folder inside {anc}: it is a file")
+            break
+    return p, folder
 
 
 def cmd_ui(a: argparse.Namespace) -> int:
@@ -299,17 +346,20 @@ def build_parser() -> argparse.ArgumentParser:
 
     sp = sub.add_parser("export-2dgs", help="package a 2D Gaussian Splatting dataset for a GPU host")
     sp.add_argument("work")
-    sp.add_argument("--out")
+    sp.add_argument("--out", help="the dataset folder (default WORK/splat); a folder already there is replaced "
+                    "only if it holds an earlier 2DGS dataset (its run_2dgs.sh) or nothing")
     sp.add_argument("--masked", action="store_true", help="train on the subject only (masks in alpha)")
     sp.set_defaults(fn=cmd_export_2dgs)
 
     sp = sub.add_parser("export", help="take files out of a scan (as the web UI's Export window): made when "
-                        "asked, reused until the scan changes")
+                        "asked, reused until the scan changes", epilog=EXPORT_OUT_RULES,
+                        formatter_class=argparse.RawDescriptionHelpFormatter)
     sp.add_argument("work")
     sp.add_argument("content", nargs="+", help="content[:format]: textured[:glb|obj], mesh[:glb|ply|obj], print[:stl|3mf], "
                     "raw[:ply|obj|glb], cloud, cameras; several make one zip")
     sp.add_argument("--custom", action="store_true", help="the version edited in the web UI's editor")
-    sp.add_argument("--out", help="file or folder to copy the result to (default: here)")
+    sp.add_argument("--out", help="file or folder to copy the result to (default: here); a trailing / or a name "
+                    "without an extension is a folder, made if missing (see below)")
     sp.add_argument("--up", choices=["auto", "plane", "camera", "none"])
     sp.add_argument("--height", type=float, help="real height in mm (GLB in metres); prints default to the scan's print height")
     sp.add_argument("--print-mode", choices=["auto", "solid", "shell"])
