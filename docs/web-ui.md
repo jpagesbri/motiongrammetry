@@ -28,17 +28,20 @@ mg ui --root ~/scans --port 9000
 - **Export, on every page** (`static/export.js`, styled by `export.css`): the Export window is one
   module that every page uses. The top bar has **Export…** beside the scan chip (disabled when no
   scan is chosen: Help and About use the scan last opened), and each scan's **⋯** menu has
-  **Export…** for that scan. On the Scan page, the Preview's Export panel and the assisted run's last
-  step open the same window. It reads the scan's `/state` afresh each time it opens, so it is right
-  on any page.
+  **Export…** for that scan. On the Scan page, the assisted run's last step opens the same window. It
+  reads the scan's `/state` afresh each time it opens, so it is right on any page.
+  - Besides the contents, it shows what the scan has ready (stale results flagged) and its folder on
+    disk at its foot, and, under the 3D print row, the print check of the last print exported from
+    the version in **From** (marked "outdated: export the print again" once the mesh or orientation
+    changed). The Preview tab's Export side panel, which showed these, is gone; so is its "Open in
+    editor" button (the top bar's Edit link opens the scan in the editor).
   - A scan with nothing to export yet gets a short window that says so, with **Go to Run** (on the
     Scan page it switches to that scan's Run tab; elsewhere it links to `/?tab=run#scan`).
   - On Edit, with edits not saved yet, the window says at the top that the export is made from the
     saved files only and leaves out what changed since the last save. It never exports the editor's
     unsaved state.
-  - A page tells it what it can do through `exportHooks({ unsaved, orient, run, exported })`: Edit
-    gives `unsaved` (sculpt edits, paint); Scan gives `orient` (fix the orientation in the Preview),
-    `run` and `exported` (refresh the Export panel's print check). Without `orient`, "fix the
+  - A page tells it what it can do through `exportHooks({ unsaved, orient, run })`: Edit gives
+    `unsaved` (sculpt edits, paint); Scan gives `orient` (fix the orientation in the Preview) and `run`. Without `orient`, "fix the
     orientation…" links to the Scan page (`/?open=orient#scan`).
   - The 3D preview loads three.js, its loaders, `projection.js` (the Persp / Ortho switch, shared
     with the Scan preview and the editor) and the view cube only when it first shows a file, so Help
@@ -139,10 +142,8 @@ mg ui --root ~/scans --port 9000
   warnings and errors are listed on each stage card.
 - **Log** (drawer): live stage output (COLMAP internals hidden by default), and a History tab with every
   stage run and the OpenMVS tool logs, each viewable or downloadable.
-- **Export** (Preview tab): what the scan has ready (stale results flagged), the print check and
-  the folder on disk.
-- **Export…**: tick the contents and pick each one's format: textured model (GLB, OBJ + MTL + PNG),
-  clean mesh with vertex colours (GLB, PLY, OBJ), 3D print (STL or 3MF; height, solid / shell /
+- **Export…** (top bar, a scan's ⋯ menu; see above): tick the contents and pick each one's
+  format: textured model (GLB, OBJ + MTL + PNG), clean mesh with vertex colours (GLB, PLY, OBJ), 3D print (STL or 3MF; height, solid / shell /
   auto, which way the shell grows and how thick, minimum wall, stand, flat base), raw mesh (PLY,
   OBJ, GLB), dense point cloud (PLY) and cameras (the COLMAP model). From the pipeline or the
   custom version (raw mesh, cloud and cameras only from the pipeline), with orientation and a

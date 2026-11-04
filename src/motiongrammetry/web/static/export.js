@@ -3,14 +3,16 @@
 // print, how the solid is made; the result is shown in 3D with its report. Files are made when asked
 // and kept until something they come from changes.
 //
+// It also says what the scan has ready (stale results flagged), the 3D print check of the last print
+// exported (under the 3D print row) and the folder on disk.
+//
 // topbar.js puts an Export… button beside the scan chip and an Export… item in each scan's ⋯ menu,
-// both opening this window; the Scan page's own Export… buttons (the Preview's Export panel, the
-// assisted run's last step) open it too. A page tells it what it knows through exportHooks():
+// both opening this window; the Scan page's assisted run's last step opens it too. A page tells it
+// what it knows through exportHooks():
 //   unsaved(name) -> [what] edits on this page not saved yet (Edit: 'sculpt edits', 'paint'): the window
 //                           says it exports the saved files only
 //   orient(name)            "fix the orientation…" on this page (Scan); without it, a link to the Scan page
 //   run(name)               "Go to Run" when there is nothing to export (Scan); without it, a link
-//   exported(name, state)   after an export, with the scan's new state (Scan: its Export panel's print check)
 // export.css styles it. three.js and the 3D preview are loaded the first time a file is shown.
 
 const enc = encodeURIComponent;
@@ -90,6 +92,7 @@ const FORM = `<div class="ex-win">
         <div class="muted" id="exStatus" style="margin-top:6px;font-size:12px"></div>
         <div class="ex-files" id="exFiles"></div>
         <div id="exIssues"></div>
+        <div class="ex-about"><div class="muted" id="exSummary"></div><div class="muted ex-dir" id="exDir"></div></div>
       </div></div>
       <div class="ex-preview" id="exPreview"><select class="ex-pick" id="exPick" hidden title="which file to look at"></select>
         <div class="muted ex-empty" id="exEmpty">Export to see the result here</div></div>
@@ -239,13 +242,33 @@ function renderItems() {
         <span class="ex-state" id="exSt-${c.id}"></span><small>${ok ? c.about : why}</small></label>
       ${Object.keys(c.formats).length < 2 ? `<span class="ex-one">${c.formats[fmt]}<input type="hidden" id="exFmt-${c.id}" value="${fmt}"></span>`
         : `<select id="exFmt-${c.id}"${ok ? '' : ' disabled'}>${Object.entries(c.formats)
-        .map(([v, l]) => `<option value="${v}"${v === fmt ? ' selected' : ''}>${l}</option>`).join('')}</select>`}</div>`;
+        .map(([v, l]) => `<option value="${v}"${v === fmt ? ' selected' : ''}>${l}</option>`).join('')}</select>`}</div>`
+      + (c.id === 'print' ? '<div class="ex-check" id="exCheck"></div>' : '');
   }).join('');
+  renderAbout();
   EX_CONTENTS.forEach((c) => {
     $('exOn-' + c.id).addEventListener('change', fields);
     $('exFmt-' + c.id).addEventListener('change', () => { save(); check(); });
   });
   fields();
+}
+// What the scan has, its print check and its folder: shown under the contents and in the footer.
+function renderAbout() {
+  const ex = st.exportable || {}, pipe = ex.pipeline || [], mine = ex.custom || [];
+  const names = (l) => EX_CONTENTS.filter((c) => l.includes(c.id)).map((c) => c.label.toLowerCase()).join(', ');
+  const stale = EX_CONTENTS.some((c) => pipe.includes(c.id) && exStale(c, false, st));
+  $('exSummary').innerHTML = (pipe.length ? `Ready: ${esc(names(pipe))}.` : '')
+    + (mine.length ? ` Your edits: ${esc(names(mine))}.` : '')
+    + (stale ? ' <span class="warn">Some are stale: an earlier stage was re-run.</span>' : '');
+  $('exDir').textContent = st.root ? 'on disk: ' + st.root + '/mesh/' : '';
+  // what may still go wrong when printing (clean.print_report), for the version chosen in From
+  const custom = $('exSource').value === 'custom', has = (ex[custom ? 'custom' : 'pipeline'] || []).includes('print');
+  const pc = (st.print_check || {})[custom ? 'custom' : 'pipeline'], el = $('exCheck');
+  if (!el) return;
+  el.innerHTML = !has ? '' : !pc ? '<div class="muted">Export a 3D print to see what may go wrong when printing.</div>'
+    : `<div class="ex-check-head">Print check${custom ? ' (your edits)' : ''}${pc.current ? '' : ' <span class="warn">· outdated: export the print again</span>'}</div>`
+      + (pc.size_mm ? `<div class="muted">${pc.size_mm.join(' × ')} mm · ${pc.watertight ? 'watertight' : 'NOT watertight'}</div>` : '')
+      + (pc.issues || []).map((d) => `<div class="diag ${d.level}">${esc(d.message)}${d.hint ? `<span class="h">→ ${esc(d.hint)}</span>` : ''}</div>`).join('');
 }
 function chosen() {
   return EX_CONTENTS.filter((c) => $('exOn-' + c.id)?.checked).map((c) => ({ content: c.id, format: $('exFmt-' + c.id).value }));
@@ -288,8 +311,7 @@ async function exportNow() {
     $('exPick').innerHTML = built.map((f, i) => `<option value="${i}">${esc(f.label)}</option>`).join('');
     $('exPick').hidden = built.length < 2;
     api(`/api/workspaces/${enc(name)}/state`).then((s) => {  // the print check, the rows' state
-      if (name === scan) { st = s; check(); }
-      hooks.exported?.(name, s);
+      if (name === scan) { st = s; renderAbout(); check(); }
     }).catch(() => {});
     if (built.length) await preview(built[0]);
     else preview(null, r.files.length > 1 ? 'nothing in this export can be shown here' : 'a zip of several files: no preview');

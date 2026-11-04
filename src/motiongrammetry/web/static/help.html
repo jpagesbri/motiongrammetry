@@ -199,7 +199,7 @@ fails.</p>
 <figure><img src="/help/preview-raw.jpg" alt="The raw mesh in the Preview: the shoe, the stool and the room" loading="lazy">
   <figcaption>The <b>raw mesh</b> layer: mvs reconstructs everything the camera saw, the stool and the room included.</figcaption></figure>
 <figure><img src="/help/preview.jpg" alt="The Preview tab with the finished shoe" loading="lazy">
-  <figcaption>After clean, texture and the edits below: just the shoe, with its colours; Export on the right.</figcaption></figure>
+  <figcaption>After clean, texture and the edits below: just the shoe, with its colours.</figcaption></figure>
 <p>Layers: camera positions, sparse points (from sfm), dense cloud and raw mesh (from mvs), clean mesh, textured model and,
 if you edited it, the custom version. Drag to orbit, right-drag or middle-drag to pan, wheel to zoom. Click a keyframe to
 look through its camera, double-click it to open it big. The <b>view cube</b> (bottom left, in every 3D view) shows which
@@ -209,15 +209,15 @@ and orthographic (no foreshortening: sizes and parallel lines stay true, handy f
 <b>Display</b> (<kbd>W</kbd> cycles): <b>Colours</b>,
 <b>Solid grey</b> (judge the shape without the photo), <b>Wireframe</b>, or <b>Solid + wires</b> (the shape and how dense the
 mesh is; the wires fade in as you zoom, since on a dense scan they would cover everything). <b>Highlight holes</b> draws every
-opening in orange and counts them: that is what the print report means by lids. <b>Export</b> says what the scan has ready
-(and whether some of it is stale), shows the print check, and opens <b>Export…</b>.</p>
+opening in orange and counts them: that is what the print report means by lids. The 3D view takes the whole width; to take files out, use <b>Export…</b> in the
+top bar.</p>
 <h3 id="orient">Orientation</h3>
 <figure><img src="/help/orient-floor.jpg" alt="Clicking the sole as the floor" loading="lazy">
   <figcaption><b>Click the floor…</b>, then click the part it stands on: here the shoe's sole, seen from below.</figcaption></figure>
 <figure><img src="/help/orient.jpg" alt="The shoe standing on its sole" loading="lazy">
   <figcaption>It turns onto that side and settles as it would on a table; <b>Save</b> and every export uses it.</figcaption></figure>
 <p>The model is stood up automatically (on the table or floor when one is found, else from how the camera moved). When that
-is wrong, <b>Orient…</b> (or the assisted run's last step) fixes it: <b>Click the floor…</b> then click the spot that should rest on
+is wrong, <b>Orient…</b> (or the assisted run's last step) fixes it, with its tools in a column on the right while you orient: <b>Click the floor…</b> then click the spot that should rest on
 the floor (a curved base, like a sole, settles onto the points it would really rest on, so it stands
 without a stand); <b>Turn 90°</b> about any axis; orbit until you face the model's front and press <b>This view is the front</b>;
 or free <b>Rotate</b> / <b>Move</b> handles. <b>Centre</b> and <b>Drop to floor</b> tidy up; turns do it for you. <b>Save</b> and every
@@ -245,8 +245,9 @@ the Run panel, in the assisted run, or on the command line as <code>--option-nam
 
 <h2 id="outputs">Export</h2>
 <p><b>Export…</b> is in the top bar, next to the scan, on every page: it opens the Export window for that scan. Each scan's
-<b>⋯</b> menu has <b>Export…</b> too, and on the Scan page so do the Preview's Export panel and the last step of an assisted
-run: they all open the same window. A scan with nothing to export yet says so and offers <b>Go to Run</b>. On the Edit
+<b>⋯</b> menu has <b>Export…</b> too, and on the Scan page so does the last step of an assisted run: they all open the same
+window. Besides the contents, it says what the scan has ready (and whether some of it is stale) and, at its foot, the
+folder the results are in. A scan with nothing to export yet says so and offers <b>Go to Run</b>. On the Edit
 page, exports are made from what is saved: if you have unsaved edits, the window says so at the top; save first to
 export what you see.</p>
 <p>Files are made when you ask for them, not by the pipeline: each is kept, so asking again takes no time (the row says
@@ -286,8 +287,8 @@ on a ~0.3 mm grid, which removes self-intersections and thickens walls thinner t
   <tr><td>Flat base</td><td>The bottom share of the height is flattened so a solid stands without wobbling.</td></tr>
 </table>
 <p>Whatever could still go wrong (invented share, stand, thin walls, separate pieces, overhangs needing supports) is listed
-with the exported print and, in the Preview's Export panel, as the <b>print check</b> of the last print exported (marked
-outdated once the mesh or the orientation changes), each with the option that changes it. A scan's print settings
+with the exported print and, under the 3D print row of the Export window, as the <b>print check</b> of the last print
+exported from the version in <b>From</b> (marked outdated once the mesh or the orientation changes), each with the option that changes it. A scan's print settings
 (<code>print_height</code>, <code>print_mode</code>, …, set by the assisted run from what you filmed) are where the Export
 window starts.</p>
 

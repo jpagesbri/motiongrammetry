@@ -98,12 +98,14 @@
   .drawer-body { display: none; height: 34vh; min-height: 140px; padding: 0 14px 10px; flex-direction: column; }
   .drawer.open .drawer-body { display: flex; }
   .drawer-body .history { max-height: none; flex: 1; }
-  .pv3d { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 300px; grid-template-rows: minmax(0, 1fr) 132px;
-    grid-template-areas: "view side" "film side"; }
+  /* the 3D view takes the whole width; a side column shows only while orienting (Orient…) */
+  .pv3d { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) 132px;
+    grid-template-areas: "view" "film"; }
+  .pv3d.side { grid-template-columns: minmax(0, 1fr) 300px; grid-template-areas: "view side" "film side"; }
   .pv3d[hidden], .pvframes[hidden] { display: none; }
   .pvside { grid-area: side; border-left: 1px solid var(--line); background: var(--panel); overflow: auto; }
-  .pvside section:empty { display: none; }
-  .work.split .pv3d { grid-template-columns: minmax(0, 1fr) 260px; }
+  .pvside[hidden] { display: none; }
+  .work.split .pv3d.side { grid-template-columns: minmax(0, 1fr) 260px; }
   .orient h2 { margin-bottom: 4px; }
   .orient .note { font-size: 12px; color: var(--muted); margin: 0 0 6px; line-height: 1.45; }
   .or-grid { display: grid; grid-template-columns: auto repeat(2, 1fr); gap: 4px 6px; align-items: center; margin-top: 8px; font-size: 12px; }
@@ -395,17 +397,8 @@
             <div class="loading" id="loading">loading…</div>
             <div class="stats" id="stats"></div>
           </main>
-          <div class="pvside">
+          <div class="pvside" id="pvSide" hidden>  <!-- only while orienting -->
             <section id="orientHome" hidden></section>
-            <section id="outputsPanel">
-              <h2>Export</h2>
-              <div class="muted" id="noOutputs">no results yet: run the pipeline</div>
-              <div class="muted" id="outSummary" style="font-size:12px"></div>
-              <div id="printNotes"></div>
-              <div class="btns"><button class="btn primary" id="exportBtn" disabled title="pick what to take out and in which format">Export…</button>
-                <a class="btn" id="editBtn" hidden>Open in editor</a></div>
-              <div class="muted" id="outDir" style="font-size:11px;margin-top:6px;word-break:break-all"></div>
-            </section>
           </div>
           <div class="film" id="film">
             <div class="film-head">
@@ -458,7 +451,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { projection } from '/projection.js';
 import { mountTopbar, setScan, updateScans, uploadVideo, thumbUrl, pageLabel as topPageLabel } from '/topbar.js';
 import { modeControl } from '/modes.js';
-import { EX_CONTENTS, exStale, openExport, exportHooks } from '/export.js';
+import { openExport, exportHooks } from '/export.js';
 // The scan chooser in the top bar: picking a scan selects it here; a new or copied scan opens
 // here; a deleted one is left for the next; a scan's ⋯ menu also uploads or replaces its video.
 mountTopbar('scan', {
@@ -1079,11 +1072,16 @@ function orientUi() {
   $('orientBtn').classList.toggle('primary', !$('orientPanel').hidden && !placed);
   if ($('asLooks')) $('asLooks').textContent = OR.dirty ? 'Save and continue' : 'Looks right';
 }
+// The Preview's side column holds the orientation tools, and shows only while they are open.
+function sideShown(on) {
+  $('orientHome').hidden = $('pvSide').hidden = !on;
+  $('pv3d').classList.toggle('side', on);
+}
 function orientHome() {  // the panel's place outside the assistant: the Preview's side column
   if (placed) return;
   const panel = $('orientPanel');
   $('orientHome').appendChild(panel);
-  panel.hidden = !(orientOpen || OR.dirty); $('orientHome').hidden = panel.hidden;
+  panel.hidden = !(orientOpen || OR.dirty); sideShown(!panel.hidden);
   if (!panel.hidden) orientBegin(); else if (OR.active && !OR.dirty) orientEnd(null);
   orientUi();
 }
@@ -1102,7 +1100,7 @@ function unmountPlace(remount = false) {  // remount: the place step is redrawn,
   if (placed.moved) $('pv3d').prepend(view);
   placed.hide.forEach((k) => { if (layerObj[k]) layerObj[k].visible = true; });
   placed = null;
-  if (remount) { $('orientHome').appendChild($('orientPanel')); $('orientPanel').hidden = $('orientHome').hidden = true; } else orientHome();
+  if (remount) { $('orientHome').appendChild($('orientPanel')); $('orientPanel').hidden = true; sideShown(false); } else orientHome();
   render();
 }
 $('orientBtn').addEventListener('click', () => { orientOpen = $('orientPanel').hidden; if (!orientOpen && OR.dirty) orientEnd(null); orientHome(); });
@@ -1429,7 +1427,6 @@ async function refreshState(beforeScene) {  // beforeScene: runs once the state 
   setScan(current);
   renderStages(); renderRail();
   renderFilm();
-  renderOutputs();
   beforeScene?.();
   if (layerDefaultsFor !== current) {
     layerDefaultsFor = current;
@@ -1885,40 +1882,17 @@ function toast(html, open) {
 
 // ---------------------------------------------------------------- export
 // The Export window is export.js, the same on every page (the top bar's Export…, a scan's ⋯ menu).
-// Here it also opens from the Export panel and the assisted run's last step, fixes the orientation in
-// the Preview, goes to Run when there is nothing to export, and refreshes the panel after an export.
-$('exportBtn').addEventListener('click', () => openExport(current));
+// Here it also opens from the assisted run's last step, fixes the orientation in the Preview, and goes
+// to Run when there is nothing to export.
 exportHooks({
   orient: async (name) => {
     if (name !== current) await select(name);
     showG('preview'); showPv('3d'); orientOpen = true; orientHome();
   },
   run: async (name) => { if (name !== current) await select(name); showG('run'); },
-  exported: (name, st) => { if (name === current) { wsState = st; renderOutputs(); } },
 });
 
-// ---------------------------------------------------------------- export panel
 const editorUrl = () => '/edit' + (current ? '#' + encodeURIComponent(current) : '');
-
-function renderOutputs() {
-  const ex = wsState?.exportable || {}, pipe = ex.pipeline || [], mine = ex.custom || [];
-  $('noOutputs').hidden = pipe.length > 0 || mine.length > 0;
-  $('exportBtn').disabled = !$('noOutputs').hidden;
-  $('editBtn').hidden = !pipe.includes('mesh');
-  $('editBtn').href = editorUrl();
-  const names = (l) => EX_CONTENTS.filter((c) => l.includes(c.id)).map((c) => c.label.toLowerCase()).join(', ');
-  const stale = EX_CONTENTS.some((c) => pipe.includes(c.id) && exStale(c, false, wsState));
-  $('outSummary').innerHTML = (pipe.length ? `Ready: ${esc(names(pipe))}.` : '')
-    + (mine.length ? ` Your edits: ${esc(names(mine))}.` : '')
-    + (stale ? ' <span style="color:var(--warn)">Some are stale: an earlier stage was re-run.</span>' : '');
-  // what may still go wrong when printing (clean.print_report), for the version Export starts with
-  const custom = mine.includes('print'), pc = (wsState?.print_check || {})[custom ? 'custom' : 'pipeline'];
-  $('printNotes').innerHTML = !pc ? (pipe.includes('print') ? '<div class="muted" style="font-size:12px;margin-top:4px">Export a 3D print to see what may go wrong when printing.</div>' : '')
-    : `<div class="ex-sec">Print check${custom ? ' (your edits)' : ''}${pc.current ? '' : ' <span style="color:var(--warn)">· outdated: export the print again</span>'}</div>`
-      + (pc.size_mm ? `<div class="muted" style="font-size:12px">${pc.size_mm.join(' × ')} mm · ${pc.watertight ? 'watertight' : 'NOT watertight'}</div>` : '')
-      + pc.issues.map((d) => `<div class="diag ${d.level}">${esc(d.message)}${d.hint ? `<span class="h">→ ${esc(d.hint)}</span>` : ''}</div>`).join('');
-  $('outDir').textContent = wsState.root ? 'on disk: ' + wsState.root + '/mesh/' : '';
-}
 
 function stageDetail(s, m) {
   const x = m[s]; if (!x) return '';
@@ -2443,17 +2417,17 @@ await loadOptions();
 await refreshList();
 const initial = decodeURIComponent(location.hash.slice(1));
 const params = new URLSearchParams(location.search);
-// deep links (help page, screenshots): ?tab=run|preview &pv=3d|frames &pane=pipeline|log|outputs &open=export|assist
+// deep links (help page, screenshots): ?tab=run|preview &pv=3d|frames &pane=pipeline|log|outputs (= open=export) &open=export|assist|orient
 if (params.get('tab')) gtab = params.get('tab');
 if (params.get('pv')) pvMode = params.get('pv');
-if (params.get('pane') === 'outputs') { gtab = 'preview'; pvMode = '3d'; }
+if (params.get('pane') === 'outputs') { gtab = 'preview'; pvMode = '3d'; }  // an old link to the outputs: the Export window, below
 else if (params.get('pane') === 'log') openDrawer(true);
 layoutG(); showPv(pvMode);
 if (!initial) setMode('assisted', false);
 (initial ? select(initial) : Promise.resolve()).then(async () => {
   if (params.get('pane') === 'pipeline') { RO.page = 'overview'; setMode('manual', false); }
   if (params.get('page')) goPage(params.get('page'));
-  if (params.get('open') === 'export') { showG('preview'); showPv('3d'); openExport(current); }
+  if (params.get('open') === 'export' || params.get('pane') === 'outputs') { showG('preview'); showPv('3d'); openExport(current); }
   if (params.get('open') === 'assist') {
     if (params.get('step')) AS.step = params.get('step');
     if (params.get('subject')) AS.subject = params.get('subject'); if (params.get('coverage')) AS.coverage = params.get('coverage');
