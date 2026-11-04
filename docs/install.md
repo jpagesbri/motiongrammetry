@@ -124,7 +124,7 @@ rendered by `tools/synth_orbit.py`): `mg run examples/orbit.mp4 work/ --num 45 -
 takes ~7 min on a laptop CPU.
 
 The results are `work/mesh/textured.ply` (+ PNG) and `work/mesh/mesh_clean.ply`; take files out
-with `mg export work/ textured mesh print` (GLB, GLB and STL by default; `mg export --help`). For a quick test of a new capture use `--preset quick-preview`.
+with `mg export work/ textured mesh print --out exports/` (GLB, GLB and STL by default, in one zip in `exports/`; `mg export --help` says how `--out` names a file or a folder). For a quick test of a new capture use `--preset quick-preview`.
 
 ### Optional: VGGT feed-forward path
 
