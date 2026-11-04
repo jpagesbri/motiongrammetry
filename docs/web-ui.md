@@ -11,7 +11,7 @@ mg ui --root ~/scans --port 9000
 - **Top bar** (`static/topbar.js`, styled by `topbar.css`): the same on every page, written by one
   module that names and links the pages (**Scan**, **Edit**, **Help**, **About**: renaming one is
   one line there) and the GitHub repository. The current scan sits apart on the right, as a chip
-  marked "scan" with its thumbnail. Help and About have no scan of their own and show the one last
+  marked "scan" (name only). Help and About have no scan of their own and show the one last
   opened on Scan or Edit (browser storage, `mg.scan`), or none; the Scan and Edit links keep that
   scan. Between the pages and the chip, the page's status line (the run on Scan, unsaved edits on
   Edit).
