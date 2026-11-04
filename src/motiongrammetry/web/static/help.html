@@ -105,7 +105,7 @@ other options without starting over. A stage whose input changed after it ran is
   <li>Install and start it: <code>./install.sh</code> in the project folder (Docker; it checks everything, asks about the
   optional VGGT step and opens <a href="/">http://127.0.0.1:8765</a>). Later: <code>./install.sh stop</code>,
   <code>./install.sh update</code>. For development without Docker: <code>uv run mg ui</code>.</li>
-  <li><b>New scan</b> (left): give it a name, then <b>Upload video…</b> (or paste a path to a video on this computer and press <b>Create</b>).</li>
+  <li>Click <b>SCAN</b> at the top right, then <b>New scan…</b>: give it a name, then <b>Upload video…</b> (or paste a path to a video on this computer and press <b>Create</b>).</li>
   <li>In the <b>Run</b> tab, either follow <b>Assisted</b>, or switch to <b>Manual</b>, tick the stages and press <b>Run selected</b>.</li>
   <li>Follow the progress there; when <code>texture</code> is done, open the <b>Preview</b> tab: the model, its keyframes and masks, and the files.</li>
   <li>Check that the model stands the right way (the assisted run asks; otherwise <b>Orient…</b> in the Preview), then <b>Export…</b>.</li>
@@ -136,13 +136,24 @@ were unsure (it measures how sure they were); quarter-resolution depth maps; a s
 <p class="try"><a href="/?open=assist" target="_blank">Open the assisted run →</a></p>
 
 <h2 id="generate">The Scan page</h2>
-<p>Your scans on the left; on the right two tabs: <b>Run</b> (doing the work) and <b>Preview</b> (looking at the results).
+<p>The scan it works on is chosen at the top right (see <a href="#scans">Scans</a>). The page has two tabs: <b>Run</b> (doing the work) and <b>Preview</b> (looking at the results).
 On a wide screen, tick <b>side by side</b> to see both at once. A dot on a tab means something new happened there.</p>
 <h3 id="scans">Scans</h3>
-<p>A scan is one video and everything made from it (on disk: a folder under <code>workspaces/</code>). Each shows a
-thumbnail (a snapshot of the 3D model once there is one, a keyframe before), its size and when it last ran; hover for a larger
-card. The dots are the stages that are done. <b>Duplicate scan</b> copies the keyframes and masks (optionally the cameras and
-mesh) so you can try other settings without touching the original. To delete a scan, delete its folder.</p>
+<p>A scan is one video and everything made from it (on disk: a folder under <code>workspaces/</code>). The current one is
+in the top bar, on the right, marked <b>SCAN</b>, on every page. Click it to choose another: each scan in the list shows a
+thumbnail (a snapshot of the 3D model once there is one, a keyframe before), what it holds, and its last run; hover for a
+larger card. The dots are the stages that are done. Picking a scan opens it on the Scan page; on the Edit page it switches the
+editor to it (asking first if you have unsaved edits). Help and About only remember it, so their <b>Scan</b> and <b>Edit</b>
+links lead to it. The keyboard works too: arrows to move, <kbd>Enter</kbd> to open, <kbd>→</kbd> for a scan's menu,
+<kbd>Esc</kbd> to close.</p>
+<ul>
+  <li><b>New scan…</b> at the foot of the list: a name, then <b>Upload video…</b>, or a path to a video on this computer and
+  <b>Create</b>. Uploading with no name names the scan after the file.</li>
+  <li>Each scan's <b>⋯</b> menu: <b>Upload a video…</b> (or <b>Replace the video…</b>, which asks first and shows both) on
+  the Scan page; <b>Duplicate…</b>, which copies the keyframes and masks (optionally the cameras and mesh) so you can try
+  other settings without touching the original; and <b>Delete…</b>, which removes the scan's folder and everything in it
+  after you type its name.</li>
+</ul>
 <h3 id="run">Run tab</h3>
 <figure><img src="/help/generate.jpg" alt="The Run tab in Manual, on All steps" loading="lazy">
   <figcaption>Manual, on <b>All steps</b>: the steps on the left (tick the ones to run), every step's result on the right.</figcaption></figure>
@@ -415,7 +426,7 @@ goes back.</p>
   <tr><td>A face or one side only</td><td>The back was never filmed</td><td>Film all the way around; meanwhile print as a shell (automatic)</td></tr>
   <tr><td><code>disk-low</code> before mvs</td><td>Depth maps need several GB</td><td>Raise <code>resolution_level</code> or the <code>low-disk</code> preset</td></tr>
   <tr><td>TextureMesh crashed</td><td>A damaged mesh (bow-tie vertices)</td><td>Re-run clean; edited meshes are repaired on save</td></tr>
-  <tr><td>VGGT refuses to run</td><td>It would replace the SfM cameras the MVS mesh depends on</td><td><b>Duplicate scan</b> and run VGGT on the copy</td></tr>
+  <tr><td>VGGT refuses to run</td><td>It would replace the SfM cameras the MVS mesh depends on</td><td><b>Duplicate…</b> (the scan's <b>⋯</b> menu, top right) and run VGGT on the copy</td></tr>
   <tr><td>The model is lying down, tilted or faces away</td><td>No floor was found and the camera path was tilted</td><td><b>Orient…</b> in the Preview (or the assisted run's last step): click the floor, turn it, save</td></tr>
   <tr><td>Masks look wrong in some frames</td><td>The segmentation caught background or lost part of the subject</td><td>Preview → <b>Frames &amp; masks</b> → <b>Flagged</b>; try another <code>mask_model</code></td></tr>
   <tr><td>Nothing seems to happen</td><td>A long stage (mvs) is running</td><td>The Pipeline tab shows the current sub-step and time left; the Log tab the raw output</td></tr>

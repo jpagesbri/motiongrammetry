@@ -110,7 +110,7 @@ rembg. The `torch` / `vggt` lines are optional.
 mg ui                                   # then open http://127.0.0.1:8765
 ```
 
-In the UI: **New scan** → name it → **Upload video…** (or paste a local path and **Create**) →
+In the UI: **SCAN** (top right) → **New scan…** → name it → **Upload video…** (or paste a local path and **Create**) →
 leave the default stages ticked → **Check** → **Run selected**. Or from the terminal:
 
 ```bash

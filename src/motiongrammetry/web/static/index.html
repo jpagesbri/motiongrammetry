@@ -14,11 +14,11 @@
   html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
     font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
   button, input, select { font: inherit; color: inherit; }
-  .app { display: grid; height: 100vh; grid-template-columns: 280px 1fr;
-    grid-template-rows: 44px 1fr; grid-template-areas: "top top" "side work"; }
+  /* the scans are chosen in the top bar (topbar.js, scanchooser.js): the page is all work area */
+  .app { display: grid; height: 100vh; grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: 44px 1fr; grid-template-areas: "top" "work"; }
   header { grid-area: top; }
-  aside, .right { background: var(--panel); overflow: auto; }
-  aside { grid-area: side; border-right: 1px solid var(--line); }
+  .right { background: var(--panel); overflow: auto; }
   .right { display: flex; flex-direction: column; min-width: 0; }
   /* Scan: a Run tab (assisted or manual) and a Preview tab (3D, frames and masks, files) */
   .work { grid-area: work; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
@@ -148,15 +148,6 @@
   .fv-track canvas { width: 100%; height: 36px; display: block; cursor: pointer; }
   section { padding: 12px 14px; border-bottom: 1px solid var(--line); }
   h2 { margin: 0 0 8px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; }
-  .ws-list { display: flex; flex-direction: column; gap: 4px; }
-  .ws-item { padding: 7px 9px; border-radius: 6px; cursor: pointer; border: 1px solid transparent; }
-  .ws-item:hover { background: var(--panel2); }
-  .ws-item.active { background: var(--panel2); border-color: var(--accent); }
-  .ws-item small { color: var(--muted); display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .ws-item { display: flex; gap: 9px; align-items: center; }
-  .ws-text { min-width: 0; flex: 1; }
-  .ws-thumb { width: 48px; height: 36px; border-radius: 4px; object-fit: cover; background: var(--bg); flex: none; }
-  .ws-thumb.empty { border: 1px dashed var(--line); }
   .modal { position: fixed; inset: 0; z-index: 40; background: rgba(5,7,10,.55); display: grid; place-items: center; }
   .modal[hidden] { display: none; }
   .win { width: min(1040px, 94vw); height: min(760px, 92vh); background: var(--panel); border: 1px solid var(--line);
@@ -225,14 +216,6 @@
   .as-advice.fix { border-color: var(--warn); background: rgba(240,180,41,.07); }
   .as-advice.ok { border-color: rgba(76,195,138,.5); }
   .as-advice b { display: block; }
-  .scancard { position: fixed; z-index: 20; width: 260px; background: rgba(22,26,33,.97); border: 1px solid var(--line);
-    border-radius: 9px; padding: 8px; box-shadow: 0 8px 28px rgba(0,0,0,.45); pointer-events: none; font-size: 12px; }
-  .scancard img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 6px; display: block; margin-bottom: 6px; background: var(--bg); }
-  .scancard b { font-size: 13px; }
-  .scancard .small { font-size: 11px; word-break: break-all; }
-  .dots { display: inline-flex; gap: 3px; margin-left: 6px; vertical-align: middle; }
-  .dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--line); }
-  .dots i.on { background: var(--ok); }
   label.row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 6px 0; }
   input[type=text], input[type=number], select { background: var(--bg); border: 1px solid var(--line);
     border-radius: 5px; padding: 5px 7px; min-width: 0; }
@@ -365,20 +348,6 @@
 </script>
 </head>
 <body>
-<div class="scancard" id="scanCard" hidden></div>
-<div class="modal" id="delModal" hidden>
-  <div class="win small">
-    <div class="win-head"><b>Delete scan</b><span class="muted" id="delScan"></span><button class="x" id="delClose" title="close (Esc)">✕</button></div>
-    <div class="del-body">
-      <p>This removes the scan's folder and everything in it: keyframes, masks, cameras, raw and clean meshes, the textured
-      model, your edits and orientation, exports, and the video if it was uploaded. <b>It cannot be undone.</b></p>
-      <p class="muted" id="delInfo">measuring…</p>
-      <label class="row" style="justify-content:flex-start;gap:10px">Type <code id="delName"></code> to confirm <input type="text" id="delConfirm" autocomplete="off" style="width:200px"></label>
-      <div class="btns"><button class="btn danger-solid" id="delGo" disabled>Delete for good</button><button class="btn" id="delCancel">Cancel</button></div>
-      <div class="err" id="delErr"></div>
-    </div>
-  </div>
-</div>
 <div class="modal" id="repModal" hidden>
   <div class="win small">
     <div class="win-head"><b>Replace the video</b><span class="muted" id="repScan"></span><button class="x" id="repClose" title="close (Esc)">✕</button></div>
@@ -433,32 +402,6 @@
 <div class="app">
   <header class="topbar"></header>  <!-- written by topbar.js -->
 
-  <aside>
-    <section>
-      <h2>Scans</h2>
-      <div class="ws-list" id="wsList"></div>
-    </section>
-    <section>
-      <h2>New scan</h2>
-      <label class="row">Name <input type="text" id="newName" placeholder="mouse-01" style="width:170px"></label>
-      <input type="text" id="newPath" placeholder="local video path (optional)">
-      <div class="btns">
-        <button class="btn" id="createBtn">Create</button>
-        <label class="btn" style="cursor:pointer">Upload video…<input type="file" id="upload" accept="video/*" hidden></label>
-      </div>
-      <div id="dupBox" hidden style="margin-top:10px">
-        <div class="btns"><button class="btn" id="dupBtn">Duplicate scan</button></div>
-        <label class="muted" style="display:block;margin-top:4px" title="SfM/MVS copies are instant on btrfs/XFS, a full copy elsewhere">
-          <input type="checkbox" id="dupRecon"> include SfM / MVS results</label>
-        <div class="opt-help" style="margin:2px 0 0">a copy with the same keyframes and masks, to try other settings or VGGT without touching this one</div>
-      </div>
-      <progress id="upProg" value="0" max="1" hidden></progress>
-      <div class="err" id="newErr"></div>
-    </section>
-    <section id="scanManage" hidden>
-      <div class="btns" style="margin-top:0"><button class="btn danger" id="delBtn" title="remove this scan's folder and everything made from it">Delete scan…</button></div>
-    </section>
-  </aside>
 
   <div class="work" id="work">
     <nav class="gtabs">
@@ -502,7 +445,7 @@
         </div>
         <div class="pv3d" id="pv3d">
           <main class="view" id="view">
-            <div class="hint" id="hint">Select or create a scan</div>
+            <div class="hint" id="hint">Choose a scan, or make a new one, with <b>SCAN</b> at the top right</div>
             <div class="overlay">
               <div class="layers" id="layers"></div>
               <div class="layers" id="dispBox">
@@ -573,13 +516,23 @@
   <div class="muted" id="orMsg" style="font-size:12px;margin-top:6px"></div>
 </div>
 <div class="toast" id="toast" hidden></div>
+<input type="file" id="upload" accept="video/*" hidden>  <!-- a scan's "Upload a video…" (its ⋯ menu in the scan chooser) -->
 
 <script type="module">
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { mountTopbar, setScan, forgetScan, pageLabel as topPageLabel } from '/topbar.js';
-mountTopbar('scan');
+import { mountTopbar, setScan, updateScans, uploadVideo, thumbUrl, pageLabel as topPageLabel } from '/topbar.js';
+// The scan chooser in the top bar: picking a scan selects it here; a new or copied scan opens
+// here; a deleted one is left for the next; a scan's ⋯ menu also uploads or replaces its video.
+mountTopbar('scan', {
+  open: (name) => select(name),
+  created: (name) => select(name),
+  deleted: (name, list) => scanDeleted(name, list),
+  actions: (w) => [{ label: w.video ? 'Replace the video…' : 'Upload a video…', run: () => chooseVideo(w.name),
+    title: w.video ? `upload another video into ${w.name}: you are asked first, and its keyframes and every step after them need running again`
+      : `upload a video file into ${w.name}` }],
+});
 
 const $ = (id) => document.getElementById(id);
 const STAGES = ['frames', 'mask', 'sfm', 'mvs', 'vggt', 'clean', 'texture'];
@@ -848,7 +801,7 @@ async function reloadScene() {
   status('');
 }
 
-// The scan list's thumbnail: a snapshot of the 3D view once a run has produced a mesh, taken here
+// The scan chooser's thumbnail: a snapshot of the 3D view once a run has produced a mesh, taken here
 // (the server has no GPU renderer), without camera frusta, points or grid.
 async function capturePreview() {
   const meshes = ['custom', 'textured', 'clean', 'raw'].filter((k) => layerObj[k]?.visible);
@@ -1536,44 +1489,13 @@ async function loadOptions() {
   $('preset').addEventListener('change', () => { applyPreset($('preset').value); renderRun(); });
 }
 
-// ---------------------------------------------------------------- side panel
+// ---------------------------------------------------------------- scans
 
-const ago = (t) => {
-  if (!t) return '';
-  const s = Date.now() / 1000 - t;
-  return s < 90 ? 'just now' : s < 3600 ? `${Math.round(s / 60)} min ago` : s < 86400 ? `${Math.round(s / 3600)} h ago` : `${Math.round(s / 86400)} d ago`;
-};
-const thumbUrl = (w) => `/api/workspaces/${encodeURIComponent(w.name)}/preview.jpg?v=${w.preview || 'k'}`;
-const scanInfo = (w) => [w.frames && `${w.frames} frames`, w.faces && `${fmt(w.faces)} faces`,
-  w.custom && 'edited', w.last_run && ago(w.last_run)].filter(Boolean).join(' · ');
 let scans = [];
-async function refreshList() {
+async function refreshList() {  // the scans, for the top bar's chooser and the glimpse of the current one
   scans = await api('/api/workspaces');
-  $('wsList').innerHTML = scans.length ? scans.map((w) => `
-    <div class="ws-item ${w.name === current ? 'active' : ''}" data-ws="${w.name}">
-      ${w.preview != null ? `<img class="ws-thumb" src="${thumbUrl(w)}" alt="" loading="lazy">` : '<span class="ws-thumb empty"></span>'}
-      <div class="ws-text"><div>${w.name}<span class="dots">${STAGES.map((s) => `<i class="${w.stages[s] ? 'on' : ''}" title="${s}"></i>`).join('')}</span>
-        ${w.job === 'running' ? ' <span class="muted">· running</span>' : ''}</div>
-        <small>${scanInfo(w) || (w.video ? w.video.split('/').pop() : 'no video yet')}</small></div></div>`).join('')
-    : '<div class="muted">none yet</div>';
+  updateScans(scans);
   renderGlimpse();
-  document.querySelectorAll('[data-ws]').forEach((el) => {
-    el.addEventListener('click', () => select(el.dataset.ws));
-    el.addEventListener('mouseenter', () => showScanCard(el));
-    el.addEventListener('mouseleave', () => { $('scanCard').hidden = true; });
-  });
-}
-function showScanCard(el) {  // floating card: a bigger preview and the details
-  const w = scans.find((x) => x.name === el.dataset.ws); if (!w) return;
-  const card = $('scanCard'), r = el.getBoundingClientRect();
-  const status = w.job === 'running' ? 'running now' : w.last_status ? `last run: ${w.last_status}` : 'not run yet';
-  card.innerHTML = `${w.preview != null ? `<img src="${thumbUrl(w)}" alt="">` : ''}
-    <b>${w.name}</b><div class="muted">${[w.frames && `${w.frames} keyframes`, w.faces && `${fmt(w.faces)} faces (clean)`,
-      w.textured && 'textured', w.custom && 'has a custom edit'].filter(Boolean).join(' · ') || 'no results yet'}</div>
-    <div class="muted">${status}${w.last_run ? ' · ' + ago(w.last_run) : ''}</div>
-    ${w.video ? `<div class="muted small">${w.video.split('/').pop()}</div>` : ''}`;
-  card.style.top = Math.min(r.top, innerHeight - 290) + 'px'; card.style.left = r.right + 10 + 'px';
-  card.hidden = false;
 }
 
 async function select(name) {
@@ -1603,8 +1525,6 @@ async function refreshState(beforeScene) {  // beforeScene: runs once the state 
   renderStages(); renderRail();
   renderFilm();
   renderOutputs();
-  $('dupBox').hidden = !wsState.done.frames;
-  $('scanManage').hidden = false;
   beforeScene?.();
   if (layerDefaultsFor !== current) {
     layerDefaultsFor = current;
@@ -2185,7 +2105,7 @@ $('exportBtn').addEventListener('click', openExport);
 $('exOrient').addEventListener('click', () => { $('exportModal').hidden = true; showG('preview'); showPv('3d'); orientOpen = true; orientHome(); });
 $('exClose').addEventListener('click', () => { $('exportModal').hidden = true; });
 $('exportModal').addEventListener('click', (e) => { if (e.target === $('exportModal')) $('exportModal').hidden = true; });
-addEventListener('keydown', (e) => { if (e.key === 'Escape') { $('exportModal').hidden = true; $('delModal').hidden = true; } });
+addEventListener('keydown', (e) => { if (e.key === 'Escape') $('exportModal').hidden = true; });
 $('exSource').addEventListener('change', () => { exRenderItems(); exReset(); });
 $('exMode').addEventListener('change', exFields);
 Object.keys(EX_FIELDS).forEach((id) => $(id).addEventListener('change', exCheck));
@@ -2717,50 +2637,32 @@ async function poll() {
 }
 
 // ---------------------------------------------------------------- actions
-$('createBtn').addEventListener('click', async () => {
-  $('newErr').textContent = '';
-  try {
-    const body = { name: $('newName').value.trim(), video_path: $('newPath').value.trim() || null };
-    await api('/api/workspaces', { method: 'POST', body: JSON.stringify(body) });
-    await select(body.name);
-  } catch (e) { $('newErr').textContent = e.message; }
-});
+// A scan's "Upload a video…" / "Replace the video…" (its ⋯ menu in the top bar's chooser): the
+// file is chosen first (the browser only opens the picker straight from the click), then the scan
+// is selected and, when it has a video already, you are asked before it is replaced. New scans,
+// with or without a video, are made by the chooser's New scan….
+let uploadTo = null;
+function chooseVideo(name) { uploadTo = name; $('upload').click(); }
+function upToast(html, close) {
+  const t = $('toast'); clearTimeout(toastTimer);
+  t.innerHTML = `<span>${html}</span>${close ? '<a class="muted" id="toastX">✕</a>' : ''}`; t.hidden = false;
+  if (close) $('toastX').addEventListener('click', () => { t.hidden = true; });
+}
 $('upload').addEventListener('change', async () => {
-  const file = $('upload').files[0]; if (!file) return;
-  $('newErr').textContent = '';
+  const file = $('upload').files[0], name = uploadTo; if (!file || !name) return;
   try {
-    // Where the video goes: a new scan under the typed name (one already taken is refused, it
-    // used to receive the video silently), else the selected scan (asked first when it has a video
-    // already), else a new scan named after the file (with a free suffix if that name is taken).
-    const typed = $('newName').value.trim();
-    let name = typed || current, replace = false;
-    if (typed && typed !== current) {
-      await api('/api/workspaces', { method: 'POST', body: JSON.stringify({ name }) }).catch((e) => {
-        throw /already exists/.test(e.message)
-          ? new Error(`a scan named "${typed}" already exists: choose another name, or select that scan to replace its video`) : e;
-      });
-    } else if (!name) {
-      const base = file.name.replace(/\.[^.]+$/, '').replace(/[^A-Za-z0-9._-]/g, '-').slice(0, 60) || 'scan';
-      const taken = new Set((await api('/api/workspaces')).map((w) => w.name));
-      name = base;
-      for (let i = 2; taken.has(name); i++) name = `${base}-${i}`;
-      await api('/api/workspaces', { method: 'POST', body: JSON.stringify({ name }) });
-    } else if (wsState?.meta?.video) {
+    if (name !== current) await select(name);
+    let replace = false;
+    if (wsState?.meta?.video) {
       if (!(await askReplace(name, String(wsState.meta.video), file))) return;
       replace = true;
     }
-    const prog = $('upProg'); prog.hidden = false;
-    await new Promise((ok, fail) => {
-      const xhr = new XMLHttpRequest();
-      xhr.open('PUT', `/api/workspaces/${name}/video?name=${encodeURIComponent(file.name)}${replace ? '&replace=1' : ''}`);
-      xhr.upload.onprogress = (e) => { if (e.lengthComputable) prog.value = e.loaded / e.total; };
-      xhr.onload = () => (xhr.status < 300 ? ok() : fail(new Error(JSON.parse(xhr.responseText).error)));
-      xhr.onerror = () => fail(new Error('upload failed'));
-      xhr.send(file);
-    });
-    prog.hidden = true;
+    upToast(`Uploading <b>${esc(file.name)}</b> into <b>${esc(name)}</b>…`);
+    await uploadVideo(name, file, { replace, progress: (f) => {
+      upToast(`Uploading <b>${esc(file.name)}</b> into <b>${esc(name)}</b>… ${Math.round(f * 100)}%`); } });
+    $('toast').hidden = true;
     await select(name);
-  } catch (e) { $('newErr').textContent = e.message; $('upProg').hidden = true; } finally { $('upload').value = ''; }
+  } catch (e) { upToast(`Upload into <b>${esc(name)}</b> failed: ${esc(e.message)}`, true); } finally { $('upload').value = ''; }
 });
 // Replacing a scan's video: the current one (its first keyframe) next to the new one (a frame of the
 // chosen file), asked in the page before anything is sent. Resolves true to replace.
@@ -2804,52 +2706,14 @@ $('repGo').addEventListener('click', () => closeReplace(true));
 for (const id of ['repClose', 'repCancel']) $(id).addEventListener('click', () => closeReplace(false));
 $('repModal').addEventListener('click', (e) => { if (e.target === $('repModal')) closeReplace(false); });
 addEventListener('keydown', (e) => { if (e.key === 'Escape') closeReplace(false); });
-// Delete a scan: its folder and everything in it, after typing its name.
-$('delBtn').addEventListener('click', async () => {
-  if (!current) return;
-  const name = current;
-  $('delScan').textContent = '· ' + name; $('delName').textContent = name;
-  $('delConfirm').value = ''; $('delGo').disabled = true; $('delErr').textContent = ''; $('delInfo').textContent = 'measuring…';
-  $('delModal').hidden = false; $('delConfirm').focus();
-  try {
-    const z = await api(`/api/workspaces/${encodeURIComponent(name)}/size`);
-    const sz = (b) => b >= 1e9 ? gb(b) : b >= 1e6 ? (b / 1e6).toFixed(0) + ' MB' : b >= 1e3 ? (b / 1e3).toFixed(0) + ' kB' : b + ' bytes';
-    $('delInfo').innerHTML = `<b>${esc(z.path)}</b><br>${z.files.toLocaleString()} file${z.files === 1 ? '' : 's'}, ${sz(z.bytes)}`
-      + ` · frees ${z.frees_exact ? '' : 'about '}<b>${sz(z.frees)}</b> of disk space`
-      + (z.frees_exact && z.shared > 1e6 ? `<br>${sz(z.shared)} of its data is shared with copies of it (Duplicate scan or a backup); that stays on disk while they exist.` : '')
-      + (z.video_outside ? `<br>The video it was made from stays where it is: ${esc(z.video_outside)}` : '')
-      + (jobSnap?.status === 'running' ? '<br>A run is using it: stop the run first.' : '');
-  } catch (e) { $('delInfo').textContent = ''; }
-});
-$('delConfirm').addEventListener('input', () => { $('delGo').disabled = $('delConfirm').value !== current; });
-$('delConfirm').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !$('delGo').disabled) $('delGo').click(); });
-for (const id of ['delClose', 'delCancel']) $(id).addEventListener('click', () => { $('delModal').hidden = true; });
-$('delGo').addEventListener('click', async () => {
-  const name = current;
-  $('delGo').disabled = true; $('delGo').textContent = 'Deleting…';
-  try {
-    await api(`/api/workspaces/${encodeURIComponent(name)}/delete`, { method: 'POST', body: JSON.stringify({ confirm: name }) });
-    for (const k of ['mg.run.', 'mg.assist.', 'mg.mode.']) try { localStorage.removeItem(k + name); } catch {}
-    forgetScan(name);
-    $('delModal').hidden = true;
-    await refreshList();
-    const next = scans[0]?.name;
-    if (next) await select(next);
-    else { current = null; wsState = null; history.replaceState(null, '', location.pathname); location.reload(); }
-  } catch (e) { $('delErr').textContent = e.message; }
-  $('delGo').textContent = 'Delete for good';
-});
-$('dupBtn').addEventListener('click', async () => {
-  $('newErr').textContent = '';
-  const name = $('newName').value.trim() || `${current}-copy`;
-  $('dupBtn').disabled = true; $('dupBtn').textContent = 'Copying…';
-  try {
-    await api(`/api/workspaces/${current}/duplicate`, { method: 'POST', body: JSON.stringify({ name, reconstruction: $('dupRecon').checked }) });
-    $('newName').value = '';
-    await select(name);
-  } catch (e) { $('newErr').textContent = e.message; }
-  $('dupBtn').disabled = false; $('dupBtn').textContent = 'Duplicate scan';
-});
+// A scan was deleted from the chooser: if it was this one, go on with the next (or none).
+async function scanDeleted(name, list) {
+  scans = list; updateScans(scans);
+  if (name !== current) return;
+  const next = scans[0]?.name;
+  if (next) await select(next);
+  else { current = null; wsState = null; history.replaceState(null, '', location.pathname); location.reload(); }
+}
 $('runBtn').addEventListener('click', () => runStages(RO.sel).catch((e) => { $('runErr').textContent = e.message; }));
 $('checkBtn').addEventListener('click', async () => {
   $('runErr').textContent = ''; $('checkOut').innerHTML = '<div class="muted checkres">checking…</div>';

@@ -10,6 +10,16 @@ the image with that version, and the About page and `mg --version` show it.
 
 ## Unreleased
 
+- **Choose the scan from the top bar** (part of #23): the scan chip at the top right opens the
+  list of scans on every page, with thumbnails, the stages done and the last run. Picking one
+  opens it on the Scan page, switches the editor to it (asking first about unsaved edits), or, on
+  Help and About, makes their Scan and Edit links lead to it. The Scan page's left bar and the
+  editor's own scan dropdown are gone, so both pages are wider. **New scan…** is at the foot of
+  the list. Each scan has a **⋯** menu with **Duplicate…** and **Delete…** (on every page) and, on
+  the Scan page, **Upload a video…** / **Replace the video…**. The New scan window only makes new
+  scans: uploading with no name typed no longer puts the video into the selected scan (that is
+  the scan's own Upload / Replace the video now).
+
 - **Pages renamed, one top bar** (part of #23): **Generate** is now **Scan** and **Edit & paint**
   is now **Edit**, in the top bar, the buttons, the advice, Help and the docs. The top bar is
   written once (`topbar.js`) for every page instead of being copied into each. The current scan's

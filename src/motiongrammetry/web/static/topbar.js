@@ -3,8 +3,11 @@
 // mountTopbar('<its id>') before its own code runs; topbar.css styles it.
 //
 // The bar has three parts: the pages (left), the page's own status line (topStatus, filled by
-// the page), and the current scan (the chip on the right, then the GitHub link). The chip only
-// shows the scan's name for now; it is its own element so it can become the scan chooser.
+// the page), and the current scan (the chip on the right, then the GitHub link). The chip is the
+// scan chooser (scanchooser.js): the list of scans, New scan… and each scan's ⋯ menu.
+
+import { initChooser, chooserScan } from '/scanchooser.js';
+export { updateScans, uploadVideo, thumbUrl } from '/scanchooser.js';
 
 export const PAGES = [
   { id: 'scan', label: 'Scan', href: '/', title: 'run the pipeline on a scan, preview it and export it' },
@@ -28,8 +31,13 @@ let scan = null;
 
 const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
-/** Render the bar into the page's <header class="topbar">. `id` is one of the PAGES ids. */
-export function mountTopbar(id) {
+/** Render the bar into the page's <header class="topbar">. `id` is one of the PAGES ids.
+ *  `hooks` tell the scan chooser what the page does with a scan (see scanchooser.js):
+ *  open(name) when one is picked, created(name) after New scan… or Duplicate…, deleted(name, scans)
+ *  after Delete…, actions(scan) for extra items in a scan's ⋯ menu. Without them (Help, About), a
+ *  picked scan is only remembered, for the Scan and Edit links: these pages are read beside a working
+ *  one, so they stay put; a new or copied scan opens on the Scan page, where it is run. */
+export function mountTopbar(id, hooks = {}) {
   const bar = document.querySelector('header.topbar');
   const newTab = HOLDS_SCAN.has(id) ? ' target="_blank"' : '';
   const links = PAGES.map((p) => p.id === id
@@ -39,8 +47,14 @@ export function mountTopbar(id) {
   bar.innerHTML = `<b>motiongrammetry</b>
     <nav class="screens">${links}</nav>
     <span class="topstatus muted" id="topStatus"></span>
-    <span class="scanchip" id="topScan" hidden><span class="k">scan</span><span class="v" id="topScanName"></span></span>
+    <button class="scanchip none" id="topScan" aria-haspopup="dialog" aria-expanded="false" title="choose a scan, or make a new one"><span class="k">scan</span><img class="t" alt="" hidden><span class="v" id="topScanName">choose…</span><span class="caret" aria-hidden="true">▾</span></button>
     <a class="gh" href="${REPO}" target="_blank" rel="noopener" title="motiongrammetry on GitHub" aria-label="motiongrammetry on GitHub"></a>`;
+  initChooser(document.getElementById('topScan'), {
+    open: (name) => { store.set(name); showScan(name, true); },
+    created: (name) => { location.href = '/#' + encodeURIComponent(name); },
+    ...hooks,
+    deleted: (name, scans) => { forgetScan(name); if (!HOLDS_SCAN.has(id) && scan === name) showScan(null, true); hooks.deleted?.(name, scans); },
+  });
   // Help and About have no scan of their own: they show the one last opened (or ?scan=).
   if (!HOLDS_SCAN.has(id)) showScan(new URLSearchParams(location.search).get('scan') || store.get(), true);
 }
@@ -59,9 +73,9 @@ export function forgetScan(name) {
 function showScan(name, remembered) {
   scan = name || null;
   const chip = document.getElementById('topScan');
-  chip.hidden = !scan;
-  document.getElementById('topScanName').textContent = scan || '';
-  chip.title = !scan ? '' : remembered ? `the scan you last opened: ${scan}` : `the scan open on this page: ${scan}`;
+  chooserScan(scan);
+  chip.title = (!scan ? 'no scan open' : remembered ? `the scan you last opened: ${scan}` : `the scan open on this page: ${scan}`)
+    + ': click to choose another, or make a new one';
   for (const a of document.querySelectorAll('header.topbar a[data-page="scan"], header.topbar a[data-page="edit"]')) {
     const p = PAGES.find((x) => x.id === a.dataset.page);
     a.href = p.href + (scan ? '#' + encodeURIComponent(scan) : '');
