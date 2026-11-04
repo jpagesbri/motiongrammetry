@@ -83,7 +83,7 @@
   .scanpanel .noimg { border: 1px dashed var(--line); }
   .scanpanel small { display: block; color: var(--muted); font-size: 11px; }
   .center { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); pointer-events: none; text-align: center; }
-  /* modals: as on the Generate screen (Replace the video, Delete) */
+  /* modals: as on the Scan page (Replace the video, Delete) */
   .modal { position: fixed; inset: 0; z-index: 40; background: rgba(5,7,10,.55); display: grid; place-items: center; }
   .win { width: min(640px, 94vw); max-height: 92vh; background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
     box-shadow: 0 20px 60px rgba(0,0,0,.6); display: flex; flex-direction: column; overflow: hidden; }
@@ -154,13 +154,7 @@
   </div>
 </div>
 <div class="app">
-  <header class="topbar">
-    <b>motiongrammetry</b>
-    <nav class="screens"><a id="toGenerate">Generate</a><a class="on">Edit &amp; paint</a><a href="/help#edit" target="_blank">Help</a><a href="/about" target="_blank">About</a></nav>
-    <span class="muted" id="wsTitle"></span>
-    <span class="end muted" id="dirtyInfo"></span>
-    <a class="gh" href="https://github.com/jpagesbri/motiongrammetry" target="_blank" rel="noopener" title="motiongrammetry on GitHub" aria-label="motiongrammetry on GitHub"></a>
-  </header>
+  <header class="topbar"></header>  <!-- written by topbar.js -->
 
   <aside>
     <section>
@@ -288,6 +282,8 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { MeshBVH, acceleratedRaycast } from 'three-mesh-bvh';
 import * as SMesh from '/sculpt-mesh.js';  // the sculpt mesh's state and density operations
+import { mountTopbar, setScan } from '/topbar.js';
+mountTopbar('edit');
 
 const $ = (id) => document.getElementById(id);
 async function api(url, opts = {}) {
@@ -349,7 +345,7 @@ const HELP = {
     <b>Plane cut</b>: drag a line, check the preview, Enter to cut.
     <b>Restore</b>: brush over the amber ghost (the raw mesh) to bring back what clean carved away.<br>
     Saving replaces the clean mesh: the print STL and clean GLB are rebuilt, and <b>texture</b> becomes stale:
-    re-run it on the Generate screen to project the photos onto the new shape, then paint.`,
+    re-run it on the Scan page to project the photos onto the new shape, then paint.`,
   paint: `<b>Left-drag</b> on the model or on the flat texture: paint · <b>Alt+click</b>: pick colour ·
     <b>Ctrl+click</b>: clone source · 3D: <b>right-drag</b> orbit, <b>middle</b> pan · texture: <b>right / middle-drag</b> pan,
     <b>wheel</b> zoom · <b>[ ]</b>: radius · <b>Ctrl+Z / Ctrl+Shift+Z</b>: undo / redo · <b>Ctrl+S</b>: save.<br>
@@ -591,10 +587,9 @@ addEventListener('hashchange', () => {
   if (anyDirty() && !confirm('Discard unsaved edits?')) { history.replaceState(null, '', '#' + encodeURIComponent(ws)); return; }
   S.dirty = P.dirty = false; location.reload();
 });
-$('toGenerate').addEventListener('click', () => { location.href = '/' + (ws ? '#' + encodeURIComponent(ws) : ''); });
 
 async function openWorkspace() {
-  $('wsTitle').textContent = ws ? '· ' + ws : '';
+  setScan(ws);
   wsState = await api(`/api/workspaces/${ws}/state`);
   const sc = await api(`/api/workspaces/${ws}/scene`).catch(() => null);
   if (sc) root.matrix.set(...sc.transform[0], ...sc.transform[1], ...sc.transform[2], ...sc.transform[3]);
@@ -2306,7 +2301,7 @@ $('texEdits').addEventListener('click', async () => {
       $('texInfo').textContent = `texturing your edits from the photos (about a minute on the GPU)… ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
         + (t.step ? ` · ${t.step}` : '');
     } while (j.status === 'running');
-    if (j.status !== 'done') throw new Error(`the texture step ${j.status}: see its log on the Generate screen`);
+    if (j.status !== 'done') throw new Error(`the texture step ${j.status}: see its log on the Scan page`);
     await reloadPaint();
     $('texInfo').textContent = '';
     flash('your edited mesh is textured from the photos');
@@ -2658,7 +2653,7 @@ function updateButtons() {
   $('undoBtn').disabled = !(mode === 'sculpt' ? S.undo.length : P.undo.length);
   $('redoBtn').disabled = !(mode === 'sculpt' ? S.redo.length : P.redo.length);
   $('saveBtn').disabled = !dirty || saving;
-  $('dirtyInfo').textContent = [S.dirty && 'unsaved sculpt edits', P.dirty && 'unsaved paint'].filter(Boolean).join(' · ');
+  $('topStatus').textContent = [S.dirty && 'unsaved sculpt edits', P.dirty && 'unsaved paint'].filter(Boolean).join(' · ');
 }
 function updateStatus() {
   if (mode === 'sculpt' && S.mesh) {
@@ -2690,7 +2685,7 @@ $('color').addEventListener('input', () => toolColor.set($('color').value));
 toolColor.set($('color').value); renderSwatches();
 
 // ---------------------------------------------------------------- display modes, holes
-// As on the Generate screen: colours, plain grey, wireframe, or grey with the wires on top (fading
+// As on the Scan page: colours, plain grey, wireframe, or grey with the wires on top (fading
 // out when the triangles get too small on screen to tell apart); holes drawn in orange.
 const DISPLAYS = ['colours', 'solid', 'wire', 'solidwire'];
 let display = 'colours';
@@ -2784,7 +2779,7 @@ bindSlider('hardness', 'hardness', 0.01, (v) => Math.round(v * 100) + '%');
 renderTools();
 try {
   await loadWorkspaces();
-  if (ws) await openWorkspace(); else $('center').textContent = 'No workspaces yet: create one on the Generate screen.';
+  if (ws) await openWorkspace(); else $('center').textContent = 'No scans yet: create one on the Scan page.';
 } catch (e) { fail(e); $('center').textContent = e.message; }
 </script>
 </body>

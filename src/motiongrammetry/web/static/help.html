@@ -51,18 +51,14 @@
 <link rel="stylesheet" href="/topbar.css">
 </head>
 <body>
-<header class="topbar">
-  <b>motiongrammetry</b>
-  <nav class="screens"><a href="/" id="toGen">Generate</a><a href="/edit" id="toEdit">Edit &amp; paint</a><a class="on">Help</a><a href="/about">About</a></nav>
-  <a class="gh end" href="https://github.com/jpagesbri/motiongrammetry" target="_blank" rel="noopener" title="motiongrammetry on GitHub" aria-label="motiongrammetry on GitHub"></a>
-</header>
+<header class="topbar"></header>  <!-- written by topbar.js -->
 <div class="wrap">
 <nav class="toc" id="toc"></nav>
 <main>
 <h1>How to</h1>
 <p>motiongrammetry turns a phone video walking around something into a clean, textured 3D model, a 3D-print file and
 more. This page explains every screen, step and option, with what to do when something goes wrong. In a hurry? Choose
-<b>Assisted</b> in the Run tab of the Generate screen: it walks you through all of this for your own capture.</p>
+<b>Assisted</b> in the Run tab of the Scan page: it walks you through all of this for your own capture.</p>
 <p class="note">The screenshots follow one example from start to print: a canvas shoe filmed on a stool, from the
 <a href="https://uco3d.github.io" target="_blank" rel="noopener">uCO3D</a> dataset (Meta AI; Liu et al., 2025; CC BY 4.0),
 reconstructed and edited here.</p>
@@ -139,7 +135,7 @@ were unsure (it measures how sure they were); quarter-resolution depth maps; a s
 <p>For frames, masks and cameras, <b>Show the flagged keyframes</b> opens the frame viewer on the keyframes that look wrong.</p>
 <p class="try"><a href="/?open=assist" target="_blank">Open the assisted run →</a></p>
 
-<h2 id="generate">The Generate screen</h2>
+<h2 id="generate">The Scan page</h2>
 <p>Your scans on the left; on the right two tabs: <b>Run</b> (doing the work) and <b>Preview</b> (looking at the results).
 On a wide screen, tick <b>side by side</b> to see both at once. A dot on a tab means something new happened there.</p>
 <h3 id="scans">Scans</h3>
@@ -263,7 +259,7 @@ outdated once the mesh or the orientation changes), each with the option that ch
 (<code>print_height</code>, <code>print_mode</code>, …, set by the assisted run from what you filmed) are where the Export
 window starts.</p>
 
-<h2 id="edit">Edit &amp; paint</h2>
+<h2 id="edit">The Edit page</h2>
 <p>Edits are saved as a <b>custom version</b> (in <code>mesh/custom/</code>); the pipeline's files are never changed and
 <b>Delete custom version</b> goes back to them. The two modes work on different things: <b>Sculpt mesh</b> changes the
 <b>shape</b>, <b>Paint texture</b> changes the <b>colours</b> on that shape. So the order is always
@@ -450,9 +446,9 @@ uv run mg ui --port 8765               # this web UI</pre>
 <script type="module">
 const $ = (id) => document.getElementById(id);
 const esc = (t) => String(t).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
-// keep the scan the user came from in the Generate / Edit links
-const scan = new URLSearchParams(location.search).get('scan');
-if (scan) { $('toGen').href = '/#' + encodeURIComponent(scan); $('toEdit').href = '/edit#' + encodeURIComponent(scan); }
+// the top bar, with the scan last opened (or ?scan=) kept in the Scan / Edit links
+import { mountTopbar } from '/topbar.js';
+mountTopbar('help');
 
 // table of contents from the headings, with the section in view highlighted
 let io = null;

@@ -20,7 +20,7 @@
   aside, .right { background: var(--panel); overflow: auto; }
   aside { grid-area: side; border-right: 1px solid var(--line); }
   .right { display: flex; flex-direction: column; min-width: 0; }
-  /* Generate: a Run tab (assisted or manual) and a Preview tab (3D, frames and masks, files) */
+  /* Scan: a Run tab (assisted or manual) and a Preview tab (3D, frames and masks, files) */
   .work { grid-area: work; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
   .gtabs { display: flex; align-items: center; gap: 2px; padding: 0 12px; border-bottom: 1px solid var(--line); background: var(--panel); flex: none; }
   .gtab { background: none; border: 0; border-bottom: 2px solid transparent; padding: 11px 16px 9px; color: var(--muted);
@@ -431,13 +431,7 @@
   </div>
 </div>
 <div class="app">
-  <header class="topbar">
-    <b>motiongrammetry</b>
-    <nav class="screens"><a class="on">Generate</a><a id="toEditor" title="sculpt the clean mesh and paint the texture">Edit &amp; paint</a><a href="/help" target="_blank" title="the full how-to">Help</a><a href="/about" target="_blank" title="the open-source software it builds on, and their licenses">About</a></nav>
-    <span class="muted" id="wsTitle"></span>
-    <span class="end muted" id="jobStatus"></span>
-    <a class="gh" href="https://github.com/jpagesbri/motiongrammetry" target="_blank" rel="noopener" title="motiongrammetry on GitHub" aria-label="motiongrammetry on GitHub"></a>
-  </header>
+  <header class="topbar"></header>  <!-- written by topbar.js -->
 
   <aside>
     <section>
@@ -584,6 +578,8 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { mountTopbar, setScan, forgetScan, pageLabel as topPageLabel } from '/topbar.js';
+mountTopbar('scan');
 
 const $ = (id) => document.getElementById(id);
 const STAGES = ['frames', 'mask', 'sfm', 'mvs', 'vggt', 'clean', 'texture'];
@@ -1603,7 +1599,7 @@ async function refreshState(beforeScene) {  // beforeScene: runs once the state 
   if (!current) return;
   wsState = await api(`/api/workspaces/${current}/state`);
   await refreshHistory();
-  $('wsTitle').textContent = '· ' + current;
+  setScan(current);
   renderStages(); renderRail();
   renderFilm();
   renderOutputs();
@@ -1951,7 +1947,7 @@ function asDone(main) {
   main.innerHTML = `<div class="ph"><h3>Your model is ready</h3></div><p><b>Export…</b> takes out what you need (the textured model, the clean mesh, a 3D print, …), each file made when you ask for it.</p>
     ${tips.map((a) => `<div class="as-advice ${a.level}"><b>${esc(a.title)}</b>${esc(a.detail)}</div>`).join('')}
     <div class="btns"><button class="btn primary" id="asExport">Export…</button><button class="btn" id="asPreview">Open the Preview</button>
-      <a class="btn" href="${editorUrl()}">Touch it up in Edit &amp; paint</a><button class="btn" id="asManual">Switch to Manual</button></div>`;
+      <a class="btn" href="${editorUrl()}">Touch it up in ${topPageLabel('edit')}</a><button class="btn" id="asManual">Switch to Manual</button></div>`;
   $('asExport').addEventListener('click', () => { showG('preview'); showPv('3d'); openExport(); });
   $('asPreview').addEventListener('click', () => { showG('preview'); showPv('3d'); });
   $('asManual').addEventListener('click', () => setMode('manual'));
@@ -2272,7 +2268,6 @@ async function exPreview(f, why) {
 
 // ---------------------------------------------------------------- export panel
 const editorUrl = () => '/edit' + (current ? '#' + encodeURIComponent(current) : '');
-$('toEditor').addEventListener('click', () => { location.href = editorUrl(); });
 
 function renderOutputs() {
   const ex = wsState?.exportable || {}, pipe = ex.pipeline || [], mine = ex.custom || [];
@@ -2704,7 +2699,7 @@ async function poll() {
       if (j.status === 'running' && j.log.length && !drawerOpen) $('logPip').hidden = false;
       if (j.status === 'failed' && lastJobStatus === 'running') openDrawer(true);  // a failure: show what happened
       jobSnap = j.status ? j : null;
-      $('jobStatus').textContent = j.status === 'running' ? `running ${j.current}…` : j.status ? `last run: ${j.status}` : '';
+      $('topStatus').textContent = j.status === 'running' ? `running ${j.current}…` : j.status ? `last run: ${j.status}` : '';
       const doneKey = Object.entries(j.stages || {}).filter(([, v]) => v.status !== 'running' && v.status !== 'queued').map(([k]) => k).join();
       if (j.status !== 'running' && lastJobStatus === 'running' && !isShown('run')) {
         $('runPip').hidden = false; $('runPip').classList.toggle('bad', !['done', 'warning'].includes(j.status));
@@ -2835,6 +2830,7 @@ $('delGo').addEventListener('click', async () => {
   try {
     await api(`/api/workspaces/${encodeURIComponent(name)}/delete`, { method: 'POST', body: JSON.stringify({ confirm: name }) });
     for (const k of ['mg.run.', 'mg.assist.', 'mg.mode.']) try { localStorage.removeItem(k + name); } catch {}
+    forgetScan(name);
     $('delModal').hidden = true;
     await refreshList();
     const next = scans[0]?.name;

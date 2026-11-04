@@ -10,6 +10,13 @@ the image with that version, and the About page and `mg --version` show it.
 
 ## Unreleased
 
+- **Pages renamed, one top bar** (part of #23): **Generate** is now **Scan** and **Edit & paint**
+  is now **Edit**, in the top bar, the buttons, the advice, Help and the docs. The top bar is
+  written once (`topbar.js`) for every page instead of being copied into each. The current scan's
+  name no longer trails the page names as "· shoe": it has its own chip on the right, marked
+  "scan". Help and About show the scan you last opened there, and their Scan and Edit links go
+  back to it.
+
 - **Closing holes round a stray face makes no pillow**: a face (or a short strip of faces) left
   inside a hole, joined to the rest only at its corners, was taken for a hole of its own. Close
   all holes and the Cut stroke's cap gave it a lid that was the same face turned over: a pillow,
