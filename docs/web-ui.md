@@ -25,6 +25,20 @@ mg ui --root ~/scans --port 9000
   video…** on the Scan page (the page adds its own items). A new or copied scan opens on the Scan
   page. Keyboard: arrows, Enter, → / ← for a scan's menu, Esc; a click outside closes it. The full
   scans and workspaces page (#24) will get a "Manage scans…" entry at the foot.
+- **Scrollbars** (`static/scrollbar.js`, styled by `scrollbar.css`; `topbar.js` imports it, so
+  every page has it): the app draws its own scrollbar, thin and in the app's colours, the same in
+  every browser, on every scroll area (the Scan page's panels, the editor's side panel, Help's
+  contents, the scan chooser's list, the windows, the page itself on Help and About). The thumb
+  brightens when the pointer is over the area and more over the bar; it can be dragged, and a click
+  on the track scrolls a page towards the pointer (held: more pages). The browser still does the
+  scrolling (wheel, trackpad, touch, keys, scrolling to the focused element); only its own bar is
+  hidden (`scrollbar-width: none`, `::-webkit-scrollbar`). Scroll areas are found by themselves:
+  any element whose CSS overflow is `auto` or `scroll`, at load or added later, gets a bar, so a
+  new panel needs nothing more. `data-scroll="native"` keeps the browser's bar on an element; text
+  fields keep theirs. Each bar is a `position: fixed` element inside its area (`.mgsb`), placed
+  over its right and bottom edges and clipped to what of the area shows; it follows content
+  changes, resizes and the page's scrolling (MutationObserver, ResizeObserver, scroll events), and
+  is hidden from screen readers (the area itself stays scrollable by keyboard).
 - **About** (`/about`): the third-party software, AI models and Python packages the app uses, each
   with its license text (`credits.py`: Python packages are read from the installed distributions,
   the rest is listed there with texts in `licenses/`), what those licenses ask (VGGT-1B weights are

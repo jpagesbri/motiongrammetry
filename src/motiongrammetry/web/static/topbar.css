@@ -33,7 +33,7 @@ header.topbar a.gh::before { content: ""; width: 18px; height: 18px; background:
 .sc-panel { position: fixed; z-index: 60; width: min(380px, calc(100vw - 16px)); max-height: min(70vh, 640px); display: flex; flex-direction: column;
   background: var(--panel); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 12px 34px rgba(0,0,0,.5); }
 .sc-panel[hidden], .sc-card[hidden], .sc-modal[hidden] { display: none; }
-.sc-list { overflow: auto; padding: 6px; min-height: 0; }
+.sc-list { overflow: auto; padding: 6px 12px 6px 6px; min-height: 0; }  /* the right: room for the scrollbar beside the ⋯ buttons */
 .sc-row { position: relative; display: flex; align-items: stretch; border-radius: 7px; }
 .sc-row:hover, .sc-row:focus-within { background: var(--panel2); }
 .sc-row.on { box-shadow: inset 0 0 0 1px var(--accent); background: var(--panel2); }
