@@ -1,11 +1,14 @@
 /* The app's own scrollbar (scrollbar.js draws it on every scroll area): thin, in the app's colours,
-   the same in every browser. The browser's bar is hidden where the app's is drawn; the browser still
-   does the scrolling. The pages define the colour variables it uses. */
-.mgsb-host, html.mgsb-root, html.mgsb-root body { scrollbar-width: none; }
-.mgsb-host::-webkit-scrollbar, html.mgsb-root::-webkit-scrollbar, html.mgsb-root body::-webkit-scrollbar { display: none; width: 0; height: 0; }
+   the same in every browser. The pages link this file in their <head>, so the browser's own bars are
+   hidden from the first paint, before any script runs; the browser still does the scrolling.
+   data-scroll="native" and text fields keep the browser's bar.
+   No overscroll bounce (a trackpad's elastic overscroll at either end): it moved the top bar with the
+   page and drew panels over each other. The document itself never scrolls (topbar.css). */
+html, body { overscroll-behavior: none; }
+:where(*:not(textarea, select, input, [data-scroll="native"])) { scrollbar-width: none; overscroll-behavior: none; }
+:where(*:not(textarea, select, input, [data-scroll="native"]))::-webkit-scrollbar { display: none; width: 0; height: 0; }
 
 .mgsb { position: fixed; left: 0; top: 0; width: 0; height: 0; z-index: 3; pointer-events: none; margin: 0; padding: 0; border: 0; }
-.mgsb.mgsb-doc { z-index: 55; }  /* the page's own bar: over the sticky top bar, under the scan chooser and windows */
 .mgsb[hidden], .mgsb-track[hidden] { display: none; }
 .mgsb-track { position: absolute; pointer-events: auto; touch-action: none; border-radius: 999px; transition: background-color .15s; }
 .mgsb-track.v { top: 2px; right: 1px; bottom: 2px; width: 10px; }
@@ -18,7 +21,7 @@
 .mgsb-track.v .mgsb-thumb { top: 0; left: 3px; right: 3px; }
 .mgsb-track.h .mgsb-thumb { left: 0; top: 3px; bottom: 3px; }
 /* the pointer over the area: the thumb shows a little more; over the bar: wider, brighter, a track */
-.mgsb-host:hover > .mgsb .mgsb-thumb, html.mgsb-root:hover .mgsb-doc .mgsb-thumb { background: color-mix(in srgb, var(--muted) 45%, transparent); }
+.mgsb-host:hover > .mgsb .mgsb-thumb { background: color-mix(in srgb, var(--muted) 45%, transparent); }
 .mgsb-track:hover, .mgsb.drag-v .mgsb-track.v, .mgsb.drag-h .mgsb-track.h { background: color-mix(in srgb, var(--line) 70%, transparent); }
 .mgsb-track.v:hover .mgsb-thumb, .mgsb.drag-v .mgsb-track.v .mgsb-thumb { left: 2px; right: 2px; }
 .mgsb-track.h:hover .mgsb-thumb, .mgsb.drag-h .mgsb-track.h .mgsb-thumb { top: 2px; bottom: 2px; }

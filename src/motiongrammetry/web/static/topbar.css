@@ -4,6 +4,11 @@
 header.topbar { display: flex; align-items: center; gap: 12px; height: 44px; box-sizing: border-box; padding: 0 14px;
   font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--panel); border-bottom: 1px solid var(--line); }
 header.topbar b { letter-spacing: .02em; }
+/* The document never scrolls: on pages of text (Help, About) the body is the top bar over a .page box
+   that scrolls, so the bar stays put and the scrollbar (scrollbar.js) starts under it. */
+body.paged { height: 100vh; height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
+body.paged > header.topbar { flex: none; }
+body.paged > .page { flex: 1; min-height: 0; overflow: auto; outline: none; }
 header.topbar .muted { color: var(--muted); }
 header.topbar .screens { display: inline-flex; gap: 2px; margin-left: 18px; }
 header.topbar .screens a { padding: 4px 10px; border-radius: 5px; color: var(--muted); cursor: pointer; text-decoration: none; }

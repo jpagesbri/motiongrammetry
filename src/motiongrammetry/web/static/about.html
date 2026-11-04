@@ -12,7 +12,6 @@
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif; }
-  header { position: sticky; top: 0; z-index: 5; }
   main { max-width: 1040px; margin: 0 auto; padding: 24px 22px 80px; }
   h1 { margin: 6px 0 4px; font-size: 28px; }
   h2 { margin: 34px 0 8px; font-size: 19px; padding-top: 6px; border-top: 1px solid var(--line); }
@@ -48,9 +47,11 @@
 <link rel="stylesheet" href="/topbar.css">
 <link rel="stylesheet" href="/scrollbar.css">
 </head>
-<body>
+<body class="paged">
 <header class="topbar"></header>  <!-- written by topbar.js -->
-<script type="module">import { mountTopbar } from '/topbar.js'; mountTopbar('about');</script>
+<script type="module">import { mountTopbar } from '/topbar.js'; mountTopbar('about');
+  document.getElementById('page').focus({ preventScroll: true });  // the keys scroll the text from the start</script>
+<div class="page" id="page" tabindex="-1">  <!-- what scrolls, under the top bar (topbar.css) -->
 <main>
 <h1>About motiongrammetry</h1>
 <p class="lead" id="lead"></p>
@@ -90,6 +91,7 @@ The third-party parts keep their licenses:</p>
   <span class="muted">or on the command line: <code>mg notices -o THIRD_PARTY_NOTICES.txt</code></span></div>
 </details>
 </main>
+</div>
 <script>
 const $ = (id) => document.getElementById(id);
 const esc = (t) => String(t ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
