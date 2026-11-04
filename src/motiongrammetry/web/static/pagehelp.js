@@ -185,4 +185,7 @@ export function closeHelp() {
   modal.hidden = true;
   $('topHelp')?.setAttribute('aria-expanded', 'false');
   opener?.focus?.({ preventScroll: true }); opener = null;
+  // Opened with nothing focused (the ? key), the focus would stay on the hidden ✕, and the window's
+  // key handler would keep every key from the page until a click.
+  if (modal.contains(document.activeElement)) document.activeElement.blur();
 }
