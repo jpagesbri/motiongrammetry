@@ -18,8 +18,8 @@ mg ui --root ~/scans --port 9000
 - **Icons** (`static/icons.js`): the app's icons come from [Tabler Icons](https://tabler.io/icons)
   (MIT), vendored with only the icons used in `static/vendor/tabler-icons/` (its README gives the
   version and how to add one: copy the SVG, add its name to `icons.js`). `icon('eye')` returns
-  inline SVG, 1em square in `currentColor`. So far only the Export window's eye uses it; the GitHub
-  mark, ⋯ and ▾ can move to it later.
+  inline SVG, 1em square in `currentColor`. So far the Export window's eye and the top bar's help
+  button (`help-circle`) use it; the GitHub mark, ⋯ and ▾ can move to it later.
 - **Scan chooser** (`static/scanchooser.js`, opened by the chip on every page): the scans with a
   thumbnail, the stages done (dots), what they hold, the last run (or "running"), and a larger card
   on hover. Picking one hands it to the page through `mountTopbar(id, hooks)`: Scan selects it,
@@ -59,6 +59,31 @@ mg ui --root ~/scans --port 9000
     and About load them only then (each page has the import map).
   - The choices are remembered in this browser as before: contents and formats (`mg.export`) and
     each scan's placement and print settings (`mg.export.<scan>`).
+- **Help on every page** (`static/pagehelp.js`, styled by `pagehelp.css`): Scan, Edit and About
+  call `pageHelp(page, views)` after `mountTopbar`. It puts a help button (Tabler's `help-circle`,
+  title "help on this page (?)", an aria-label) at the right of the top bar, before the GitHub link:
+  the top bar is the one place that is the same on every page (About has no `.pagebar`). The Help
+  page has no button: it is the help.
+  - The button, or `?` (Shift+/; not while the focus is in a text field, nor while another
+    window is open), opens a short window about the page and **what it shows now**: `views()` returns
+    keys of `VIEWS`. Scan: Run's Assisted or Manual, the Preview's 3D model or Frames & masks, both in
+    side by side. Edit: Sculpt mesh or Paint texture. About: itself.
+  - Each view is data in `VIEWS` (a label, a few items, and its Help anchor). Each ends with
+    **Read more in Help →**, which opens `/help#<anchor>` (in a new tab from Scan and Edit, as the
+    top bar's Help link does): `#assisted`, `#run`, `#viewer`, `#frames`, `#sculpt`, `#paint`, and
+    `#quickstart` for About. Help has the long text; the window has the short version, so the two
+    are kept in step by hand. The test checks that every anchor exists in help.html.
+    Help, opened at an anchor, follows that section while its screenshots load above it (they used
+    to push it out of view), until you scroll yourself or for 5 s.
+  - As in the Export window, Esc closes it wherever the focus is, a click outside closes it, the
+    page's shortcuts get no keys while it is open, and the focus goes back to where it was.
+  - **Hints** on the pages share one look, `.pghint`: 11 px and muted. A hint that shows every time
+    (key reminders, intros) has `data-hint="<id>"` and a small ✕ that hides it in this browser
+    (`mg.hints.off`); what it said is in the help window, whose foot then offers "Show the hints you
+    closed". `hint(id, html, tag)` writes one in markup a page renders itself. Contextual hints that
+    change with the tool or step (the editor's tool line, Cut / Join, the orientation steps) use the
+    same look without a ✕. Empty-state messages over a view (`.hint`: "Choose a scan…", "no
+    keyframes yet") are unchanged.
 - **Scrollbars** (`static/scrollbar.js`, styled by `scrollbar.css`; `topbar.js` imports it, so
   every page has it): the app draws its own scrollbar, thin and in the app's colours, the same in
   every browser, on every scroll area (the Scan page's panels, the editor's side panel, Help's text

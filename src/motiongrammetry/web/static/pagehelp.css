@@ -1,0 +1,49 @@
+/* Help on every page (pagehelp.js): the ? button in the top bar, the help window, and the one look of
+   the hints on the pages. The window's classes start with ph- and its rules are under .ph-modal, so the
+   pages' own styles keep out. The pages define the colour variables it uses. */
+
+/* the button, at the right of the top bar, beside the GitHub link: in the same place on every page */
+header.topbar .tophelp { display: inline-grid; place-items: center; flex: none; width: 28px; height: 28px; padding: 0;
+  border: 0; border-radius: 5px; background: none; color: var(--muted); cursor: pointer; }
+header.topbar .tophelp .icon { width: 19px; height: 19px; }
+header.topbar .tophelp:hover, header.topbar .tophelp[aria-expanded="true"] { color: var(--text); background: var(--panel2); }
+header.topbar .tophelp:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* the window */
+.ph-modal { position: fixed; inset: 0; z-index: 68; background: rgba(5,7,10,.55); display: grid; place-items: center;
+  font: 13px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--text); }
+.ph-modal[hidden] { display: none; }
+.ph-modal *, .ph-modal *::before, .ph-modal *::after { box-sizing: border-box; }
+.ph-win { width: min(560px, 94vw); max-height: 88vh; display: flex; flex-direction: column; overflow: hidden;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 20px 60px rgba(0,0,0,.6); }
+.ph-head { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+.ph-ico { display: inline-grid; color: var(--accent); }
+.ph-ico .icon { width: 18px; height: 18px; }
+.ph-x { margin-left: auto; background: none; border: 0; color: var(--muted); cursor: pointer; font: inherit; font-size: 16px; }
+.ph-x:hover { color: var(--text); }
+.ph-x:focus-visible, .ph-modal a:focus-visible, .ph-hints:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-radius: 4px; }
+.ph-body { flex: 1; min-height: 0; overflow: auto; padding: 4px 18px 14px; }
+.ph-intro { margin: 10px 0 4px; color: var(--muted); }
+.ph-intro b { color: var(--text); font-weight: 600; }
+.ph-view h3 { margin: 14px 0 4px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.ph-view ul { margin: 6px 0 6px; padding-left: 18px; }
+.ph-view li { margin: 4px 0; }
+.ph-view li::marker { color: var(--muted); }
+.ph-modal kbd { font: 11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background: var(--panel2);
+  border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; color: var(--text); }
+.ph-more { color: var(--accent); text-decoration: none; font-weight: 600; }
+.ph-more:hover { text-decoration: underline; }
+.ph-foot { display: flex; align-items: center; gap: 10px; padding: 8px 14px; border-top: 1px solid var(--line); font-size: 12px; }
+.ph-foot .muted { color: var(--muted); }
+.ph-hints { margin-left: auto; background: none; border: 0; padding: 0; color: var(--accent); font: inherit; cursor: pointer; }
+.ph-hints[hidden] { display: none; }
+
+/* The hints on the pages: one look everywhere, small and muted. One with a ✕ (data-hint) can be hidden
+   in this browser; what it said is in the help window, which can bring it back. */
+.pghint { font-size: 11px; line-height: 1.45; color: var(--muted); }
+.pghint.off { display: none !important; }
+div.pghint, p.pghint { margin: 4px 0 6px; }
+.pghint-x { margin-left: 5px; padding: 0 2px; border: 0; background: none; color: inherit; opacity: .55; font: inherit;
+  font-size: 10px; line-height: 1; cursor: pointer; vertical-align: 1px; }
+.pghint-x:hover { opacity: 1; color: var(--text); }
+.pghint-x:focus-visible { opacity: 1; outline: 2px solid var(--accent); outline-offset: 1px; border-radius: 3px; }

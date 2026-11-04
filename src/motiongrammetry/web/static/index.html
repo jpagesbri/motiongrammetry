@@ -107,7 +107,7 @@
   .pvside[hidden] { display: none; }
   .work.split .pv3d.side { grid-template-columns: minmax(0, 1fr) 260px; }
   .orient h2 { margin-bottom: 4px; }
-  .orient .note { font-size: 12px; color: var(--muted); margin: 0 0 6px; line-height: 1.45; }
+  .orient .pghint { margin: 0 0 6px; }
   .or-grid { display: grid; grid-template-columns: auto repeat(2, 1fr); gap: 4px 6px; align-items: center; margin-top: 8px; font-size: 12px; }
   .or-grid span { grid-row: span 3; color: var(--muted); padding-right: 4px; }
   .or-grid .btn { padding: 4px 6px; }
@@ -310,6 +310,7 @@
 <link rel="stylesheet" href="/modes.css">
 <link rel="stylesheet" href="/scrollbar.css">
 <link rel="stylesheet" href="/export.css">
+<link rel="stylesheet" href="/pagehelp.css">
 <script type="importmap">
 { "imports": {
     "three": "/vendor/three/build/three.module.js",
@@ -376,7 +377,7 @@
       <div class="gpane gp-preview" data-g="preview" id="panePreview" role="tabpanel" aria-labelledby="tabPreview">
         <div class="pvbar">
           <div class="modes" id="pvTabs" aria-label="3D model or frames"><button data-value="3d" title="the model in 3D, with the cameras and points (W: next display mode)">3D model</button><button data-value="frames" title="the keyframes, their masks and how well they fit">Frames &amp; masks</button></div>
-          <span class="muted" id="pvHint"></span>
+          <span class="pghint" data-hint="pv-3d" id="pvHint3d">W: next display mode · 5: perspective or orthographic</span><span class="pghint" data-hint="pv-frames" id="pvHintFrames" hidden>← → step through the keyframes · scroll to zoom, drag to pan, double-click to fit</span>
         </div>
         <div class="pv3d" id="pv3d">
           <main class="view" id="view">
@@ -404,7 +405,7 @@
             <div class="film-head">
               <h2 style="margin:0">Keyframes <span class="muted" id="frameCount"></span></h2>
               <label class="muted"><input type="checkbox" id="showMasks"> mask overlay</label>
-              <span class="muted">click a frame to view from its camera · double-click to open it big</span>
+              <span class="pghint" data-hint="film">click a frame to view from its camera · double-click to open it big</span>
             </div>
             <div class="strip" id="strip"></div>
           </div>
@@ -426,7 +427,7 @@
 </div>
 <div class="orient" id="orientPanel" hidden>
   <h2>Orientation <span class="muted" id="orState"></span></h2>
-  <div class="note" id="orHelp">Drag to look around. Click a flat spot to make it the floor, or turn it in 90° steps. Orbit until you face its front, then press <i>This view is the front</i>.</div>
+  <div class="pghint" id="orHelp">Drag to look around. Click a flat spot to make it the floor, or turn it in 90° steps. Orbit until you face its front, then press <i>This view is the front</i>.</div>
   <div class="btns"><button class="btn primary" id="orFloor" title="then click the spot of the model that should rest on the floor">Click the floor…</button>
     <button class="btn" id="orFront" title="turn it so the side you are looking at now is its front">This view is the front</button></div>
   <div class="or-grid">
@@ -452,6 +453,7 @@ import { projection } from '/projection.js';
 import { mountTopbar, setScan, updateScans, uploadVideo, thumbUrl, pageLabel as topPageLabel } from '/topbar.js';
 import { modeControl } from '/modes.js';
 import { openExport, exportHooks } from '/export.js';
+import { pageHelp, hint } from '/pagehelp.js';
 // The scan chooser in the top bar: picking a scan selects it here; a new or copied scan opens
 // here; a deleted one is left for the next; a scan's ⋯ menu also uploads or replaces its video.
 mountTopbar('scan', {
@@ -462,6 +464,11 @@ mountTopbar('scan', {
     title: w.video ? `upload another video into ${w.name}: you are asked first, and its keyframes and every step after them need running again`
       : `upload a video file into ${w.name}` }],
 });
+// The page's help (pagehelp.js): the ? button and key, about what is shown now (both in side by side)
+pageHelp('scan', () => [
+  ...(isShown('run') ? [runMode === 'manual' ? 'scan-manual' : 'scan-assisted'] : []),
+  ...(isShown('preview') ? [pvMode === 'frames' ? 'scan-frames' : 'scan-3d'] : []),
+]);
 
 const $ = (id) => document.getElementById(id);
 // The page's tabs and modes, all the one control (modes.js); each remembers its choice as before
@@ -1563,7 +1570,7 @@ const asRender = renderRun;
 function overviewPage(main) {
   const gen = optSpec.filter((o) => o.stages.includes('*'));
   main.innerHTML = `<div class="ph"><h3>All steps</h3><span class="muted">${current ? esc(current) : 'no scan selected'}</span></div>
-    <p class="muted">Each step's result and warnings. Tick steps on the left and press <b>Run selected</b>; click a step for its options.</p>
+    ${hint('all-steps', 'Each step\'s result and warnings. Tick steps on the left and press <b>Run selected</b>; click a step for its options.', 'p')}
     <div class="banner" id="banner" hidden></div><div class="stages" id="stages"></div>
     <h4>General options</h4>${optRows(gen, false)}`;
   bindOpts(main);
@@ -1659,7 +1666,7 @@ function asRunHtml() {  // a step running: its sub-steps, a glimpse of the resul
       <div id="asRunSteps">${tr ? stepsHtml(tr, true, prevTrack(st)) : '<div class="muted">starting…</div>'}</div></div>
       <div>${glimpseHtml()}</div></div>
     <div class="btns"><button class="btn" id="asLogBtn">${drawerOpen ? 'Hide log' : 'Show log'}</button><button class="btn" id="asStop">Stop this step</button></div>
-    <div class="muted" style="font-size:12px;margin-top:6px">Switching mode, tab or scan does not stop it: only Stop does.</div></div>`;
+    ${hint('run-stop', 'Switching mode, tab or scan does not stop it: only Stop does.', 'div')}</div>`;
 }
 function asTick() {  // every poll while a step runs: the live parts only (typing in an option is not disturbed)
   renderRunBar(); renderRail();
@@ -1856,7 +1863,7 @@ function showPv(m) {
   try { localStorage.setItem('mg.pv', m); } catch {}
   $('pv3d').hidden = m !== '3d'; $('pvFrames').hidden = m !== 'frames';
   pvTabs.select(m);
-  $('pvHint').textContent = m === 'frames' ? '← → step through the keyframes · scroll to zoom, drag to pan, double-click to fit' : 'W: next display mode';
+  $('pvHint3d').hidden = m !== '3d'; $('pvHintFrames').hidden = m !== 'frames';
   if (m === 'frames') fvOpen();
 }
 function glimpseHtml() {  // the latest result, small, for the Run tab

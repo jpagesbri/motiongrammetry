@@ -47,8 +47,6 @@
   .okmsg { color: var(--ok); font-size: 12px; margin-top: 6px; }
   .swatches { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 6px; }
   .swatches i { width: 18px; height: 18px; border-radius: 4px; border: 1px solid var(--line); cursor: pointer; }
-  .help { font-size: 12px; color: var(--muted); line-height: 1.6; }
-  .help b { color: var(--text); font-weight: 500; }
   .view { grid-area: view; position: relative; min-width: 0; min-height: 0; overflow: hidden; }
   .view canvas { display: block; width: 100%; height: 100%; touch-action: none; }
   .bar { position: absolute; top: 10px; right: 10px; display: flex; gap: 6px; }
@@ -98,6 +96,7 @@
 <link rel="stylesheet" href="/modes.css">
 <link rel="stylesheet" href="/scrollbar.css">
 <link rel="stylesheet" href="/export.css">
+<link rel="stylesheet" href="/pagehelp.css">
 <script type="importmap">
 { "imports": {
     "three": "/vendor/three/build/three.module.js",
@@ -163,7 +162,7 @@
     <section>
       <h2>Tools</h2>
       <div class="tools" id="tools"></div>
-      <div class="note" id="toolHelp"></div>
+      <div class="pghint" id="toolHelp"></div>
     </section>
     <section>
       <h2>Brush</h2>
@@ -189,9 +188,8 @@
     </section>
     <section id="layoutOps" hidden>
       <h2>Texture layout</h2>
-      <div class="note" style="margin:0 0 6px">The texture is cut into pieces by the photo each came from: thousands of tiny ones.
-        Rebuild it by the model's sides for fewer, bigger pieces that are easy to paint on the flat texture. Saved as your
-        custom texture; the pipeline's stays.</div>
+      <div class="pghint" data-hint="layout" style="margin:0 0 6px">Rebuild the texture's layout by the model's sides: fewer, bigger pieces,
+        easier to paint on the flat texture. Saved as your custom texture; the pipeline's stays.</div>
       <div class="slider" title="how far a piece's surface may turn: smaller makes more, flatter pieces"><span>Angle</span><input type="range" id="lyAngle" min="15" max="75" value="45"><span id="lyAngleV"></span></div>
       <div class="slider" title="the smallest piece, as a share of the surface: smaller ones join the neighbour facing most the same way"><span>Min. piece</span><input type="range" id="lyMin" min="0" max="30" value="5"><span id="lyMinV"></span></div>
       <div class="btns" style="margin-top:0"><button class="btn" id="lyCount" title="how many pieces there are now, and how many these settings make">Count pieces</button>
@@ -202,7 +200,7 @@
         <button class="btn" id="lyUndo" hidden title="back to the texture layout before the last rebuild (until you save paint or re-run texture)">Undo layout</button></div>
       <div id="seamBar" hidden>
         <span class="seg"><button data-seam="cut" class="on" title="drag along the model: the seam follows the mesh's edges">Cut</button><button data-seam="join" title="brush over seams to remove them">Join</button></span>
-        <div class="note" id="seamHelp"></div>
+        <div class="pghint" id="seamHelp"></div>
         <label class="check" title="each piece your seams make in its own colour"><input type="checkbox" id="seamColour" checked> colour the pieces</label>
         <div class="btns"><button class="btn" id="seamLook" title="a quick, low-resolution look at the texture these seams make, in the flat view: nothing is saved">Preview texture</button>
           <button class="btn primary" id="seamApply">Apply seams</button><button class="btn" id="seamCancel">Cancel</button></div>
@@ -239,7 +237,6 @@
       <div class="err" id="err"></div>
       <div class="okmsg" id="okmsg"></div>
     </section>
-    <section class="help" id="help"></section>
   </aside>
 
   <main class="view" id="view">
@@ -273,6 +270,7 @@ import * as SMesh from '/sculpt-mesh.js';  // the sculpt mesh's state and densit
 import { mountTopbar, setScan, updateScans } from '/topbar.js';
 import { modeControl } from '/modes.js';
 import { exportHooks } from '/export.js';
+import { pageHelp } from '/pagehelp.js';
 // The scan chooser in the top bar: picking a scan switches the editor to it (the URL's #scan,
 // see hashchange below, asks first about unsaved edits). Deleting the scan being edited leaves the
 // editor for the first scan left; a new or copied scan opens on the Scan page, to be run.
@@ -280,6 +278,8 @@ mountTopbar('edit', {
   open: (name) => { location.hash = '#' + encodeURIComponent(name); },
   deleted: (name) => { if (name === ws) { S.dirty = P.dirty = false; location.replace('/edit'); } },
 });
+// The page's help (pagehelp.js): the ? button and key, about the mode shown (Sculpt or Paint)
+pageHelp('edit', () => [mode === 'paint' ? 'edit-paint' : 'edit-sculpt']);
 
 // Export… (top bar, export.js) makes its files from what is saved: with edits not saved yet, the
 // window says so, rather than exporting something other than what the editor shows.
@@ -340,22 +340,6 @@ const TOOLS = {
     ['picker', 'Pick colour', 'A', 'click to take the colour under the cursor'],
   ],
 };
-const HELP = {
-  sculpt: `<b>Left-drag on the mesh</b>: sculpt · <b>left-drag off it / right-drag</b>: orbit ·
-    <b>middle-drag</b>: pan · <b>wheel</b>: zoom · <b>[ ]</b>: radius · <b>Shift</b>: smooth · <b>Ctrl</b>: invert ·
-    <b>Ctrl+Z / Ctrl+Shift+Z</b>: undo / redo · <b>Ctrl+S</b>: save.<br>
-    <b>Fill</b> places spheres at the depth of the surface around the brush (so it fills a hole you look through);
-    <b>Merge</b> turns mesh + fill into one closed surface you can then smooth as a single piece.
-    <b>Plane cut</b>: drag a line, check the preview, Enter to cut.
-    <b>Restore</b>: brush over the amber ghost (the raw mesh) to bring back what clean carved away.<br>
-    Saving replaces the clean mesh: the print STL and clean GLB are rebuilt, and <b>texture</b> becomes stale:
-    re-run it on the Scan page to project the photos onto the new shape, then paint.`,
-  paint: `<b>Left-drag</b> on the model or on the flat texture: paint · <b>Alt+click</b>: pick colour ·
-    <b>Ctrl+click</b>: clone source · 3D: <b>right-drag</b> orbit, <b>middle</b> pan · texture: <b>right / middle-drag</b> pan,
-    <b>wheel</b> zoom · <b>[ ]</b>: radius · <b>Ctrl+Z / Ctrl+Shift+Z</b>: undo / redo · <b>Ctrl+S</b>: save.<br>
-    Painting on the model reaches only surface you can see; seams are painted on both sides.
-    Re-running texture replaces the paint (Restore pipeline version brings back the photo texture).`,
-};
 
 let ws = decodeURIComponent(location.hash.slice(1)) || null;
 let mode = new URLSearchParams(location.search).get('mode') === 'paint' ? 'paint' : 'sculpt', layout = 'split', wsState = null;
@@ -369,7 +353,6 @@ function renderTools() {
   $('tools').querySelectorAll('[data-tool]').forEach((b) => b.addEventListener('click', () => setTool(b.dataset.tool)));
   const t = TOOLS[mode].find((x) => x[0] === tool[mode]);
   $('toolHelp').textContent = t ? t[3] : '';
-  $('help').innerHTML = HELP[mode];
   showDensity();
 }
 function setTool(id) {
