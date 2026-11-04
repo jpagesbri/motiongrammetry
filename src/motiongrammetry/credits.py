@@ -2,8 +2,9 @@
 
 Python packages are read from the installed distributions (name, version, declared license and the
 license files they ship), so the list follows whatever is installed. Everything else the app runs
-or loads (COLMAP inside pycolmap, OpenMVS in its container, three.js in the browser, the AI models
-downloaded at first use) is described in EXTERNAL, with the license texts kept in licenses/.
+or loads (COLMAP inside pycolmap, OpenMVS in its container, three.js and Tabler Icons in the browser,
+the AI models downloaded at first use) is described in EXTERNAL, with the license texts kept in
+licenses/.
 """
 
 from __future__ import annotations
@@ -47,6 +48,10 @@ EXTERNAL = [
      "role": "fast picking for the sculpt and paint brushes (bundled with the app)",
      "url": "https://github.com/gkjohnson/three-mesh-bvh", "source": "https://github.com/gkjohnson/three-mesh-bvh",
      "text": "three-mesh-bvh.txt", "copyright": "Copyright (c) 2018 Garrett Johnson"},
+    {"id": "tabler-icons", "name": "Tabler Icons", "version": "3.49.0", "license": "MIT",
+     "role": "the app's icons (only those used, bundled with the app)",
+     "url": "https://tabler.io/icons", "source": "https://github.com/tabler/tabler-icons",
+     "text": "tabler-icons.txt", "copyright": "Copyright (c) 2020-2026 Paweł Kuna"},
 ]
 # AI models downloaded on first use (not shipped with the app).
 MODELS = [

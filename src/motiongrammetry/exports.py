@@ -162,13 +162,17 @@ def _cached(ws: Workspace, item: dict) -> tuple[str, dict | None]:
 
 
 def status(ws: Workspace, body: dict) -> dict:
-    """Which of the requested files are ready, outdated or not built yet (nothing is built)."""
+    """Which of the requested files are ready, outdated or not built yet (nothing is built). A ready
+    one also names its file (and the STL shown for a 3MF), so the Export window can show it as it is."""
     plan = _plan(ws, body)
     out = []
     for item in plan["items"]:
         state, rec = _cached(ws, item)
-        out.append({"content": item["content"], "format": item["format"], "state": state,
-                    "size": (_out_dir(ws) / item["file"]).stat().st_size if state != "none" else None})
+        row = {"content": item["content"], "format": item["format"], "state": state,
+               "size": (_out_dir(ws) / item["file"]).stat().st_size if state != "none" else None}
+        if state == "ready":
+            row.update(file=rec["entry"]["file"], preview=rec["entry"].get("preview"))
+        out.append(row)
     return {"source": plan["source"], "items": out}
 
 

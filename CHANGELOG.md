@@ -18,7 +18,10 @@ the image with that version, and the About page and `mg --version` show it.
   panel is gone: the 3D view takes the whole width (the orientation tools still open in a column on
   the right while you orient). What the panel showed is in the window: what the scan has ready and
   its folder on disk at the foot, and the 3D print check under the 3D print row. Its "Open in
-  editor" button is gone too: use Edit in the top bar.
+  editor" button is gone too: use Edit in the top bar. A ready file has an eye next to it that shows
+  that file in the window's 3D view at once, without making it again (not for outdated files, nor
+  for OBJ, cameras or a cloud too big to show). The eye is the first of the app's icons from Tabler
+  Icons (MIT), bundled with the app.
 
 - **One control for tabs and modes** (part of #23): Run / Preview, Assisted / Manual, 3D model /
   Frames & masks and the log's Live / History on the Scan page, and Sculpt mesh / Paint texture and
