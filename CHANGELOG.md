@@ -10,6 +10,12 @@ the image with that version, and the About page and `mg --version` show it.
 
 ## Unreleased
 
+- **The app draws its own scrollbars** (#53): every scroll area on Scan, Edit, Help and About, and
+  the scan chooser's list, has the same thin scrollbar in the app's colours, in every browser,
+  instead of the browser's own (wide and light in Chrome on Linux, different in Firefox). The thumb
+  brightens on hover and can be dragged; clicking the track scrolls by a page. The wheel,
+  trackpad, touch and keyboard scroll as before.
+
 - **Choose the scan from the top bar** (part of #23): the scan chip at the top right opens the
   list of scans on every page, with thumbnails, the stages done and the last run. Picking one
   opens it on the Scan page, switches the editor to it (asking first about unsaved edits), or, on

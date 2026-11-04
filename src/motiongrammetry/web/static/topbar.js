@@ -5,7 +5,9 @@
 // The bar has three parts: the pages (left), the page's own status line (topStatus, filled by
 // the page), and the current scan (the chip on the right, then the GitHub link). The chip is the
 // scan chooser (scanchooser.js): the list of scans, New scan… and each scan's ⋯ menu.
+// Importing scrollbar.js gives every page the app's own scrollbar on all its scroll areas.
 
+import '/scrollbar.js';
 import { initChooser, chooserScan } from '/scanchooser.js';
 export { updateScans, uploadVideo, thumbUrl } from '/scanchooser.js';
 

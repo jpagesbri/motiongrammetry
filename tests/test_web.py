@@ -768,6 +768,27 @@ def test_every_page_has_the_one_top_bar(server):
         assert 'class="screens"' not in html and "Generate" not in html and "Edit &amp; paint" not in html, page
 
 
+def test_every_page_draws_the_app_scrollbar(server):
+    base, _ = server
+    with urllib.request.urlopen(base + "/scrollbar.js") as r:
+        assert r.headers["Content-Type"].startswith("text/javascript")
+        js = r.read().decode()
+    with urllib.request.urlopen(base + "/scrollbar.css") as r:
+        assert r.headers["Content-Type"].startswith("text/css")
+        css = r.read().decode()
+    # scroll areas are found by their computed overflow, also when added later, and keep scrolling natively
+    assert "getComputedStyle" in js and "MutationObserver" in js and "ResizeObserver" in js
+    assert "data-scroll=\"native\"" in js and "pointerdown" in js and "setPointerCapture" in js
+    assert "scrollbar-width: none" in css and "::-webkit-scrollbar" in css and ".mgsb-thumb" in css
+    # the top bar brings the code to every page; each page links the styles
+    with urllib.request.urlopen(base + "/topbar.js") as r:
+        assert "import '/scrollbar.js';" in r.read().decode()
+    for page in ["/", "/edit", "/help", "/about"]:
+        with urllib.request.urlopen(base + page) as r:
+            html = r.read().decode()
+        assert '<link rel="stylesheet" href="/scrollbar.css">' in html and "from '/topbar.js'" in html, page
+
+
 def test_the_scan_is_chosen_from_the_top_bar_on_every_page(server):
     base, _ = server
     with urllib.request.urlopen(base + "/scanchooser.js") as r:
