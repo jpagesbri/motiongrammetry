@@ -47,7 +47,7 @@ export function mountTopbar(id, hooks = {}) {
   bar.innerHTML = `<b>motiongrammetry</b>
     <nav class="screens">${links}</nav>
     <span class="topstatus muted" id="topStatus"></span>
-    <button class="scanchip none" id="topScan" aria-haspopup="dialog" aria-expanded="false" title="choose a scan, or make a new one"><span class="k">scan</span><img class="t" alt="" hidden><span class="v" id="topScanName">choose…</span><span class="caret" aria-hidden="true">▾</span></button>
+    <button class="scanchip none" id="topScan" aria-haspopup="dialog" aria-expanded="false" title="choose a scan, or make a new one"><span class="k">scan</span><span class="v" id="topScanName">choose…</span><span class="caret" aria-hidden="true">▾</span></button>
     <a class="gh" href="${REPO}" target="_blank" rel="noopener" title="motiongrammetry on GitHub" aria-label="motiongrammetry on GitHub"></a>`;
   initChooser(document.getElementById('topScan'), {
     open: (name) => { store.set(name); showScan(name, true); },

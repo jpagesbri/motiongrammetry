@@ -17,8 +17,6 @@ header.topbar .scanchip { display: inline-flex; align-items: center; gap: 6px; m
 header.topbar .scanchip:hover, header.topbar .scanchip[aria-expanded="true"] { border-color: var(--accent); }
 header.topbar .scanchip:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 header.topbar .scanchip .k { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
-header.topbar .scanchip .t { width: 26px; height: 19px; object-fit: cover; border-radius: 3px; background: var(--bg); flex: none; }
-header.topbar .scanchip .t[hidden] { display: none; }
 header.topbar .scanchip .v { font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
 header.topbar .scanchip.none .v { color: var(--muted); font-weight: 400; }
 header.topbar .scanchip .caret { color: var(--muted); font-size: 11px; }
@@ -55,7 +53,8 @@ header.topbar a.gh::before { content: ""; width: 18px; height: 18px; background:
 .sc-run { font-size: 11px; color: var(--accent); flex: none; }
 .sc-more { flex: none; width: 30px; background: none; border: 0; color: var(--muted); font-size: 16px; cursor: pointer; border-radius: 7px; }
 .sc-more:hover, .sc-more[aria-expanded="true"] { color: var(--text); background: var(--line); }
-.sc-menu { position: absolute; z-index: 2; right: 4px; top: calc(100% - 4px); min-width: 190px; padding: 4px; background: var(--panel2);
+/* the ⋯ menu: fixed next to its button (scanchooser.js places it), outside the list's scrolling area */
+.sc-menu { position: fixed; z-index: 62; overflow: auto; min-width: 190px; padding: 4px; background: var(--panel2);
   border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 10px 26px rgba(0,0,0,.5); }
 .sc-menu button { display: block; width: 100%; padding: 6px 10px; background: none; border: 0; color: var(--text); font: inherit;
   text-align: left; cursor: pointer; border-radius: 5px; }

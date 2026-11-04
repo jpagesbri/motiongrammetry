@@ -777,6 +777,10 @@ def test_the_scan_is_chosen_from_the_top_bar_on_every_page(server):
         bar = r.read().decode()
     # the chip is a button that opens the chooser, written once for all pages
     assert '<button class="scanchip' in bar and "import { initChooser, chooserScan } from '/scanchooser.js'" in bar
+    chip = re.search(r'<button class="scanchip.*?</button>', bar).group(0)
+    assert "<img" not in chip  # the chip names the scan; the thumbnails are in the list
+    with urllib.request.urlopen(base + "/topbar.css") as r:  # a scan's ⋯ menu is not clipped by the list's scrolling
+        assert re.search(r"\.sc-menu \{ position: fixed;", r.read().decode())
     # what the Scan page's left bar offered lives in the chooser: the list, New scan, Duplicate, Delete
     for text in ["+ New scan…", "'Duplicate…'", "'Delete…'", "Upload video…", "include SfM / MVS results", "Delete for good"]:
         assert text in chooser, text

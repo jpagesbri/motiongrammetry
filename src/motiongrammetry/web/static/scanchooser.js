@@ -45,7 +45,11 @@ export function initChooser(chipEl, h) {
   chip.addEventListener('click', (e) => { e.stopPropagation(); panel.hidden ? openPanel() : closePanel(); });
   chip.addEventListener('keydown', (e) => { if (e.key === 'ArrowDown' && panel.hidden) { e.preventDefault(); openPanel(); } });
   panel.addEventListener('keydown', panelKeys);
-  panel.addEventListener('click', (e) => e.stopPropagation());
+  panel.addEventListener('click', (e) => {  // inside the list: the list stays; a click beside an open ⋯ menu closes the menu
+    e.stopPropagation();
+    const m = panel.querySelector('.sc-menu');
+    if (m && !m.contains(e.target) && !e.target.closest('.sc-more')) closeMenu();
+  });
   modal.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); e.stopPropagation(); });  // page shortcuts stay out
   modal.addEventListener('mousedown', (e) => { if (e.target === modal) closeModal(); });
   addEventListener('click', () => { if (!panel.hidden) closePanel(false); });
@@ -56,11 +60,11 @@ export function initChooser(chipEl, h) {
     if (!modal.hidden && !modal.contains(e.target)) { e.stopPropagation(); if (e.key === 'Escape') closeModal(); }
     else if (!panel.hidden && !panel.contains(e.target) && e.key === 'Escape') { e.stopPropagation(); closePanel(); }
   }, true);
-  addEventListener('resize', () => { if (!panel.hidden) place(); });
+  addEventListener('resize', () => { if (!panel.hidden) { place(); placeMenu(); } });
   refresh();
 }
 
-/** The page's scan changed (null: none): the chip's name and thumbnail follow. */
+/** The page's scan changed (null: none): the chip's name follows. */
 export function chooserScan(name) { current = name || null; showChip(); }
 
 /** The page fetched /api/workspaces itself (the Scan page does, on every change): reuse it. */
@@ -73,11 +77,8 @@ async function refresh() {
 
 function showChip() {
   if (!chip) return;
-  const w = scans?.find((x) => x.name === current), img = chip.querySelector('.t'), v = chip.querySelector('.v');
   chip.classList.toggle('none', !current);
-  v.textContent = current || 'choose…';
-  img.hidden = !(w && w.preview != null);
-  if (!img.hidden && img.dataset.src !== thumbUrl(w)) img.src = img.dataset.src = thumbUrl(w);
+  chip.querySelector('.v').textContent = current || 'choose…';
 }
 
 // ---------------------------------------------------------------- the list
@@ -90,6 +91,7 @@ async function openPanel() {
 }
 function closePanel(refocus = true) {
   if (panel.hidden) return;
+  closeMenu();
   panel.hidden = true; card.hidden = true; chip.setAttribute('aria-expanded', 'false');
   if (refocus && panel.contains(document.activeElement)) chip.focus({ preventScroll: true });
 }
@@ -125,6 +127,7 @@ function renderPanel() {
     b.addEventListener('blur', () => { card.hidden = true; });
   });
   panel.querySelectorAll('.sc-more').forEach((b) => b.addEventListener('click', () => toggleMenu(b)));
+  panel.querySelector('.sc-list').addEventListener('scroll', () => closeMenu(), { passive: true });  // it is placed by its button
   panel.querySelector('.sc-new').addEventListener('click', () => { closePanel(false); openNew(); });
 }
 function pick(name) {
@@ -160,9 +163,25 @@ function toggleMenu(btn) {
   m.querySelectorAll('[data-i]').forEach((b) => b.addEventListener('click', () => {
     const it = items[+b.dataset.i]; closeMenu(); closePanel(false); it.run();
   }));
-  btn.closest('.sc-row').append(m);
+  // In the panel but outside the list's scrolling area, fixed next to the button: every item shows
+  // at once. Below the button and right-aligned with it, flipped up or left when it would leave the window.
+  panel.append(m);
+  placeMenu();
   btn.setAttribute('aria-expanded', 'true');
   m.querySelector('button:not([disabled])')?.focus();
+}
+function placeMenu() {
+  const m = panel.querySelector('.sc-menu'); if (!m) return;
+  const btn = panel.querySelector(`.sc-more[data-more="${CSS.escape(m.dataset.for)}"]`); if (!btn) return;
+  const pad = 8;
+  m.style.maxHeight = innerHeight - 2 * pad + 'px';  // a window shorter than the menu: it scrolls, as the last resort
+  const r = btn.getBoundingClientRect(), mw = m.offsetWidth, mh = m.offsetHeight;
+  let top = r.bottom + 2;
+  if (top + mh > innerHeight - pad) top = r.top - mh - 2;            // no room below: above the button
+  top = Math.max(pad, Math.min(top, innerHeight - mh - pad));        // no room either way: as much as fits
+  let left = r.right - mw;                                           // right-aligned with the button, opening leftwards
+  if (left < pad) left = Math.min(r.left, innerWidth - mw - pad);    // no room to the left: rightwards
+  m.style.top = top + 'px'; m.style.left = Math.max(pad, left) + 'px';
 }
 function closeMenu(refocus = false) {
   const m = panel.querySelector('.sc-menu'); if (!m) return;
