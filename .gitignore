@@ -9,4 +9,5 @@ workspaces/
 datasets/
 .pytest_cache/
 .shots/
+test-results/
 uv.lock

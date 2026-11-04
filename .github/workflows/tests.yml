@@ -54,5 +54,49 @@ jobs:
           assert here.is_relative_to(src), f"imported {here}, not the checkout in {src}"
           PY
 
+      # The browser tests (tests/browser) drive the pages in headless Chromium. The browser is the one
+      # the locked Playwright wants, cached by that version; its system libraries come from apt each time.
+      - name: Browser cache
+        id: browser-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('requirements-lock.txt') }}
+
+      - name: Browser
+        run: |
+          if [ "${{ steps.browser-cache.outputs.cache-hit }}" = "true" ]; then
+            .venv/bin/playwright install-deps chromium-headless-shell
+          else
+            .venv/bin/playwright install --with-deps chromium-headless-shell
+          fi
+
+      # MG_BROWSER_TESTS=required: the browser tests fail rather than skip if the browser is missing,
+      # so a green run means they ran. On a failure, each failed browser test leaves a trace and a
+      # screenshot in test-results/ (uploaded below).
       - name: pytest
-        run: .venv/bin/python -m pytest tests/ -q
+        env:
+          MG_BROWSER_TESTS: required
+        run: >-
+          .venv/bin/python -m pytest tests/ -q -rsx
+          --tracing retain-on-failure --screenshot only-on-failure --output test-results
+          --junitxml test-results/junit.xml
+
+      - name: Browser tests ran
+        run: |
+          .venv/bin/python - <<'PY'
+          import xml.etree.ElementTree as ET
+          cases = [c for c in ET.parse("test-results/junit.xml").iter("testcase") if c.get("classname", "").startswith("tests.browser.")]
+          skipped = [c.get("name") for c in cases if any(s.get("type") != "pytest.xfail" for s in c.iter("skipped"))]
+          print(f"{len(cases)} browser tests, {len(skipped)} skipped")
+          assert cases and not skipped, f"the browser tests did not all run: {skipped or 'none collected'}"
+          PY
+
+      - name: Traces and screenshots of failed browser tests
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-test-results
+          path: test-results/
+          retention-days: 14
+          if-no-files-found: ignore

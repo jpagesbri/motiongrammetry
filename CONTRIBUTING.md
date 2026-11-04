@@ -43,8 +43,50 @@ which code a running instance is.
 Run the tests too: `.venv/bin/python -m pytest tests/ -q`. They stop at once if they would import
 another installed copy of `motiongrammetry` instead of this checkout.
 
+### The browser tests
+
+`tests/browser/` drives the pages in a real browser (headless Chromium, through Playwright and
+`pytest-playwright`, from the `dev` extra): the top bar, the scan chooser, the tabs and modes, scrolling,
+the Export window and the editor's tools. They start `mg ui` on a free port of their own (never 8765 or
+8766) over two small scans built in a temp folder (`tests/browser/scan_fixture.py`), so they never touch
+your scans. They take about a minute. Until the browser is installed they are skipped, with the reason.
+
+```bash
+.venv/bin/playwright install chromium-headless-shell     # once (~100 MB, in ~/.cache/ms-playwright)
+# Linux, if the browser is missing system libraries:  sudo .venv/bin/playwright install-deps chromium-headless-shell
+.venv/bin/python -m pytest -m browser -q                  # only the browser tests
+.venv/bin/python -m pytest -m "not browser" -q            # everything else
+.venv/bin/python -m pytest tests/browser/test_editor.py -k decimate --headed --slowmo 300   # watch one
+```
+
+**When one fails**, run it again with a trace, then open the trace: every step, with the page as it
+was (DOM, screenshot), the console and the network.
+
+```bash
+.venv/bin/python -m pytest -m browser --tracing retain-on-failure --screenshot only-on-failure
+.venv/bin/playwright show-trace test-results/<the test>/trace.zip
+```
+
+On GitHub, a failed run uploads the same files as the artifact **browser-test-results** (on the run's
+summary page).
+
+**Adding one:** put a `test_*.py` in `tests/browser/` that starts like the others, with
+`pytest.importorskip("playwright", …)`, and take the `page` fixture. Each test gets fresh copies of the
+scans `box` (keyframes, cameras, a clean mesh and a textured model) and `blank` (a new, empty scan), and
+a fresh browser (empty browser storage). Then:
+- open a page with `ui.open_page(page, "scan" | "edit" | "help" | "about")`, which waits until it has
+  loaded the scan; `ui.py` also has a stroke on the editor's view (`drag_on_view`)
+- check what the page shows with `expect(...)`, which waits for it: never a fixed wait
+  (`wait_for_timeout`, `sleep`)
+- the test fails if the page throws or logs a console error. If an error is expected, mark the test
+  `@pytest.mark.console_error("<regex>")` and say why.
+
+A known bug is marked `xfail(strict=True)` with the reason, so the run stays green and the mark has to
+go once it is fixed (see `NARROW_SCAN` in `test_scrolling.py`).
+
 GitHub runs the same tests on every pull request into `main` (the **tests / pytest** check, from
-`.github/workflows/tests.yml`, about 5 minutes), on the versions in `requirements-lock.txt`.
+`.github/workflows/tests.yml`, about 6 minutes, browser tests included: they must run, not skip),
+on the versions in `requirements-lock.txt`.
 That file is the project's only lock: there is no `uv.lock` (it is ignored, since `uv run` and
 `uv sync` would write one that nothing tests). When a dependency changes in `pyproject.toml`,
 update `requirements-lock.txt` in the same pull request.

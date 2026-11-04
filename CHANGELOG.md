@@ -174,6 +174,14 @@ the image with that version, and the About page and `mg --version` show it.
   of the nearest old point, so the shoe's closed sole showed its insole through it, ringed with
   streaks stretched from the rim. New surface now takes a smooth blend of the colours around it,
   fading in from the old surface with no edge (#6).
+- **Browser tests** (#8): `tests/browser/` drives the pages in headless Chromium (Playwright, in
+  the `dev` extra) against `mg ui` on two small scans built at test time: the top bar and the scan
+  chooser on every page, the tabs and modes and what they remember, scrolling at several window
+  sizes, the Export window (a real GLB download, the eye, nothing to export, unsaved edits), and the
+  editor (a sculpt stroke and undo, Adaptive detail, Decimate, clone, seams, the texture layout,
+  carrying the texture over). A test fails on any page error or console error. GitHub runs them on
+  every pull request, with a trace of each failure; locally they skip until the browser is
+  installed (`.venv/bin/playwright install chromium-headless-shell`, see CONTRIBUTING.md).
 
 ### Fixed
 
