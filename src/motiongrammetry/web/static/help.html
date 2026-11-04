@@ -139,6 +139,13 @@ were unsure (it measures how sure they were); quarter-resolution depth maps; a s
 <h2 id="generate">The Scan page</h2>
 <p>The scan it works on is chosen at the top right (see <a href="#scans">Scans</a>). The page has two tabs: <b>Run</b> (doing the work) and <b>Preview</b> (looking at the results).
 On a wide screen, tick <b>side by side</b> to see both at once. A dot on a tab means something new happened there.</p>
+<p>Every switch between views in the app is the same control, a row of options with the chosen one highlighted: the
+<b>Run</b> / <b>Preview</b> tabs (underlined, as they are the page's own, like <b>Sculpt mesh</b> / <b>Paint texture</b>
+on the Edit page), and inside the pages <b>Assisted</b> / <b>Manual</b>, <b>3D model</b> /
+<b>Frames &amp; masks</b>, the log's <b>Live</b> / <b>History</b> and the editor view's <b>3D</b> / <b>3D + texture</b> / <b>Texture</b>. Click an option, or press
+<kbd>Tab</kbd> to reach the control and <kbd>←</kbd> <kbd>→</kbd> to switch (<kbd>Home</kbd> / <kbd>End</kbd>: the
+first and last). Each remembers your choice as before: the tab and the Preview's view in this browser, Assisted or
+Manual per scan.</p>
 <h3 id="scans">Scans</h3>
 <p>A scan is one video and everything made from it (on disk: a folder under <code>workspaces/</code>). The current one is
 in the top bar, on the right, marked <b>SCAN</b>, on every page. Click it to choose another: each scan in the list shows a
@@ -275,7 +282,9 @@ window starts.</p>
 <p>Edits are saved as a <b>custom version</b> (in <code>mesh/custom/</code>); the pipeline's files are never changed and
 <b>Delete custom version</b> goes back to them. The two modes work on different things: <b>Sculpt mesh</b> changes the
 <b>shape</b>, <b>Paint texture</b> changes the <b>colours</b> on that shape. So the order is always
-<b>sculpt → save → texture the edit → paint</b>.</p>
+<b>sculpt → save → texture the edit → paint</b>. Switch with the two tabs at the top of the side panel (the same tabs as Run / Preview) (or
+<kbd>←</kbd> <kbd>→</kbd> once one has the focus); the page's address keeps the mode (<code>?mode=paint</code>), so a
+reload or another scan stays in it. Unsaved edits of either mode are kept when you switch.</p>
 <p>After you save a sculpt, the textured model you can paint is still the one made <b>before</b> your edit: it has the old
 shape, so pieces you removed still show and holes you closed are missing. Paint mode says so and offers two ways to give
 your edited shape a texture of its own:</p>

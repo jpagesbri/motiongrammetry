@@ -802,6 +802,49 @@ def test_every_page_draws_the_app_scrollbar(server):
             assert "position: sticky; top: 0; z-index" not in html, page  # no sticky header over a scrolling document
 
 
+def test_tabs_and_modes_are_the_one_shared_control(server):
+    base, _ = server
+    with urllib.request.urlopen(base + "/modes.js") as r:
+        assert r.headers["Content-Type"].startswith("text/javascript")
+        js = r.read().decode()
+    with urllib.request.urlopen(base + "/modes.css") as r:
+        assert r.headers["Content-Type"].startswith("text/css")
+        css = r.read().decode()
+    # a tab list with roving tabindex, the arrow keys, Home / End, and a clear selected state
+    assert "export function modeControl" in js
+    for text in ["'tablist'", "'tab'", "aria-selected", "tabIndex", "ArrowRight", "ArrowLeft", "Home", "End", "stopPropagation"]:
+        assert text in js, text
+    # one control, two looks: a page's own tabs (underlined, as Run / Preview were) and a segmented mode inside a page
+    assert '.modes > button[aria-selected="true"]' in css and ".modes.tabs > button" in css and ":focus-visible" in css
+    pages = {}
+    for page in ["/", "/edit"]:
+        with urllib.request.urlopen(base + page) as r:
+            pages[page] = html = r.read().decode()
+        head = html[: html.index("<body")]
+        assert '<link rel="stylesheet" href="/modes.css">' in head, page
+        assert "import { modeControl } from '/modes.js';" in html, page
+    scan, edit = pages["/"], pages["/edit"]
+    # Scan: Run / Preview (the page's tabs), Assisted / Manual, 3D / Frames, the log's Live / History
+    assert re.search(r'<div class="modes tabs" id="gTabs"[^>]*>\s*<button data-value="run"', scan)
+    assert '<div class="modes" id="modeTabs"' in scan and '<button data-value="assisted"' in scan and '<button data-value="manual"' in scan
+    assert '<div class="modes" id="pvTabs"' in scan and '<div class="modes" id="logTabs"' in scan
+    assert 'role="tabpanel" aria-labelledby="tabRun"' in scan and 'role="tabpanel" aria-labelledby="tabPreview"' in scan
+    for ctl in ["gTabs", "modeTabs", "pvTabs", "logTabs"]:
+        assert f"const {ctl} = modeControl($('{ctl}')" in scan, ctl
+    # Edit: Sculpt mesh / Paint texture (the page's tabs, as on Scan, the panel's width), and the view's layout
+    assert re.search(r'<div class="modes tabs wide" id="modeTabs"[^>]*>\s*<button data-value="sculpt"', edit)
+    assert '<button data-value="paint"' in edit and '<div class="modes" id="layoutTabs"' in edit
+    for ctl in ["modeTabs", "layoutTabs"]:
+        assert f"const {ctl} = modeControl($('{ctl}')" in edit, ctl
+    assert "u.searchParams.set('mode', 'paint')" in edit  # the mode is remembered in the URL
+    # the old per-page tab markup and styles are gone
+    for gone in ['class="gtabs"', 'class="gtab"', ".gtab {", 'id="modeSeg"', 'data-mode="', 'id="pvSeg"', 'class="tabs"',
+                 'class="tab ', ".tab {", "data-g=\"run\" title", "data-pv=", "data-tab="]:
+        assert gone not in scan, gone
+    for gone in ['<div class="modes">', ".modes button", "data-mode=", 'id="layoutSeg"', "data-layout=", "<h2>Mode</h2>"]:
+        assert gone not in edit, gone
+
+
 def test_the_scan_is_chosen_from_the_top_bar_on_every_page(server):
     base, _ = server
     with urllib.request.urlopen(base + "/scanchooser.js") as r:
