@@ -8,6 +8,12 @@ mg ui                       # http://127.0.0.1:8765, workspaces in ./workspaces
 mg ui --root ~/scans --port 9000
 ```
 
+- **Top bar** (`static/topbar.js`, styled by `topbar.css`): the same on every page, written by one
+  module that names and links the pages (**Scan**, **Edit**, **Help**, **About**: renaming one is
+  one line there) and the GitHub repository. The current scan sits apart on the right, as a chip
+  marked "scan". Help and About have no scan of their own and show the one last opened on Scan or
+  Edit (browser storage, `mg.scan`), or none; the Scan and Edit links keep that scan. Between the
+  pages and the chip, the page's status line (the run on Scan, unsaved edits on Edit).
 - **About** (`/about`): the third-party software, AI models and Python packages the app uses, each
   with its license text (`credits.py`: Python packages are read from the installed distributions,
   the rest is listed there with texts in `licenses/`), what those licenses ask (VGGT-1B weights are
@@ -16,7 +22,7 @@ mg ui --root ~/scans --port 9000
   same file for redistribution.
 - **Help** (`/help`): the full how-to with screenshots: filming, every screen and stage, every
   option (read live from `options.py`), presets, outputs, printing, editing and troubleshooting.
-- **Generate** has two tabs (side by side on wide screens): **Run** and **Preview** (the 3D model, the keyframes and masks, the files). A dot on a tab means
+- **Scan** (`/`) has two tabs (side by side on wide screens): **Run** and **Preview** (the 3D model, the keyframes and masks, the files). A dot on a tab means
   something new there; nothing switches tabs on its own.
 - **Run tab**: one layout for both modes. On the left the steps, which are the pipeline (status,
   time, progress bar, a mark when there are warnings or advice); on the right the selected step's
@@ -63,7 +69,7 @@ mg ui --root ~/scans --port 9000
   real-world height shared by everything (GLB in metres, the others in millimetres; the cameras
   stay in the reconstruction's frame). One content is one file, several are one zip with a folder
   each. Shows each built file in 3D and, for prints, the report. Choices are remembered.
-- **Edit & paint** (`/edit`): sculpt the clean mesh (draw, dig, inflate, deflate, smooth,
+- **Edit** (`/edit`): sculpt the clean mesh (draw, dig, inflate, deflate, smooth,
   flatten, pinch, grab, decimate (edge collapses inside the stroke down to the Density ÷k,
   applied on release, open edges and the stroke's border locked, no folds), cut away, with an option
   to cap what a cut opens; **Adaptive detail** (tick box) splits edges around each dab first, up to the
@@ -113,7 +119,7 @@ mg ui --root ~/scans --port 9000
   mesh, all in one Y-up frame. **Display** (`W`): colours, solid grey, wireframe, or solid + wires
   (fading out where triangles are under a few pixels); **Highlight holes** draws the open edges in
   orange and counts the openings (also in the editor).
-- **View cube** (`static/viewcube.js`, in the Generate preview, the Export preview and the editor):
+- **View cube** (`static/viewcube.js`, in the Scan preview, the Export preview and the editor):
   the camera's direction with Z-up labels as in the print files; click a face, edge or corner to
   look from there; a button frames the model, another (or key `5`) switches perspective /
   orthographic. Point clouds travel as packed binary (f32 xyz + u8 rgb, sampled

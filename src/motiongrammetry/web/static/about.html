@@ -48,11 +48,8 @@
 <link rel="stylesheet" href="/topbar.css">
 </head>
 <body>
-<header class="topbar">
-  <b>motiongrammetry</b>
-  <nav class="screens"><a href="/">Generate</a><a href="/edit">Edit &amp; paint</a><a href="/help">Help</a><a class="on">About</a></nav>
-  <a class="gh end" href="https://github.com/jpagesbri/motiongrammetry" target="_blank" rel="noopener" title="motiongrammetry on GitHub" aria-label="motiongrammetry on GitHub"></a>
-</header>
+<header class="topbar"></header>  <!-- written by topbar.js -->
+<script type="module">import { mountTopbar } from '/topbar.js'; mountTopbar('about');</script>
 <main>
 <h1>About motiongrammetry</h1>
 <p class="lead" id="lead"></p>

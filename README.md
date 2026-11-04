@@ -125,7 +125,7 @@ Docker for development are in [docs/install.md](docs/install.md).
 
 ## Usage
 
-Open http://127.0.0.1:8765, create a **New scan**, and upload your video. Then, in the **Run** tab:
+Open http://127.0.0.1:8765. On the **Scan** page, create a **New scan** and upload your video. Then, in the **Run** tab:
 
 - **Assisted** asks what you filmed and how, sets the options, and runs one step at a time. After
   each step it reads the result and suggests fixes with one click. Its last step checks that the
@@ -134,7 +134,7 @@ Open http://127.0.0.1:8765, create a **New scan**, and upload your video. Then, 
   want.
 
 When it's done, the **Preview** tab shows the model and the keyframes and masks, and **Export…**
-lets you pick what to take out and in which format. **Edit & paint** opens the editor.
+lets you pick what to take out and in which format. **Edit** opens the editor (Sculpt and Paint).
 
 **Help** in the app is the full how-to: how to film, every screen and option, a worked example from
 video to print with screenshots, and what to do when something goes wrong.

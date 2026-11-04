@@ -146,5 +146,5 @@ def advise(ws: Workspace, subject: str | None = None) -> list[dict]:
     t = m.get("texture")
     if t and "texture" not in (ws.stale_stages() or []):
         add(_item("texture", "ok", "textured model ready" + (" (of your edited mesh)" if t.get("source") == "custom" else ""),
-                  "download it or print it from Export…, or touch it up in Edit & paint"))
+                  "download it or print it from Export…, or touch it up in Edit"))
     return out

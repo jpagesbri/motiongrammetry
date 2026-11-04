@@ -750,14 +750,22 @@ def test_shared_page_modules_are_served(server):
     assert call(base + "/..%2Fserver.py")[0] == 404
 
 
-def test_every_page_links_to_the_repository(server):
+def test_every_page_has_the_one_top_bar(server):
     from motiongrammetry.credits import PROJECT
 
     base, _ = server
-    for page in ["/", "/edit", "/help", "/about"]:
+    with urllib.request.urlopen(base + "/topbar.js") as r:
+        assert r.headers["Content-Type"].startswith("text/javascript")
+        bar = r.read().decode()
+    # the pages are named and linked there only, with the repository link
+    assert "const REPO = '" + PROJECT["url"] + "'" in bar and '<a class="gh" href="${REPO}"' in bar
+    labels = re.findall(r"\{ id: '(\w+)', label: '([^']+)'", bar)
+    assert labels == [("scan", "Scan"), ("edit", "Edit"), ("help", "Help"), ("about", "About")]
+    for page, pid in [("/", "scan"), ("/edit", "edit"), ("/help", "help"), ("/about", "about")]:
         with urllib.request.urlopen(base + page) as r:
             html = r.read().decode()
-        assert re.search(r'<a class="gh[^"]*"[^>]* href="' + re.escape(PROJECT["url"]) + '"', html), page
+        assert '<header class="topbar"></header>' in html and f"mountTopbar('{pid}')" in html, page
+        assert 'class="screens"' not in html and "Generate" not in html and "Edit &amp; paint" not in html, page
 
 
 def test_about_lists_third_party_software_with_licenses(server):
