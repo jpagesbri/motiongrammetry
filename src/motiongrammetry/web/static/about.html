@@ -47,6 +47,7 @@
 <link rel="stylesheet" href="/topbar.css">
 <link rel="stylesheet" href="/scrollbar.css">
 <link rel="stylesheet" href="/export.css">
+<link rel="stylesheet" href="/pagehelp.css">
 <!-- three.js for the Export window's 3D preview (export.js), loaded only when it shows a file -->
 <script type="importmap">
 { "imports": {
@@ -57,7 +58,8 @@
 </head>
 <body class="paged">
 <header class="topbar"></header>  <!-- written by topbar.js -->
-<script type="module">import { mountTopbar } from '/topbar.js'; mountTopbar('about');
+<script type="module">import { mountTopbar } from '/topbar.js'; import { pageHelp } from '/pagehelp.js';
+  mountTopbar('about'); pageHelp('about');  // the ? button and key: what this page lists
   document.getElementById('page').focus({ preventScroll: true });  // the keys scroll the text from the start</script>
 <div class="page" id="page" tabindex="-1">  <!-- what scrolls, under the top bar (topbar.css) -->
 <main>

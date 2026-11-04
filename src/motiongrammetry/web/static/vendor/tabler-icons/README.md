@@ -10,6 +10,7 @@ copied unchanged, so the app works offline.
 | Icon | Tabler name | Used for |
 |---|---|---|
 | `eye.svg` | `eye` | Export window: preview a ready file |
+| `help-circle.svg` | `help-circle` | Top bar: the page's help (`pagehelp.js`) |
 
 ## Adding an icon
 

@@ -10,6 +10,13 @@ the image with that version, and the About page and `mg --version` show it.
 
 ## Unreleased
 
+- **Help on every page** (part of #23): a **?** button at the right of the top bar on Scan, Edit
+  and About, or the `?` key, opens a short help for what the page shows now (Scan: Assisted, Manual,
+  the 3D model or Frames & masks; Edit: Sculpt or Paint), with **Read more in Help →** to the
+  matching section. Esc closes it. The pages' hints have one small, muted look; the ones shown every
+  time (the Preview's key reminders, the keyframe strip's, All steps' intro, "only Stop does", the
+  texture layout's) can be closed with their ✕, and the help window brings them back. The editor's
+  long mouse and keys text at the foot of its side panel moved into that window.
 - **Export from any page** (part of #23): **Export…** is in the top bar next to the scan, on Scan,
   Edit, Help and About, and in each scan's ⋯ menu. It opens the same Export window as before (the
   contents, formats, sizes, downloads and remembered settings), which the assisted run's last step

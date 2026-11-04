@@ -890,7 +890,7 @@ def test_every_page_offers_export_through_the_one_shared_module(server):
     with urllib.request.urlopen(base + "/icons.js") as r:
         assert r.headers["Content-Type"].startswith("text/javascript")
         icons = r.read().decode()
-    assert "export function icon(name)" in icons and "const NAMES = ['eye'];" in icons and "/vendor/tabler-icons/" in icons
+    assert "export function icon(name)" in icons and "const NAMES = ['eye', 'help-circle'];" in icons and "/vendor/tabler-icons/" in icons
     with urllib.request.urlopen(base + "/vendor/tabler-icons/eye.svg") as r:
         assert b"icon-tabler-eye" in r.read()
     with urllib.request.urlopen(base + "/vendor/tabler-icons/LICENSE") as r:
@@ -925,6 +925,62 @@ def test_every_page_offers_export_through_the_one_shared_module(server):
     assert "import { exportHooks } from '/export.js';" in edit and "S.dirty && 'sculpt edits', P.dirty && 'paint'" in edit
     for html in (scan, edit):
         assert "import { projection } from '/projection.js';" in html and "function projection(" not in html
+
+
+def test_every_page_but_help_has_its_help_window_from_the_one_shared_module(server):
+    base, _ = server
+    with urllib.request.urlopen(base + "/pagehelp.js") as r:
+        assert r.headers["Content-Type"].startswith("text/javascript")
+        js = r.read().decode()
+    with urllib.request.urlopen(base + "/pagehelp.css") as r:
+        assert r.headers["Content-Type"].startswith("text/css")
+        css = r.read().decode()
+    pages = {}
+    for page in ["/", "/edit", "/help", "/about"]:
+        with urllib.request.urlopen(base + page) as r:
+            pages[page] = r.read().decode()
+    # every page but Help loads the module and its styles, and says which views it shows; Help is the help
+    for page, call_ in [("/", "pageHelp('scan', () => ["), ("/edit", "pageHelp('edit', () => ["), ("/about", "pageHelp('about');")]:
+        html = pages[page]
+        assert '<link rel="stylesheet" href="/pagehelp.css">' in html[: html.index("<body")], page
+        assert "from '/pagehelp.js';" in html and call_ in html, page
+        assert html.index("mountTopbar(") < html.index(call_), page  # the button goes into the bar
+    assert "pagehelp" not in pages["/help"]
+    # the views each page names exist, with a few items and a link to a Help section that exists
+    views = {v: page for v, page, _ in re.findall(r"^  '?([\w-]+)'?: \{ page: '(\w+)', label: '[^']+', more: '(#[\w-]+)'", js, re.M)}
+    assert set(re.findall(r"'((?:scan|edit)-\w+)'", pages["/"] + pages["/edit"])) == {
+        "scan-assisted", "scan-manual", "scan-3d", "scan-frames", "edit-sculpt", "edit-paint"}
+    assert len(views) == 7 and views["about"] == "about" and all(views[v] == v.split("-")[0] for v in views)
+    hrefs = re.findall(r"more: '(#[\w-]+)'", js)
+    assert len(hrefs) == 7
+    anchors = set(re.findall(r'id="([\w-]+)"', pages["/help"]))
+    for h in hrefs:
+        assert h[1:] in anchors, h
+    assert 'href="/help${h.more}"' in js and "Read more in Help →" in js
+    # the icon is Tabler's, from the one icon helper (no SVG drawn here), with a tooltip and a label
+    assert "import { icon } from '/icons.js';" in js and "icon('help-circle')" in js and "<svg" not in js
+    assert "title: 'help on this page (?)'" in js and "setAttribute('aria-label', 'help on this page')" in js
+    with urllib.request.urlopen(base + "/vendor/tabler-icons/help-circle.svg") as r:
+        assert b"icon-tabler-help-circle" in r.read()
+    # ? opens it (not from a text field, nor over another window); Esc closes it; the page gets no keys meanwhile
+    assert "e.key !== '?'" in js and "inText(e.target)" in js and "otherWindow()" in js
+    assert "if (e.key === 'Escape') closeHelp(); e.stopPropagation();" in js
+    assert "e.stopPropagation(); if (e.key === 'Escape') closeHelp();" in js and "}, true);" in js
+    assert "role', 'dialog'" in js and "aria-modal', 'true'" in js
+    # ? was free: no page binds it
+    for html in pages.values():
+        assert "e.key === '?'" not in html
+    # hints: one look, closable ones remembered and brought back from the window
+    assert ".pghint {" in css and ".pghint.off {" in css and "header.topbar .tophelp" in css
+    assert "'mg.hints.off'" in js and "export function hint(id, html" in js and "you closed" in js
+    scan, edit = pages["/"], pages["/edit"]
+    for h in ['data-hint="pv-3d"', 'data-hint="pv-frames"', 'data-hint="film"', "hint('all-steps'", "hint('run-stop'"]:
+        assert h in scan, h
+    assert 'id="pvHint"' not in scan and '<div class="pghint" id="orHelp">' in scan
+    assert 'data-hint="layout"' in edit and '<div class="pghint" id="toolHelp">' in edit and '<div class="pghint" id="seamHelp">' in edit
+    # the editor's long mouse and keys text moved into the window
+    assert 'id="help"' not in edit and "const HELP = {" not in edit
+    assert "Fill</b> places spheres at the depth of the surface" in js and "<kbd>Alt</kbd>+click: pick a colour" in js
 
 
 def test_the_scan_is_chosen_from_the_top_bar_on_every_page(server):

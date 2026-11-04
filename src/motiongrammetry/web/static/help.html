@@ -68,6 +68,9 @@
 <p>motiongrammetry turns a phone video walking around something into a clean, textured 3D model, a 3D-print file and
 more. This page explains every screen, step and option, with what to do when something goes wrong. In a hurry? Choose
 <b>Assisted</b> in the Run tab of the Scan page: it walks you through all of this for your own capture.</p>
+<p>On the Scan, Edit and About pages, the <b>?</b> button at the top right (or the <kbd>?</kbd> key) opens a short help
+for what the page shows now, with a link to its section here; <kbd>Esc</kbd> closes it. The small grey hints on the pages
+with a <b>✕</b> can be closed; that help window says the same and brings them back.</p>
 <p class="note">The screenshots follow one example from start to print: a canvas shoe filmed on a stool, from the
 <a href="https://uco3d.github.io" target="_blank" rel="noopener">uCO3D</a> dataset (Meta AI; Liu et al., 2025; CC BY 4.0),
 reconstructed and edited here.</p>
@@ -521,7 +524,17 @@ try {
     `<tr><td><code>${k}</code></td><td>${esc(p.description)}</td><td>${Object.entries(p.options).map(([a, b]) => `<code>${a}=${esc(b)}</code>`).join(' ')}</td></tr>`).join('')}</table>`;
 } catch (e) { $('optionsRef').innerHTML = `<p class="muted">could not load the options: ${esc(e.message)}</p>`; }
 buildToc();  // the option tables added headings
-if (location.hash) document.getElementById(location.hash.slice(1))?.scrollIntoView();
+// Opened at a section (a page's "Read more in Help →"): the screenshots above it load as the page
+// scrolls and push it down, so follow it while the text settles, until you scroll yourself.
+const target = location.hash && document.getElementById(location.hash.slice(1));
+if (target) {
+  const go = () => target.scrollIntoView({ behavior: 'instant' });
+  const ro = new ResizeObserver(go);
+  const stop = () => ro.disconnect();
+  for (const ev of ['wheel', 'keydown', 'pointerdown', 'touchstart']) addEventListener(ev, stop, { once: true, passive: true });
+  ro.observe(document.querySelector('main')); go();
+  setTimeout(stop, 5000);
+}
 </script>
 </body>
 </html>

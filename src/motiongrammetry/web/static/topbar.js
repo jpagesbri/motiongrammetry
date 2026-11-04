@@ -7,6 +7,7 @@
 // scan chooser (scanchooser.js): the list of scans, New scan… and each scan's ⋯ menu. Beside it,
 // Export… opens the Export window (export.js) for that scan, on every page; each scan's ⋯ menu has
 // Export… too, for that scan.
+// pagehelp.js adds the page's help button (?) before the GitHub link, on every page but Help.
 // Importing scrollbar.js gives every page the app's own scrollbar on all its scroll areas.
 
 import '/scrollbar.js';
