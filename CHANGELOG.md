@@ -12,9 +12,13 @@ the image with that version, and the About page and `mg --version` show it.
 
 - **Export from any page** (part of #23): **Export…** is in the top bar next to the scan, on Scan,
   Edit, Help and About, and in each scan's ⋯ menu. It opens the same Export window as before (the
-  contents, formats, sizes, downloads and remembered settings), which the Preview's Export panel and
-  the assisted run's last step still open too. A scan with nothing to export yet says so and points
-  to Run. On Edit, with unsaved edits, the window says that it exports the saved files only.
+  contents, formats, sizes, downloads and remembered settings), which the assisted run's last step
+  still opens too. A scan with nothing to export yet says so and points to Run. On Edit, with
+  unsaved edits, the window says that it exports the saved files only. The Preview tab's Export side
+  panel is gone: the 3D view takes the whole width (the orientation tools still open in a column on
+  the right while you orient). What the panel showed is in the window: what the scan has ready and
+  its folder on disk at the foot, and the 3D print check under the 3D print row. Its "Open in
+  editor" button is gone too: use Edit in the top bar.
 
 - **One control for tabs and modes** (part of #23): Run / Preview, Assisted / Manual, 3D model /
   Frames & masks and the log's Live / History on the Scan page, and Sculpt mesh / Paint texture and

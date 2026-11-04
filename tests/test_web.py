@@ -870,6 +870,9 @@ def test_every_page_offers_export_through_the_one_shared_module(server):
     # nothing to export yet: it says so and points to Run; unsaved edits: it says it exports the saved files only
     assert "has nothing to export yet" in js and 'href="/?tab=run#${enc(scan)}">Go to Run</a>' in js
     assert "Export uses the saved" in js and 'id="exUnsaved"' in js
+    # what the scan has, its folder and the 3D print check are in the window, on every page
+    for text in ['id="exSummary"', 'id="exDir"', 'id="exCheck"', "'on disk: '", "print_check", "outdated: export the print again"]:
+        assert text in js, text
     assert ".ex-modal {" in css and ".ex-unsaved {" in css
     # the top bar: Export… beside the scan chip, and in every scan's ⋯ menu, on every page
     assert "import { openExport } from '/export.js';" in bar
@@ -883,9 +886,14 @@ def test_every_page_offers_export_through_the_one_shared_module(server):
         assert '<link rel="stylesheet" href="/export.css">' in head and '<script type="importmap">' in head, page
         assert "from '/topbar.js'" in html, page
     scan, edit = pages["/"], pages["/edit"]
-    # the Scan page uses the module for its Export panel and the assisted run's last step: no copy of its own
-    assert "import { EX_CONTENTS, exStale, openExport, exportHooks } from '/export.js';" in scan
-    assert "$('exportBtn').addEventListener('click', () => openExport(current));" in scan
+    # the Scan page uses the module for the assisted run's last step: no copy of its own, and no Export side
+    # panel on the Preview (the 3D view takes the width; a side column shows only while orienting)
+    assert "import { openExport, exportHooks } from '/export.js';" in scan
+    assert '<div class="pvside" id="pvSide" hidden>' in scan and "$('pv3d').classList.toggle('side', on);" in scan
+    for gone in ['id="outputsPanel"', 'id="exportBtn"', 'id="editBtn"', 'id="outSummary"', 'id="outDir"', 'id="printNotes"',
+                 'id="noOutputs"', "function renderOutputs", "Open in editor", "exported:"]:
+        assert gone not in scan, gone
+    assert "params.get('pane') === 'outputs') {" in scan  # the old deep link opens the Export window
     assert "$('asExport').addEventListener('click', () => { showG('preview'); showPv('3d'); openExport(current); });" in scan
     for gone in ['id="exportModal"', "const EX_CONTENTS", "function exRenderItems", "const exUrl", "const exSize",
                  "async function exPreview", 'id="exSource"', ".ex-item {", "function exSave"]:

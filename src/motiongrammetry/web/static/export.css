@@ -1,9 +1,8 @@
 /* The Export window (export.js), the same on every page. Its classes start with ex- and its rules
    are under .ex-modal, so the pages' own styles (Help's larger text, the editor's buttons) don't
-   change it. The pages define the colour variables it uses. .ex-sec is also the section heading of
-   the Scan page's Export panel. */
-.ex-sec { margin: 14px 0 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
-.ex-sec:first-child { margin-top: 2px; }
+   change it. The pages define the colour variables it uses. */
+.ex-modal .ex-sec { margin: 14px 0 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.ex-modal .ex-sec:first-child { margin-top: 2px; }
 
 .ex-modal { position: fixed; inset: 0; z-index: 65; background: rgba(5,7,10,.55); display: grid; place-items: center;
   font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--text); }
@@ -46,7 +45,7 @@
 .ex-preview canvas { display: block; width: 100%; height: 100%; }
 .ex-empty { position: absolute; inset: 0; display: grid; place-items: center; }
 .ex-item { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px; padding: 5px 0; }
-.ex-item + .ex-item { border-top: 1px solid var(--line); }
+.ex-item ~ .ex-item { border-top: 1px solid var(--line); }
 .ex-item label { cursor: pointer; line-height: 1.3; }
 .ex-item small { display: block; color: var(--muted); font-size: 11px; }
 .ex-item.off label { cursor: default; opacity: .5; }
@@ -63,6 +62,13 @@
 .ex-unsaved { border: 1px solid var(--warn); background: rgba(240,180,41,.1); border-radius: 8px; padding: 8px 10px; margin-bottom: 8px;
   font-size: 12px; line-height: 1.45; }
 .ex-unsaved b { color: var(--warn); display: block; margin-bottom: 2px; }
+/* the 3D print check under its row, and what the scan has and where, at the foot */
+.ex-check { margin: 0 0 6px 26px; font-size: 12px; }
+.ex-check:empty { display: none; }
+.ex-check-head { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.ex-modal .warn { color: var(--warn); }
+.ex-about { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--line); font-size: 12px; }
+.ex-about .ex-dir { font-size: 11px; margin-top: 4px; word-break: break-all; }
 /* nothing to export yet, or the scan could not be read */
 .ex-none { padding: 14px 18px 18px; }
 .ex-none p { margin: 6px 0 10px; line-height: 1.5; }
