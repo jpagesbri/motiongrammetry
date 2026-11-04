@@ -780,6 +780,14 @@ def test_every_page_draws_the_app_scrollbar(server):
     assert "getComputedStyle" in js and "MutationObserver" in js and "ResizeObserver" in js
     assert "data-scroll=\"native\"" in js and "pointerdown" in js and "setPointerCapture" in js
     assert "scrollbar-width: none" in css and "::-webkit-scrollbar" in css and ".mgsb-thumb" in css
+    # the browser's bars are hidden by the style sheet itself (no flash before the script), with
+    # data-scroll="native" and text fields as the exceptions, and there is no overscroll bounce
+    assert ':where(*:not(textarea, select, input, [data-scroll="native"])) { scrollbar-width: none; overscroll-behavior: none; }' in css
+    assert "html, body { overscroll-behavior: none; }" in css
+    # the thumb is measured again when it is used, and a log growing by text is a change too
+    assert "pointerenter" in js and "update(b);  // measure now" in js
+    with urllib.request.urlopen(base + "/topbar.css") as r:  # the document never scrolls: Help and About scroll a .page box
+        assert "body.paged > .page { flex: 1; min-height: 0; overflow: auto;" in r.read().decode()
     # the top bar brings the code to every page; each page links the styles
     with urllib.request.urlopen(base + "/topbar.js") as r:
         assert "import '/scrollbar.js';" in r.read().decode()
@@ -787,6 +795,11 @@ def test_every_page_draws_the_app_scrollbar(server):
         with urllib.request.urlopen(base + page) as r:
             html = r.read().decode()
         assert '<link rel="stylesheet" href="/scrollbar.css">' in html and "from '/topbar.js'" in html, page
+        head = html[: html.index("<body")]
+        assert '<link rel="stylesheet" href="/scrollbar.css">' in head, page  # styled from the first paint
+        if page in ("/help", "/about"):
+            assert '<body class="paged">' in html and '<div class="page" id="page" tabindex="-1">' in html, page
+            assert "position: sticky; top: 0; z-index" not in html, page  # no sticky header over a scrolling document
 
 
 def test_the_scan_is_chosen_from_the_top_bar_on_every_page(server):

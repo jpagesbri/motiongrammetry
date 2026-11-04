@@ -14,7 +14,8 @@ the image with that version, and the About page and `mg --version` show it.
   the scan chooser's list, has the same thin scrollbar in the app's colours, in every browser,
   instead of the browser's own (wide and light in Chrome on Linux, different in Firefox). The thumb
   brightens on hover and can be dragged; clicking the track scrolls by a page. The wheel,
-  trackpad, touch and keyboard scroll as before.
+  trackpad, touch and keyboard scroll as before. The top bar never moves: on Help and About the
+  text scrolls under it, and there is no overscroll bounce any more.
 
 - **Choose the scan from the top bar** (part of #23): the scan chip at the top right opens the
   list of scans on every page, with thumbnails, the stages done and the last run. Picking one

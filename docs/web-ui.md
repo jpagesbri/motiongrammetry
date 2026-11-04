@@ -27,18 +27,29 @@ mg ui --root ~/scans --port 9000
   scans and workspaces page (#24) will get a "Manage scans…" entry at the foot.
 - **Scrollbars** (`static/scrollbar.js`, styled by `scrollbar.css`; `topbar.js` imports it, so
   every page has it): the app draws its own scrollbar, thin and in the app's colours, the same in
-  every browser, on every scroll area (the Scan page's panels, the editor's side panel, Help's
-  contents, the scan chooser's list, the windows, the page itself on Help and About). The thumb
+  every browser, on every scroll area (the Scan page's panels, the editor's side panel, Help's text
+  and contents, About's text and license boxes, the scan chooser's list, the windows). The thumb
   brightens when the pointer is over the area and more over the bar; it can be dragged, and a click
   on the track scrolls a page towards the pointer (held: more pages). The browser still does the
-  scrolling (wheel, trackpad, touch, keys, scrolling to the focused element); only its own bar is
-  hidden (`scrollbar-width: none`, `::-webkit-scrollbar`). Scroll areas are found by themselves:
-  any element whose CSS overflow is `auto` or `scroll`, at load or added later, gets a bar, so a
-  new panel needs nothing more. `data-scroll="native"` keeps the browser's bar on an element; text
-  fields keep theirs. Each bar is a `position: fixed` element inside its area (`.mgsb`), placed
-  over its right and bottom edges and clipped to what of the area shows; it follows content
-  changes, resizes and the page's scrolling (MutationObserver, ResizeObserver, scroll events), and
-  is hidden from screen readers (the area itself stays scrollable by keyboard).
+  scrolling (wheel, trackpad, touch, keys, scrolling to the focused element).
+  - `scrollbar.css`, linked in each page's `<head>`, hides the browser's bars from the first paint
+    (`scrollbar-width: none`, `::-webkit-scrollbar`) on everything except text fields and
+    `data-scroll="native"`, and turns off the overscroll bounce (`overscroll-behavior: none`).
+  - **The document never scrolls.** Scan and Edit are full-window layouts; Help and About are
+    `<body class="paged">`: the top bar, then a `.page` box that scrolls (`topbar.css`). The top bar
+    never moves, and the page's scrollbar starts under it. `.page` takes the focus on load, so Page
+    Down and Space scroll it at once.
+  - Scroll areas are found by themselves: any element whose CSS overflow is `auto` or `scroll`, at
+    load or added later, gets a bar, so a new panel needs nothing more.
+  - Each bar is a `position: fixed` element inside its area (`.mgsb`), placed over its right and
+    bottom edges and clipped to what of the area shows. Inside: whatever covers the area covers the
+    bar, and a click on it is a click inside the area. Fixed: it takes no place in the layout (grids,
+    flex rows, gaps, sticky elements are untouched).
+  - It is measured again on content changes (MutationObserver, text included), size changes
+    (ResizeObserver on the area and its children), images loading, window resizes, scrolling of an
+    outer area, when the pointer reaches the bar, and at every step of a drag, so the end of the
+    track is always the end of the content. It is hidden from screen readers; the area itself stays
+    scrollable by keyboard.
 - **About** (`/about`): the third-party software, AI models and Python packages the app uses, each
   with its license text (`credits.py`: Python packages are read from the installed distributions,
   the rest is listed there with texts in `licenses/`), what those licenses ask (VGGT-1B weights are

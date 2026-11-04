@@ -11,11 +11,10 @@
     --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   }
   * { box-sizing: border-box; }
-  html { scroll-behavior: smooth; scroll-padding-top: 60px; }
   body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif; }
-  header { position: sticky; top: 0; z-index: 5; }
+  .page { scroll-behavior: smooth; scroll-padding-top: 16px; }
   .wrap { display: grid; grid-template-columns: 250px minmax(0, 1fr); max-width: 1320px; margin: 0 auto; }
-  nav.toc { position: sticky; top: 44px; align-self: start; height: calc(100vh - 44px); overflow: auto; padding: 18px 10px 30px 18px;
+  nav.toc { position: sticky; top: 0; align-self: start; height: calc(100vh - 44px); height: calc(100dvh - 44px); overflow: auto; padding: 18px 10px 30px 18px;
     border-right: 1px solid var(--line); font-size: 14px; }
   nav.toc a { display: block; color: var(--muted); text-decoration: none; padding: 3px 0; }
   nav.toc a:hover, nav.toc a.on { color: var(--text); }
@@ -51,8 +50,9 @@
 <link rel="stylesheet" href="/topbar.css">
 <link rel="stylesheet" href="/scrollbar.css">
 </head>
-<body>
+<body class="paged">
 <header class="topbar"></header>  <!-- written by topbar.js -->
+<div class="page" id="page" tabindex="-1">  <!-- what scrolls, under the top bar (topbar.css) -->
 <div class="wrap">
 <nav class="toc" id="toc"></nav>
 <main>
@@ -455,12 +455,14 @@ uv run mg ui --port 8765               # this web UI</pre>
 </table>
 </main>
 </div>
+</div>
 <script type="module">
 const $ = (id) => document.getElementById(id);
 const esc = (t) => String(t).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
 // the top bar, with the scan last opened (or ?scan=) kept in the Scan / Edit links
 import { mountTopbar } from '/topbar.js';
 mountTopbar('help');
+$('page').focus({ preventScroll: true });  // the keys (Page Down, Space, arrows) scroll the text from the start
 
 // table of contents from the headings, with the section in view highlighted
 let io = null;
@@ -471,7 +473,7 @@ function buildToc() {
   io?.disconnect();
   io = new IntersectionObserver((entries) => entries.forEach((e) => {
     if (e.isIntersecting) links.forEach((a) => a.classList.toggle('on', a.getAttribute('href') === '#' + e.target.id));
-  }), { rootMargin: '-60px 0px -70% 0px' });
+  }), { root: $('page'), rootMargin: '-16px 0px -70% 0px' });
   heads.forEach((h) => io.observe(h));
 }
 buildToc();
