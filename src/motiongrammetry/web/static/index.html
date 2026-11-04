@@ -22,7 +22,6 @@
   .right { display: flex; flex-direction: column; min-width: 0; }
   /* Scan: a Run tab (assisted or manual) and a Preview tab (3D, frames and masks, files) */
   .work { grid-area: work; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
-  .gbar { display: flex; align-items: center; gap: 2px; padding: 0 12px; border-bottom: 1px solid var(--line); background: var(--panel); flex: none; }
   .gnote { margin-left: 14px; font-size: 12px; }
   .splitchk { margin-left: auto; font-size: 12px; }
   .splitchk[hidden] { display: none; }
@@ -399,7 +398,7 @@
 
 
   <div class="work" id="work">
-    <div class="gbar">
+    <div class="pagebar">  <!-- the page's tabs (modes.css), as on Edit -->
       <div class="modes tabs" id="gTabs" aria-label="Run or Preview">
         <button data-value="run" id="tabRun" aria-controls="paneRun" title="run the pipeline, assisted or not">Run <span class="pip" id="runPip" hidden></span></button>
         <button data-value="preview" id="tabPreview" aria-controls="panePreview" title="the 3D result, the keyframes and their masks, the files">Preview <span class="pip" id="pvPip" hidden></span></button>

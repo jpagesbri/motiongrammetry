@@ -56,9 +56,11 @@ mg ui --root ~/scans --port 9000
   **History**; on Edit: **Sculpt mesh** / **Paint texture** and the view's **3D** / **3D + texture**
   / **Texture**. (Options of one view, such as the frame viewer's Photo / Overlay / … or the density's
   Relative / Absolute, stay small `.seg` button rows: they change a setting, not what is shown.)
-  - One control, two looks. `.tabs`, a page's own tabs (Run / Preview across the Scan page, Sculpt
-    mesh / Paint texture across the top of the editor's side panel): words in a bar, the chosen one
-    underlined in the accent colour. The default, a mode inside a page: a segmented control, the
+  - One control, two looks. `.tabs`, a page's own tabs (Run / Preview on Scan, Sculpt mesh / Paint
+    texture on Edit): words, the chosen one underlined in the accent colour, always in a `.pagebar`,
+    the bar across the page's work area under the top bar, the same place on every page. It never
+    scrolls away (the editor's side panel scrolls, so the tabs are not in it), and a page can add its
+    own items after the tabs (Scan: the orientation note, side by side). The default, a mode inside a page: a segmented control, the
     chosen option raised and underlined. `.wide` shares the row. Both behave the same.
   - The page writes buttons with `data-value` in a `.modes` element and calls
     `modeControl(el, { onSelect })`, which returns `select(v)`, `all(on)` (side by side: both tabs

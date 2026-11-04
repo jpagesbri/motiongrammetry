@@ -20,5 +20,10 @@
 .modes.tabs > button { padding: 11px 16px 9px; border-radius: 0; border-bottom: 2px solid transparent;
   font-size: 13px; font-weight: 600; letter-spacing: .02em; }
 .modes.tabs > button[aria-selected="true"] { background: none; box-shadow: none; border-bottom-color: var(--accent); }
+/* The bar that holds a page's tabs, across the page's work area under the top bar, in the same place on
+   every page (Scan: Run / Preview; Edit: Sculpt mesh / Paint texture). It never scrolls away, and the
+   page can add its own items after the tabs (Scan: the orientation note, side by side). */
+.pagebar { display: flex; align-items: center; gap: 2px; min-width: 0; padding: 0 12px; border-bottom: 1px solid var(--line);
+  background: var(--panel); flex: none; box-sizing: border-box; }
 .modes.wide { display: flex; }
 .modes.wide > button { flex: 1; min-width: 0; padding-left: 6px; padding-right: 6px; }
