@@ -25,6 +25,12 @@ header.topbar .scanchip .k { color: var(--muted); font-size: 11px; text-transfor
 header.topbar .scanchip .v { font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
 header.topbar .scanchip.none .v { color: var(--muted); font-weight: 400; }
 header.topbar .scanchip .caret { color: var(--muted); font-size: 11px; }
+/* Export… beside the chip: the Export window (export.js) for the scan in the chip, on every page */
+header.topbar .topexport { flex: none; padding: 3px 11px; border: 1px solid var(--line); border-radius: 999px; background: none;
+  color: var(--accent); font: inherit; font-weight: 600; white-space: nowrap; cursor: pointer; }
+header.topbar .topexport:hover:not(:disabled) { border-color: var(--accent); background: var(--panel2); }
+header.topbar .topexport:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+header.topbar .topexport:disabled { color: var(--muted); opacity: .55; cursor: default; }
 header.topbar a.gh { display: inline-flex; align-items: center; color: var(--muted); padding: 4px; border-radius: 5px; }
 header.topbar a.gh:hover { color: var(--text); background: var(--panel2); }
 /* GitHub's mark (Octicons mark-github, MIT), drawn in the text colour: the one copy of it */

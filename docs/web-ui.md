@@ -25,6 +25,26 @@ mg ui --root ~/scans --port 9000
   video…** on the Scan page (the page adds its own items). A new or copied scan opens on the Scan
   page. Keyboard: arrows, Enter, → / ← for a scan's menu, Esc; a click outside closes it. The full
   scans and workspaces page (#24) will get a "Manage scans…" entry at the foot.
+- **Export, on every page** (`static/export.js`, styled by `export.css`): the Export window is one
+  module that every page uses. The top bar has **Export…** beside the scan chip (disabled when no
+  scan is chosen: Help and About use the scan last opened), and each scan's **⋯** menu has
+  **Export…** for that scan. On the Scan page, the Preview's Export panel and the assisted run's last
+  step open the same window. It reads the scan's `/state` afresh each time it opens, so it is right
+  on any page.
+  - A scan with nothing to export yet gets a short window that says so, with **Go to Run** (on the
+    Scan page it switches to that scan's Run tab; elsewhere it links to `/?tab=run#scan`).
+  - On Edit, with edits not saved yet, the window says at the top that the export is made from the
+    saved files only and leaves out what changed since the last save. It never exports the editor's
+    unsaved state.
+  - A page tells it what it can do through `exportHooks({ unsaved, orient, run, exported })`: Edit
+    gives `unsaved` (sculpt edits, paint); Scan gives `orient` (fix the orientation in the Preview),
+    `run` and `exported` (refresh the Export panel's print check). Without `orient`, "fix the
+    orientation…" links to the Scan page (`/?open=orient#scan`).
+  - The 3D preview loads three.js, its loaders, `projection.js` (the Persp / Ortho switch, shared
+    with the Scan preview and the editor) and the view cube only when it first shows a file, so Help
+    and About load them only then (each page has the import map).
+  - The choices are remembered in this browser as before: contents and formats (`mg.export`) and
+    each scan's placement and print settings (`mg.export.<scan>`).
 - **Scrollbars** (`static/scrollbar.js`, styled by `scrollbar.css`; `topbar.js` imports it, so
   every page has it): the app draws its own scrollbar, thin and in the app's colours, the same in
   every browser, on every scroll area (the Scan page's panels, the editor's side panel, Help's text

@@ -1,0 +1,69 @@
+/* The Export window (export.js), the same on every page. Its classes start with ex- and its rules
+   are under .ex-modal, so the pages' own styles (Help's larger text, the editor's buttons) don't
+   change it. The pages define the colour variables it uses. .ex-sec is also the section heading of
+   the Scan page's Export panel. */
+.ex-sec { margin: 14px 0 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.ex-sec:first-child { margin-top: 2px; }
+
+.ex-modal { position: fixed; inset: 0; z-index: 65; background: rgba(5,7,10,.55); display: grid; place-items: center;
+  font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--text); }
+.ex-modal[hidden], .ex-modal [hidden] { display: none !important; }
+.ex-modal *, .ex-modal *::before, .ex-modal *::after { box-sizing: border-box; }
+.ex-modal button, .ex-modal input, .ex-modal select { font: inherit; color: inherit; }
+.ex-modal .muted { color: var(--muted); }
+.ex-modal p { color: inherit; }
+.ex-win { width: min(1040px, 94vw); height: min(760px, 92vh); background: var(--panel); border: 1px solid var(--line);
+  border-radius: 12px; box-shadow: 0 20px 60px rgba(0,0,0,.6); display: flex; flex-direction: column; overflow: hidden; }
+.ex-win.small { width: min(560px, 94vw); height: auto; }
+.ex-head { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+.ex-x { margin-left: auto; background: none; border: 0; color: var(--muted); cursor: pointer; font-size: 16px; }
+.ex-x:hover { color: var(--text); }
+.ex-body { flex: 1; display: grid; grid-template-columns: 360px 1fr; grid-template-rows: minmax(0, 1fr); min-height: 0; }
+.ex-modal label.row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 6px 0; }
+.ex-modal input[type=number], .ex-modal select { background: var(--bg); border: 1px solid var(--line); border-radius: 5px;
+  padding: 5px 7px; min-width: 0; }
+.ex-modal input[type=checkbox] { margin: 3px; }
+.ex-modal .btns { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.ex-modal .btn { background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 6px 12px; cursor: pointer;
+  color: var(--text); text-decoration: none; font-size: 13px; line-height: 1.4; }
+.ex-modal .btn:hover { border-color: var(--accent); }
+.ex-modal .btn.primary { background: var(--accent); border-color: var(--accent); color: #061222; font-weight: 600; }
+.ex-modal .btn:disabled { opacity: .45; cursor: default; }
+.ex-modal .opt-help { font-size: 11px; color: var(--muted); margin: -4px 0 6px; }
+.ex-modal .opt-help a { color: var(--accent); cursor: pointer; text-decoration: none; }
+.ex-modal .diag { font-size: 12px; margin-top: 4px; padding-left: 14px; position: relative; }
+.ex-modal .diag::before { content: ""; position: absolute; left: 2px; top: 6px; width: 6px; height: 6px; border-radius: 50%; }
+.ex-modal .diag.error::before { background: var(--bad); } .ex-modal .diag.warning::before { background: var(--warn); }
+.ex-modal .diag.info::before { background: var(--accent); }
+.ex-modal .diag .h { color: var(--muted); display: block; }
+
+.ex-form { display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--line); }
+.ex-scroll { flex: 1; min-height: 0; overflow: auto; padding: 12px 14px 8px; }
+.ex-foot { flex: none; max-height: 45%; overflow: auto; padding: 10px 14px 12px; border-top: 1px solid var(--line); }
+.ex-foot .btns { margin-top: 0; }
+.ex-form select, .ex-form input[type=number] { width: 150px; }
+.ex-preview { position: relative; min-width: 0; background: var(--bg); }
+.ex-preview canvas { display: block; width: 100%; height: 100%; }
+.ex-empty { position: absolute; inset: 0; display: grid; place-items: center; }
+.ex-item { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px; padding: 5px 0; }
+.ex-item + .ex-item { border-top: 1px solid var(--line); }
+.ex-item label { cursor: pointer; line-height: 1.3; }
+.ex-item small { display: block; color: var(--muted); font-size: 11px; }
+.ex-item.off label { cursor: default; opacity: .5; }
+.ex-item .stale { color: var(--warn); font-size: 11px; }
+.ex-item .ex-state { margin-left: 6px; font-size: 11px; }
+.ex-item .ex-state.ready { color: var(--ok); } .ex-item .ex-state.outdated { color: var(--warn); }
+.ex-item .ex-one { width: 128px; padding-left: 9px; color: var(--muted); font-size: 12px; }
+.ex-item.off .ex-one { opacity: .5; }
+.ex-form .ex-item select { width: 128px; }
+.ex-files a { display: grid; grid-template-columns: 1fr auto; gap: 8px; padding: 3px 0; color: var(--accent); font-size: 12px; text-decoration: none; }
+.ex-files a span { color: var(--muted); font-family: var(--mono); font-size: 11px; }
+.ex-pick { position: absolute; top: 10px; left: 10px; z-index: 2; width: auto !important; }
+/* edits on the page not saved yet (Edit): the export is made from the saved files */
+.ex-unsaved { border: 1px solid var(--warn); background: rgba(240,180,41,.1); border-radius: 8px; padding: 8px 10px; margin-bottom: 8px;
+  font-size: 12px; line-height: 1.45; }
+.ex-unsaved b { color: var(--warn); display: block; margin-bottom: 2px; }
+/* nothing to export yet, or the scan could not be read */
+.ex-none { padding: 14px 18px 18px; }
+.ex-none p { margin: 6px 0 10px; line-height: 1.5; }
+.ex-err { color: var(--bad); }
