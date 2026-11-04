@@ -145,6 +145,9 @@ export function closeExport() {
   if (!modal || modal.hidden) return;
   modal.hidden = true; openSeq++;
   opener?.focus?.({ preventScroll: true }); opener = null;
+  // Opened from a scan's ⋯ menu (gone once picked), the focus would stay on the hidden ✕, and the
+  // window's key handler would keep every key from the page until a click.
+  if (modal.contains(document.activeElement)) document.activeElement.blur();
 }
 
 /** Open the Export window for scan `name` (its state is read afresh: it may have changed on another page). */

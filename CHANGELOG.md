@@ -177,6 +177,11 @@ the image with that version, and the About page and `mg --version` show it.
 
 ### Fixed
 
+- **The page's keys after closing the help or Export window**: the help window opened with the `?`
+  key, or the Export window opened from a scan's ⋯ menu, left the focus on its hidden ✕ when closed
+  with Esc, and kept every key from the page until a click (the editor's tool keys, Ctrl+Z, `W`, the
+  arrows). Closing either window now gives the page its keys back at once. (Found by the new browser
+  tests.)
 - **`mg export --out` into a folder that isn't there yet** (#50): `--out exports/` wrote a file
   named `exports`, and the next export replaced it without a word. Now a trailing `/`, an existing
   folder, or a new name without an extension is a folder: it is made (with its parents) and each
