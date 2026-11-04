@@ -10,15 +10,93 @@ header.topbar .screens a { padding: 4px 10px; border-radius: 5px; color: var(--m
 header.topbar .screens a:hover { color: var(--text); }
 header.topbar .screens a.on { color: var(--text); background: var(--panel2); }
 header.topbar .topstatus { margin-left: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-/* The current scan: apart from the pages, on the right, as a chip (it will become the scan chooser) */
-header.topbar .scanchip { display: inline-flex; align-items: center; gap: 6px; max-width: 260px; padding: 3px 10px 3px 8px;
-  border: 1px solid var(--line); border-radius: 999px; background: var(--panel2); color: var(--text); white-space: nowrap; }
-header.topbar .scanchip[hidden] { display: none; }
+/* The current scan: apart from the pages, on the right, as a chip that opens the scan chooser */
+header.topbar .scanchip { display: inline-flex; align-items: center; gap: 6px; max-width: 280px; padding: 3px 9px 3px 8px;
+  border: 1px solid var(--line); border-radius: 999px; background: var(--panel2); color: var(--text); white-space: nowrap;
+  font: inherit; cursor: pointer; }
+header.topbar .scanchip:hover, header.topbar .scanchip[aria-expanded="true"] { border-color: var(--accent); }
+header.topbar .scanchip:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 header.topbar .scanchip .k { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+header.topbar .scanchip .t { width: 26px; height: 19px; object-fit: cover; border-radius: 3px; background: var(--bg); flex: none; }
+header.topbar .scanchip .t[hidden] { display: none; }
 header.topbar .scanchip .v { font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
+header.topbar .scanchip.none .v { color: var(--muted); font-weight: 400; }
+header.topbar .scanchip .caret { color: var(--muted); font-size: 11px; }
 header.topbar a.gh { display: inline-flex; align-items: center; color: var(--muted); padding: 4px; border-radius: 5px; }
 header.topbar a.gh:hover { color: var(--text); background: var(--panel2); }
 /* GitHub's mark (Octicons mark-github, MIT), drawn in the text colour: the one copy of it */
 header.topbar a.gh::before { content: ""; width: 18px; height: 18px; background: currentColor;
   --gh: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.27-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z'/></svg>");
   -webkit-mask: var(--gh) center / contain no-repeat; mask: var(--gh) center / contain no-repeat; }
+
+/* The scan chooser (scanchooser.js): the list under the chip, a scan's ⋯ menu, the card beside the
+   list, and its windows (New scan, Duplicate, Delete). Prefixed sc- so the pages' own styles keep out. */
+.sc-panel, .sc-card, .sc-modal { font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--text); }
+.sc-panel { position: fixed; z-index: 60; width: min(380px, calc(100vw - 16px)); max-height: min(70vh, 640px); display: flex; flex-direction: column;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 12px 34px rgba(0,0,0,.5); }
+.sc-panel[hidden], .sc-card[hidden], .sc-modal[hidden] { display: none; }
+.sc-list { overflow: auto; padding: 6px; min-height: 0; }
+.sc-row { position: relative; display: flex; align-items: stretch; border-radius: 7px; }
+.sc-row:hover, .sc-row:focus-within { background: var(--panel2); }
+.sc-row.on { box-shadow: inset 0 0 0 1px var(--accent); background: var(--panel2); }
+.sc-pick { flex: 1; min-width: 0; display: flex; gap: 10px; align-items: center; padding: 6px; background: none; border: 0;
+  color: inherit; font: inherit; text-align: left; cursor: pointer; border-radius: 7px; }
+.sc-pick:focus-visible, .sc-more:focus-visible, .sc-new:focus-visible, .sc-menu button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.sc-pick img, .sc-pick .noimg { width: 64px; height: 48px; object-fit: cover; border-radius: 5px; background: var(--bg); flex: none; }
+.sc-pick .noimg { border: 1px dashed var(--line); box-sizing: border-box; }
+.sc-text { min-width: 0; flex: 1; }
+.sc-name { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.sc-name b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sc-text small { display: block; color: var(--muted); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sc-text small.bad { color: var(--bad); }
+.sc-panel .dots { display: inline-flex; gap: 3px; flex: none; }
+.sc-panel .dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--line); }
+.sc-panel .dots i.on { background: var(--ok); }
+.sc-run { font-size: 11px; color: var(--accent); flex: none; }
+.sc-more { flex: none; width: 30px; background: none; border: 0; color: var(--muted); font-size: 16px; cursor: pointer; border-radius: 7px; }
+.sc-more:hover, .sc-more[aria-expanded="true"] { color: var(--text); background: var(--line); }
+.sc-menu { position: absolute; z-index: 2; right: 4px; top: calc(100% - 4px); min-width: 190px; padding: 4px; background: var(--panel2);
+  border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 10px 26px rgba(0,0,0,.5); }
+.sc-menu button { display: block; width: 100%; padding: 6px 10px; background: none; border: 0; color: var(--text); font: inherit;
+  text-align: left; cursor: pointer; border-radius: 5px; }
+.sc-menu button:hover:not(:disabled) { background: var(--line); }
+.sc-menu button:disabled { color: var(--muted); opacity: .6; cursor: default; }
+.sc-menu button.danger { color: var(--bad); }
+.sc-menu hr { border: 0; border-top: 1px solid var(--line); margin: 4px 2px; }
+.sc-empty { padding: 14px 10px; color: var(--muted); }
+.sc-foot { border-top: 1px solid var(--line); padding: 6px; display: flex; gap: 6px; }
+.sc-new { flex: 1; padding: 7px 10px; background: none; border: 0; color: var(--accent); font: inherit; font-weight: 600; text-align: left;
+  cursor: pointer; border-radius: 6px; }
+.sc-new:hover { background: var(--panel2); }
+.sc-card { position: fixed; z-index: 61; width: 260px; background: var(--panel); border: 1px solid var(--line); border-radius: 9px; padding: 8px;
+  box-shadow: 0 8px 28px rgba(0,0,0,.45); pointer-events: none; font-size: 12px; }
+.sc-card img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 6px; display: block; margin-bottom: 6px; background: var(--bg); }
+.sc-card .muted, .sc-modal .muted { color: var(--muted); }
+.sc-card .small { font-size: 11px; word-break: break-all; }
+.sc-modal { position: fixed; inset: 0; z-index: 70; background: rgba(5,7,10,.55); display: grid; place-items: center; }
+.sc-win { width: min(560px, 94vw); max-height: 92vh; overflow: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+  box-shadow: 0 20px 60px rgba(0,0,0,.6); }
+.sc-head { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+.sc-x { margin-left: auto; background: none; border: 0; color: var(--muted); cursor: pointer; font-size: 16px; }
+.sc-x:hover { color: var(--text); }
+.sc-body { padding: 14px 18px 18px; }
+.sc-body p { margin: 6px 0 10px; line-height: 1.5; }
+.sc-body code { font-family: var(--mono); }
+.sc-field { display: flex; flex-direction: column; gap: 4px; margin: 8px 0; color: var(--muted); font-size: 12px; }
+.sc-field.inline { flex-direction: row; align-items: center; gap: 10px; color: var(--text); font-size: 13px; }
+.sc-field input[type=text] { width: 100%; box-sizing: border-box; background: var(--bg); border: 1px solid var(--line); border-radius: 5px;
+  padding: 6px 8px; color: var(--text); font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+.sc-field.inline input[type=text] { width: 200px; }
+.sc-field input[type=text]:focus { outline: none; border-color: var(--accent); }
+.sc-check { display: flex; align-items: center; gap: 6px; margin: 6px 0; color: var(--muted); }
+.sc-btns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.sc-btn { background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 6px 12px; cursor: pointer; color: var(--text);
+  font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+.sc-btn:hover:not(:disabled) { border-color: var(--accent); }
+.sc-btn:disabled { opacity: .45; cursor: default; }
+.sc-btn.primary { background: var(--accent); border-color: var(--accent); color: #061222; font-weight: 600; }
+.sc-btn.danger-solid { background: var(--bad); border-color: var(--bad); color: #fff; font-weight: 600; }
+.sc-body progress { width: 100%; margin-top: 10px; }
+.sc-body progress[hidden] { display: none; }
+.sc-help { margin-top: 10px; font-size: 12px; color: var(--muted); line-height: 1.45; }
+.sc-err { color: var(--bad); white-space: pre-wrap; min-height: 1em; margin-top: 8px; }

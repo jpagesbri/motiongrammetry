@@ -68,20 +68,6 @@
   .planebar { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); display: flex; gap: 8px; align-items: center;
     background: rgba(22,26,33,.94); border: 1px solid var(--warn); border-radius: 8px; padding: 6px 10px; }
   .center.busy { background: rgba(15,17,21,.55); pointer-events: auto; color: var(--text); font-size: 14px; }
-  .scanpick { display: flex; align-items: center; gap: 8px; width: 100%; background: var(--panel2); border: 1px solid var(--line);
-    border-radius: 7px; padding: 5px 8px; cursor: pointer; text-align: left; }
-  .scanpick:hover { border-color: var(--accent); }
-  .scanpick img { width: 44px; height: 33px; object-fit: cover; border-radius: 4px; background: var(--bg); }
-  .scanpick span:nth-of-type(1) { flex: 1; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .scanpanel { position: fixed; z-index: 30; left: 12px; top: 96px; width: 300px; max-height: 70vh; overflow: auto;
-    background: rgba(22,26,33,.97); border: 1px solid var(--line); border-radius: 10px; padding: 6px;
-    box-shadow: 0 10px 30px rgba(0,0,0,.5); }
-  .scanpanel .item { display: flex; gap: 9px; align-items: center; padding: 6px; border-radius: 7px; cursor: pointer; }
-  .scanpanel .item:hover { background: var(--panel2); }
-  .scanpanel .item.on { outline: 1px solid var(--accent); }
-  .scanpanel img, .scanpanel .noimg { width: 72px; height: 54px; object-fit: cover; border-radius: 5px; background: var(--bg); flex: none; }
-  .scanpanel .noimg { border: 1px dashed var(--line); }
-  .scanpanel small { display: block; color: var(--muted); font-size: 11px; }
   .center { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); pointer-events: none; text-align: center; }
   /* modals: as on the Scan page (Replace the video, Delete) */
   .modal { position: fixed; inset: 0; z-index: 40; background: rgba(5,7,10,.55); display: grid; place-items: center; }
@@ -121,7 +107,6 @@
 </script>
 </head>
 <body>
-<div class="scanpanel" id="scanPanel" hidden></div>
 <div class="modal" id="sanModal" hidden>
   <div class="win">
     <div class="win-head"><b>Sanitize mesh</b><span class="muted" id="sanScan"></span><button class="x" id="sanClose" title="close (Esc)">✕</button></div>
@@ -158,9 +143,8 @@
 
   <aside>
     <section>
-      <h2>Scan</h2>
-      <button class="scanpick" id="scanPick" title="switch scan"><img id="scanThumb" alt=""><span id="scanName">…</span><span class="muted">▾</span></button>
-      <div class="modes" style="margin-top:10px">
+      <h2>Mode</h2>  <!-- the scan is chosen in the top bar -->
+      <div class="modes">
         <button data-mode="sculpt" title="reshape the clean mesh (before texturing)">Sculpt mesh</button>
         <button data-mode="paint" title="paint the texture of the textured model">Paint texture</button>
       </div>
@@ -282,8 +266,14 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { MeshBVH, acceleratedRaycast } from 'three-mesh-bvh';
 import * as SMesh from '/sculpt-mesh.js';  // the sculpt mesh's state and density operations
-import { mountTopbar, setScan } from '/topbar.js';
-mountTopbar('edit');
+import { mountTopbar, setScan, updateScans } from '/topbar.js';
+// The scan chooser in the top bar: picking a scan switches the editor to it (the URL's #scan,
+// see hashchange below, asks first about unsaved edits). Deleting the scan being edited leaves the
+// editor for the first scan left; a new or copied scan opens on the Scan page, to be run.
+mountTopbar('edit', {
+  open: (name) => { location.hash = '#' + encodeURIComponent(name); },
+  deleted: (name) => { if (name === ws) { S.dirty = P.dirty = false; location.replace('/edit'); } },
+});
 
 const $ = (id) => document.getElementById(id);
 async function api(url, opts = {}) {
@@ -555,31 +545,11 @@ const gltf = new GLTFLoader();
 const loadGLB = (url) => new Promise((ok, bad) => gltf.load(url, ok, undefined, bad));
 
 let scans = [];
-const thumbUrl = (w) => `/api/workspaces/${encodeURIComponent(w.name)}/preview.jpg?v=${w.preview || 'k'}`;
-async function loadWorkspaces() {
+async function loadWorkspaces() {  // no scan in the URL: the first one (the most recently changed)
   scans = await api('/api/workspaces');
+  updateScans(scans);
   if (!ws && scans.length) ws = scans[0].name;
-  const w = scans.find((x) => x.name === ws);
-  $('scanName').textContent = ws || 'no scans';
-  $('scanThumb').hidden = !(w && w.preview != null);
-  if (w && w.preview != null) $('scanThumb').src = thumbUrl(w);
 }
-function renderScanPanel() {
-  const fmtN = (n) => n >= 1e6 ? (n / 1e6).toFixed(2) + 'M' : n >= 1e3 ? (n / 1e3).toFixed(0) + 'k' : String(n);
-  $('scanPanel').innerHTML = scans.map((w) => `<div class="item ${w.name === ws ? 'on' : ''}" data-scan="${w.name}">
-      ${w.preview != null ? `<img src="${thumbUrl(w)}" alt="" loading="lazy">` : '<span class="noimg"></span>'}
-      <div><b>${w.name}</b><small>${[w.faces && fmtN(w.faces) + ' faces', w.textured && 'textured', w.custom && 'edited']
-        .filter(Boolean).join(' · ') || 'no mesh yet'}</small></div></div>`).join('') || '<div class="muted">no scans</div>';
-  $('scanPanel').querySelectorAll('[data-scan]').forEach((el) => el.addEventListener('click', () => {
-    $('scanPanel').hidden = true;
-    if (el.dataset.scan !== ws) location.hash = '#' + encodeURIComponent(el.dataset.scan);  // hashchange reloads
-  }));
-}
-$('scanPick').addEventListener('click', (e) => {
-  e.stopPropagation();
-  if ($('scanPanel').hidden) { renderScanPanel(); $('scanPanel').hidden = false; } else $('scanPanel').hidden = true;
-});
-addEventListener('click', (e) => { if (!$('scanPanel').hidden && !$('scanPanel').contains(e.target)) $('scanPanel').hidden = true; });
 // The URL names the scan being edited: follow it if it changes.
 addEventListener('hashchange', () => {
   const next = decodeURIComponent(location.hash.slice(1));
@@ -2779,7 +2749,7 @@ bindSlider('hardness', 'hardness', 0.01, (v) => Math.round(v * 100) + '%');
 renderTools();
 try {
   await loadWorkspaces();
-  if (ws) await openWorkspace(); else $('center').textContent = 'No scans yet: create one on the Scan page.';
+  if (ws) await openWorkspace(); else $('center').textContent = 'No scans yet: make one with New scan… under SCAN, top right.';
 } catch (e) { fail(e); $('center').textContent = e.message; }
 </script>
 </body>

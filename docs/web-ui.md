@@ -11,9 +11,20 @@ mg ui --root ~/scans --port 9000
 - **Top bar** (`static/topbar.js`, styled by `topbar.css`): the same on every page, written by one
   module that names and links the pages (**Scan**, **Edit**, **Help**, **About**: renaming one is
   one line there) and the GitHub repository. The current scan sits apart on the right, as a chip
-  marked "scan". Help and About have no scan of their own and show the one last opened on Scan or
-  Edit (browser storage, `mg.scan`), or none; the Scan and Edit links keep that scan. Between the
-  pages and the chip, the page's status line (the run on Scan, unsaved edits on Edit).
+  marked "scan" with its thumbnail. Help and About have no scan of their own and show the one last
+  opened on Scan or Edit (browser storage, `mg.scan`), or none; the Scan and Edit links keep that
+  scan. Between the pages and the chip, the page's status line (the run on Scan, unsaved edits on
+  Edit).
+- **Scan chooser** (`static/scanchooser.js`, opened by the chip on every page): the scans with a
+  thumbnail, the stages done (dots), what they hold, the last run (or "running"), and a larger card
+  on hover. Picking one hands it to the page through `mountTopbar(id, hooks)`: Scan selects it,
+  Edit switches to it (through the URL's `#scan`, which asks first about unsaved edits), Help and
+  About only remember it for their links, since they are read beside a working page. At its foot,
+  **New scan…** (name, local video path or upload, as the old left bar's form). Each scan's **⋯**
+  menu has **Duplicate…** and **Delete…** on every page, plus **Upload a video…** / **Replace the
+  video…** on the Scan page (the page adds its own items). A new or copied scan opens on the Scan
+  page. Keyboard: arrows, Enter, → / ← for a scan's menu, Esc; a click outside closes it. The full
+  scans and workspaces page (#24) will get a "Manage scans…" entry at the foot.
 - **About** (`/about`): the third-party software, AI models and Python packages the app uses, each
   with its license text (`credits.py`: Python packages are read from the installed distributions,
   the rest is listed there with texts in `licenses/`), what those licenses ask (VGGT-1B weights are
@@ -39,13 +50,13 @@ mg ui --root ~/scans --port 9000
   Preview or another scan never stops a run). The last step, **Place your model**, checks the
   orientation. It remembers where it was per scan (browser storage).
 - **Scans** (a scan is one video and everything made from it; on disk a folder under
-  `workspaces/`): listed with a thumbnail (a snapshot of the 3D view taken when a run produces a
-  mesh, a keyframe until then), keyframes, faces and last activity; hover for a larger card.
-- **Manual** (Run tab) and the scan list: create a scan from a local video path or an upload, tick the stages to run,
+  `workspaces/`): listed in the scan chooser with a thumbnail (a snapshot of the 3D view taken when
+  a run produces a mesh, a keyframe until then), keyframes, faces and last activity.
+- **Manual** (Run tab) and the scan chooser: create a scan from a local video path or an upload, tick the stages to run,
   pick a preset, set basic or advanced options (generated from `options.py`), **Check** (pre-flight
   only), run and cancel (stages run as `mg` subprocesses). Shows the disk the depth maps will need.
   When a scan has both an MVS and a VGGT mesh, **Clean from** picks which one is carved.
-- **Duplicate scan**: a new scan with the same keyframes and masks (optionally the SfM/MVS
+- **Duplicate** (a scan's ⋯ menu): a new scan with the same keyframes and masks (optionally the SfM/MVS
   results too; copy-on-write on btrfs/XFS) to try other settings or VGGT without touching the
   original. VGGT writes its own cameras, so running it where SfM cameras exist fails pre-flight
   with a pointer to this (or `force`).

@@ -764,8 +764,40 @@ def test_every_page_has_the_one_top_bar(server):
     for page, pid in [("/", "scan"), ("/edit", "edit"), ("/help", "help"), ("/about", "about")]:
         with urllib.request.urlopen(base + page) as r:
             html = r.read().decode()
-        assert '<header class="topbar"></header>' in html and f"mountTopbar('{pid}')" in html, page
+        assert '<header class="topbar"></header>' in html and re.search(rf"mountTopbar\('{pid}'[,)]", html), page
         assert 'class="screens"' not in html and "Generate" not in html and "Edit &amp; paint" not in html, page
+
+
+def test_the_scan_is_chosen_from_the_top_bar_on_every_page(server):
+    base, _ = server
+    with urllib.request.urlopen(base + "/scanchooser.js") as r:
+        assert r.headers["Content-Type"].startswith("text/javascript")
+        chooser = r.read().decode()
+    with urllib.request.urlopen(base + "/topbar.js") as r:
+        bar = r.read().decode()
+    # the chip is a button that opens the chooser, written once for all pages
+    assert '<button class="scanchip' in bar and "import { initChooser, chooserScan } from '/scanchooser.js'" in bar
+    # what the Scan page's left bar offered lives in the chooser: the list, New scan, Duplicate, Delete
+    for text in ["+ New scan…", "'Duplicate…'", "'Delete…'", "Upload video…", "include SfM / MVS results", "Delete for good"]:
+        assert text in chooser, text
+    for call_ in ["post('/api/workspaces', body)", "/duplicate`", "/delete`", "/size`", "/video?name="]:
+        assert call_ in chooser, call_
+    assert "Escape" in chooser and "ArrowDown" in chooser  # keyboard
+    pages = {}
+    for page in ["/", "/edit", "/help", "/about"]:
+        with urllib.request.urlopen(base + page) as r:
+            pages[page] = r.read().decode()
+    # the old selectors are gone: the Scan page's left bar and the editor's own dropdown
+    scan, edit = pages["/"], pages["/edit"]
+    for gone in ["<aside", 'id="wsList"', 'id="newName"', 'id="createBtn"', 'id="dupBtn"', 'id="delModal"', 'id="scanCard"']:
+        assert gone not in scan, gone
+    assert 'id="scanPick"' not in edit and 'id="scanPanel"' not in edit
+    # each page says what picking a scan does there; the Scan page adds the video upload to a scan's menu
+    assert "mountTopbar('scan', {" in scan and "open: (name) => select(name)" in scan and "Replace the video…" in scan
+    assert 'id="upload"' in scan and 'id="repModal"' in scan
+    assert "mountTopbar('edit', {" in edit and "location.hash = '#' + encodeURIComponent(name)" in edit
+    assert "Discard unsaved edits?" in edit  # switching scans still asks first
+    assert "mountTopbar('help');" in pages["/help"] and "New scan…" in pages["/help"]
 
 
 def test_about_lists_third_party_software_with_licenses(server):

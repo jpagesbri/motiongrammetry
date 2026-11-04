@@ -125,7 +125,7 @@ Docker for development are in [docs/install.md](docs/install.md).
 
 ## Usage
 
-Open http://127.0.0.1:8765. On the **Scan** page, create a **New scan** and upload your video. Then, in the **Run** tab:
+Open http://127.0.0.1:8765. Click **SCAN** at the top right, choose **New scan…** and upload your video. Then, in the **Run** tab:
 
 - **Assisted** asks what you filmed and how, sets the options, and runs one step at a time. After
   each step it reads the result and suggests fixes with one click. Its last step checks that the
