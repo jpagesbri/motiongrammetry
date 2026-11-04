@@ -15,6 +15,11 @@ mg ui --root ~/scans --port 9000
   opened on Scan or Edit (browser storage, `mg.scan`), or none; the Scan and Edit links keep that
   scan. Between the pages and the chip, the page's status line (the run on Scan, unsaved edits on
   Edit).
+- **Icons** (`static/icons.js`): the app's icons come from [Tabler Icons](https://tabler.io/icons)
+  (MIT), vendored with only the icons used in `static/vendor/tabler-icons/` (its README gives the
+  version and how to add one: copy the SVG, add its name to `icons.js`). `icon('eye')` returns
+  inline SVG, 1em square in `currentColor`. So far only the Export window's eye uses it; the GitHub
+  mark, ⋯ and ▾ can move to it later.
 - **Scan chooser** (`static/scanchooser.js`, opened by the chip on every page): the scans with a
   thumbnail, the stages done (dots), what they hold, the last run (or "running"), and a larger card
   on hover. Picking one hands it to the page through `mountTopbar(id, hooks)`: Scan selects it,
@@ -30,6 +35,12 @@ mg ui --root ~/scans --port 9000
   scan is chosen: Help and About use the scan last opened), and each scan's **⋯** menu has
   **Export…** for that scan. On the Scan page, the assisted run's last step opens the same window. It
   reads the scan's `/state` afresh each time it opens, so it is right on any page.
+  - A row whose file is **ready** has an eye button (Tabler's `eye`, from `static/icons.js`; title
+    "preview this file", an aria-label naming the file; a button inside the label, so it doesn't tick
+    the row) that shows the existing file in the window's 3D preview at once, without making it
+    again. `/export/status` names a ready file (and the STL shown for a 3MF) for this; the preview
+    names the file it shows. No eye on an outdated file (it no longer matches what Export would make)
+    nor on what the preview can't show (OBJ zips, the COLMAP cameras, a cloud over 150 MB).
   - Besides the contents, it shows what the scan has ready (stale results flagged) and its folder on
     disk at its foot, and, under the 3D print row, the print check of the last print exported from
     the version in **From** (marked "outdated: export the print again" once the mesh or orientation

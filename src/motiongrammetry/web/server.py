@@ -38,6 +38,7 @@ Preview data is served in the raw SfM frame together with one 4x4 "scene" transf
   POST /api/workspaces/<ws>/export          {"items":[{"content","format"}],"source","options"} -> .ui/exports/
                                             (built on request, reused until an input changes: exports.py)
   POST /api/workspaces/<ws>/export/status   the same body -> which files are ready, outdated or not built
+                                            (a ready one with its file name, for the window's preview)
   GET  /api/workspaces/<ws>/exports/<file>  download it
   GET  /api/workspaces/<ws>/preview.jpg     scan thumbnail (3D snapshot, else a keyframe)
   GET  /api/workspaces/<ws>/advice?subject= what to change next (advice.py), for assisted mode

@@ -3,6 +3,9 @@
 // print, how the solid is made; the result is shown in 3D with its report. Files are made when asked
 // and kept until something they come from changes.
 //
+// A row whose file is ready (made from the files as they are now, with these settings) has an eye
+// button that shows that file in the 3D preview at once, without making it again. An outdated file
+// gets no eye: it no longer matches what Export would make.
 // It also says what the scan has ready (stale results flagged), the 3D print check of the last print
 // exported (under the 3D print row) and the folder on disk.
 //
@@ -14,6 +17,8 @@
 //   orient(name)            "fix the orientation…" on this page (Scan); without it, a link to the Scan page
 //   run(name)               "Go to Run" when there is nothing to export (Scan); without it, a link
 // export.css styles it. three.js and the 3D preview are loaded the first time a file is shown.
+
+import { icon } from '/icons.js';
 
 const enc = encodeURIComponent;
 const esc = (t) => String(t ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -52,7 +57,11 @@ const EX_FIELDS = { exHeight: 'height_mm', exMode: 'mode', exSide: 'shell_side',
                     exStand: 'stand', exBase: 'base', exUp: 'up' };
 
 let hooks = {};
-let modal = null, scan = null, st = null, view = null, built = [], opener = null, openSeq = 0;
+let modal = null, scan = null, st = null, view = null, built = [], opener = null, openSeq = 0, ready = {}, shownSeq = 0;
+// what the 3D preview can show: GLB, STL, PLY (a 3MF through its STL), not too big for the browser
+// (a dense cloud can be hundreds of MB: it is only downloaded); not OBJ (a zip with its texture) or COLMAP
+const EMPTY = 'Export to see the result here, or click the eye of a ready file';
+const showable = (f) => !!f.preview || (['glb', 'stl', 'ply'].includes(f.format) && f.size < 150e6);
 const $ = (id) => document.getElementById(id);
 
 /** What the page does around an export (see the top of this file). */
@@ -95,7 +104,8 @@ const FORM = `<div class="ex-win">
         <div class="ex-about"><div class="muted" id="exSummary"></div><div class="muted ex-dir" id="exDir"></div></div>
       </div></div>
       <div class="ex-preview" id="exPreview"><select class="ex-pick" id="exPick" hidden title="which file to look at"></select>
-        <div class="muted ex-empty" id="exEmpty">Export to see the result here</div></div>
+        <div class="ex-shown" id="exShown" hidden></div>
+        <div class="muted ex-empty" id="exEmpty"></div></div>
     </div>
   </div>`;
 
@@ -120,7 +130,15 @@ function build() {
   $('exMode').addEventListener('change', fields);
   Object.keys(EX_FIELDS).forEach((id) => $(id).addEventListener('change', check));
   $('exBuild').addEventListener('click', exportNow);
-  $('exPick').addEventListener('change', () => preview(built[Number($('exPick').value)]));
+  $('exPick').addEventListener('change', () => preview(built[Number($('exPick').value)], null, 'from this export'));
+  // a ready file's eye: show it as it is (the label's own click would tick or untick the row: not here)
+  $('exItems').addEventListener('click', (e) => {
+    const b = e.target.closest('.ex-eye'); if (!b) return;
+    e.preventDefault(); e.stopPropagation();
+    const f = ready[b.dataset.eye]; if (!f) return;
+    $('exPick').hidden = true;
+    preview({ ...f, label: EX_CONTENTS.find((c) => c.id === f.content).label }, null, 'made earlier, shown as it is');
+  });
 }
 
 export function closeExport() {
@@ -161,8 +179,9 @@ export async function openExport(name) {
   for (const id of Object.keys(EX_FIELDS)) $(id).value = saved[id] ?? d[id];
   $('exHeight').dataset.print = st.export_defaults?.height_mm ?? 100;
   $('exItems').innerHTML = '';
+  built = []; $('exPick').hidden = true;  // the last export's file list belongs to that export
   reset(); renderItems();
-  preview(null, 'Export to see the result here');
+  preview(null, EMPTY);
 }
 
 // Nothing to take out yet: say so, and point to the Run tab, where the pipeline makes it.
@@ -215,7 +234,8 @@ function check() {
   clearTimeout(checkTimer);
   checkTimer = setTimeout(async () => {
     const items = chosen(), name = scan;
-    EX_CONTENTS.forEach((c) => { const el = $('exSt-' + c.id); if (el) el.textContent = ''; });
+    EX_CONTENTS.forEach((c) => { const el = $('exSt-' + c.id); if (el) el.textContent = ''; const eye = $('exEye-' + c.id); if (eye) eye.innerHTML = ''; });
+    ready = {};
     if (!items.length) return;
     try {
       const r = await post(`/api/workspaces/${enc(name)}/export/status`, { items, source: $('exSource').value, options: options() });
@@ -225,6 +245,11 @@ function check() {
         el.className = 'ex-state ' + it.state;
         el.textContent = it.state === 'ready' ? `ready · ${exSize(it.size)}` : it.state === 'outdated' ? 'outdated: made again' : '';
         el.title = it.state === 'ready' ? 'already made from the files as they are now, with these settings' : it.state === 'outdated' ? 'made earlier, from older files or other settings' : '';
+        if (it.state === 'ready' && it.file && showable(it)) {
+          ready[it.content] = it;
+          $('exEye-' + it.content).innerHTML = `<button type="button" class="ex-eye" data-eye="${it.content}" title="preview this file"
+            aria-label="preview this file: ${esc(it.file)}">${icon('eye')}</button>`;
+        }
       }
     } catch { /* the status is a hint: Export still works */ }
   }, 250);
@@ -239,7 +264,7 @@ function renderItems() {
     const on = ok && (prev[c.id] ?? was[c.id]?.on ?? c.id === first);
     return `<div class="ex-item${ok ? '' : ' off'}"><input type="checkbox" id="exOn-${c.id}"${on ? ' checked' : ''}${ok ? '' : ' disabled'}>
       <label for="exOn-${c.id}">${c.label}${exStale(c, custom, st) ? ' <span class="stale" title="an earlier stage was re-run since">stale</span>' : ''}
-        <span class="ex-state" id="exSt-${c.id}"></span><small>${ok ? c.about : why}</small></label>
+        <span class="ex-state" id="exSt-${c.id}"></span><span class="ex-eyes" id="exEye-${c.id}"></span><small>${ok ? c.about : why}</small></label>
       ${Object.keys(c.formats).length < 2 ? `<span class="ex-one">${c.formats[fmt]}<input type="hidden" id="exFmt-${c.id}" value="${fmt}"></span>`
         : `<select id="exFmt-${c.id}"${ok ? '' : ' disabled'}>${Object.entries(c.formats)
         .map(([v, l]) => `<option value="${v}"${v === fmt ? ' selected' : ''}>${l}</option>`).join('')}</select>`}</div>`
@@ -307,13 +332,13 @@ async function exportNow() {
       `<a href="${exUrl(f.file)}" download>${esc(f.label)} · ${EX_CONTENTS.find((c) => c.id === f.content).formats[f.format]}<span>${exSize(f.size)}</span></a>`).join('');
     $('exIssues').innerHTML = (r.issues || []).map((d) => `<div class="diag ${d.level}">${esc(d.message)}${d.hint ? `<span class="h">→ ${esc(d.hint)}</span>` : ''}</div>`).join('');
     // a dense cloud can be hundreds of MB: too much for the browser, it is only downloaded
-    built = r.files.filter((f) => (f.preview || ['glb', 'stl', 'ply'].includes(f.format)) && (f.preview || f.size < 150e6));
+    built = r.files.filter(showable);
     $('exPick').innerHTML = built.map((f, i) => `<option value="${i}">${esc(f.label)}</option>`).join('');
     $('exPick').hidden = built.length < 2;
     api(`/api/workspaces/${enc(name)}/state`).then((s) => {  // the print check, the rows' state
       if (name === scan) { st = s; renderAbout(); check(); }
     }).catch(() => {});
-    if (built.length) await preview(built[0]);
+    if (built.length) await preview(built[0], null, r.cached ? 'already made, reused' : 'made just now');
     else preview(null, r.files.length > 1 ? 'nothing in this export can be shown here' : 'a zip of several files: no preview');
   } catch (e) { if (name === scan) $('exStatus').textContent = 'failed: ' + e.message; }
   fields();
@@ -321,9 +346,18 @@ async function exportNow() {
 
 // The 3D view of an exported file. three.js, its loaders, the projection and the view cube are
 // loaded the first time, so pages that never show one (Help, About) don't load them.
-async function preview(f, why) {
-  const box = $('exPreview');
+async function preview(f, why, note = '') {
+  const seq = ++shownSeq;
+  $('exShown').hidden = !f;
   if (!f) { $('exEmpty').hidden = false; $('exEmpty').textContent = why; if (view?.mesh) { view.mesh.visible = false; view.draw(); } return; }
+  // which file this is (the one shown: for a 3MF, its STL), and whether it was made just now or earlier
+  const file = f.preview || f.file, url = exUrl(file), ext = file.split('.').pop();
+  $('exShown').innerHTML = `<b>${esc(f.label || '')}</b> ${esc(file)}${note ? ` <span class="muted">· ${esc(note)}</span>` : ''}`;
+  try { await show(f, file, url, ext, seq); }
+  catch (e) { if (seq === shownSeq) { $('exEmpty').hidden = false; $('exEmpty').textContent = 'could not show it: ' + e.message; } }
+}
+async function show(f, file, url, ext, seq) {
+  const box = $('exPreview');
   const THREE = await import('three');
   if (!view) {
     const [{ OrbitControls }, { projection }] = await Promise.all([import('three/addons/controls/OrbitControls.js'), import('/projection.js')]);
@@ -342,8 +376,6 @@ async function preview(f, why) {
       .catch(() => {});
   }
   $('exEmpty').hidden = true;
-  if (view.mesh) { view.sc.remove(view.mesh); view.mesh = null; }
-  const file = f.preview || f.file, url = exUrl(file), ext = file.split('.').pop();
   let obj;
   if (ext === 'stl' || ext === 'ply') {
     const { STLLoader } = await import('three/addons/loaders/STLLoader.js');
@@ -363,6 +395,8 @@ async function preview(f, why) {
     obj = (await new GLTFLoader().loadAsync(url)).scene;
     obj.traverse((o) => { if (o.isMesh && o.material?.map) o.material = new THREE.MeshBasicMaterial({ map: o.material.map }); });
   }
+  if (seq !== shownSeq) return;  // another file was asked for meanwhile
+  if (view.mesh) view.sc.remove(view.mesh);
   view.sc.add(obj); view.mesh = obj;
   view.frame = () => {
     const b = new THREE.Box3().setFromObject(obj), size = b.getSize(new THREE.Vector3()).length(), c = b.getCenter(new THREE.Vector3());

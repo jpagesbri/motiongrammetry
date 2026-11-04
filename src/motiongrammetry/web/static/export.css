@@ -58,6 +58,16 @@
 .ex-files a { display: grid; grid-template-columns: 1fr auto; gap: 8px; padding: 3px 0; color: var(--accent); font-size: 12px; text-decoration: none; }
 .ex-files a span { color: var(--muted); font-family: var(--mono); font-size: 11px; }
 .ex-pick { position: absolute; top: 10px; left: 10px; z-index: 2; width: auto !important; }
+/* a ready file's eye: show it in the preview as it is; and which file the preview shows */
+.ex-eyes { display: inline; }
+.ex-eye { display: inline-grid; place-items: center; width: 22px; height: 18px; margin-left: 4px; padding: 0; vertical-align: -4px;
+  background: none; border: 1px solid transparent; border-radius: 4px; color: var(--muted); cursor: pointer; }
+.ex-eye .icon { width: 15px; height: 15px; }
+.ex-eye:hover { color: var(--accent); border-color: var(--line); }
+.ex-eye:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; color: var(--accent); }
+.ex-shown { position: absolute; top: 10px; right: 10px; z-index: 2; max-width: calc(100% - 200px); padding: 4px 9px;
+  background: rgba(15,17,21,.8); border: 1px solid var(--line); border-radius: 6px; font-size: 12px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* edits on the page not saved yet (Edit): the export is made from the saved files */
 .ex-unsaved { border: 1px solid var(--warn); background: rgba(240,180,41,.1); border-radius: 8px; padding: 8px 10px; margin-bottom: 8px;
   font-size: 12px; line-height: 1.45; }

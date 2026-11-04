@@ -146,10 +146,16 @@ def test_exports_are_made_when_asked_and_reused_until_their_inputs_change(server
     assert r["cached"] and (ws.root / ".ui" / "exports" / "p-print.stl").stat().st_mtime_ns == stamp
     pc = state()["print_check"]["pipeline"]
     assert pc["current"] and pc["watertight"] and abs(pc["size_mm"][2] - 100) < 0.5
+    # a ready file is named, so the Export window can show it without making it again (its eye button)
+    rows = call(base + "/api/workspaces/p/export/status", "POST", body)[1]["items"]
+    assert [(i["file"], i["preview"]) for i in rows] == [("p-print.stl", None), ("p-mesh.glb", None)]
+    rows = call(base + "/api/workspaces/p/export/status", "POST", {"items": [{"content": "print", "format": "3mf"}]})[1]["items"]
+    assert rows[0]["state"] == "none" and "file" not in rows[0]
 
     # other settings or a changed source: outdated, made again when asked
     other = {**body, "options": {"height_mm": 50}}
-    assert [i["state"] for i in call(base + "/api/workspaces/p/export/status", "POST", other)[1]["items"]] == ["outdated", "outdated"]
+    rows = call(base + "/api/workspaces/p/export/status", "POST", other)[1]["items"]
+    assert [i["state"] for i in rows] == ["outdated", "outdated"] and not any("file" in i for i in rows)  # no preview of a stale file
     t = (ws.mesh / "mesh_clean.ply").stat().st_mtime_ns + 10**9
     os.utime(ws.mesh / "mesh_clean.ply", ns=(t, t))
     assert status() == ["outdated", "outdated"] and not state()["print_check"]["pipeline"]["current"]
@@ -874,6 +880,23 @@ def test_every_page_offers_export_through_the_one_shared_module(server):
     for text in ['id="exSummary"', 'id="exDir"', 'id="exCheck"', "'on disk: '", "print_check", "outdated: export the print again"]:
         assert text in js, text
     assert ".ex-modal {" in css and ".ex-unsaved {" in css
+    # a ready file's eye shows it in the preview as it is: only ready (not outdated), only what the preview can show,
+    # a real button with a tooltip and a label, kept from ticking the row, and the preview names the file
+    assert "if (it.state === 'ready' && it.file && showable(it))" in js
+    assert "const showable = (f) => !!f.preview || (['glb', 'stl', 'ply'].includes(f.format) && f.size < 150e6);" in js
+    assert '<button type="button" class="ex-eye"' in js and 'title="preview this file"' in js and 'aria-label="preview this file: ' in js
+    # the eye is Tabler's, from the one icon helper and the vendored set (with its license), not drawn here
+    assert "import { icon } from '/icons.js';" in js and "${icon('eye')}" in js and "<svg" not in js
+    with urllib.request.urlopen(base + "/icons.js") as r:
+        assert r.headers["Content-Type"].startswith("text/javascript")
+        icons = r.read().decode()
+    assert "export function icon(name)" in icons and "const NAMES = ['eye'];" in icons and "/vendor/tabler-icons/" in icons
+    with urllib.request.urlopen(base + "/vendor/tabler-icons/eye.svg") as r:
+        assert b"icon-tabler-eye" in r.read()
+    with urllib.request.urlopen(base + "/vendor/tabler-icons/LICENSE") as r:
+        assert b"MIT License" in r.read()
+    assert "Tabler Icons" in {x["name"] for x in call(base + "/api/about")[1]["external"]}
+    assert "e.preventDefault(); e.stopPropagation();" in js and 'id="exShown"' in js and ".ex-eye:focus-visible" in css
     # the top bar: Export… beside the scan chip, and in every scan's ⋯ menu, on every page
     assert "import { openExport } from '/export.js';" in bar
     assert '<button class="topexport" id="topExport" disabled' in bar and "openExport(scan)" in bar
