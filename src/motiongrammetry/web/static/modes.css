@@ -1,0 +1,24 @@
+/* The one control for tabs and modes (modes.js), the same on every page. Two looks of the one control:
+   - .tabs, a page's own tabs (Scan: Run / Preview; Edit: Sculpt mesh / Paint texture): words in a
+     row, the chosen one in the text colour and underlined in the accent colour, in a bar across the
+     page's work area;
+   - the default, a mode inside a page (Assisted / Manual, 3D model / Frames & masks, …): a segmented
+     control, the chosen option raised (the panel colour) and underlined in the accent colour.
+   .wide makes the options share the whole row. The pages define the colour variables it uses. */
+.modes { display: inline-flex; flex: none; gap: 2px; padding: 2px; border: 1px solid var(--line); border-radius: 8px;
+  background: var(--bg); box-sizing: border-box; }
+.modes[hidden] { display: none; }
+.modes > button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; margin: 0;
+  padding: 4px 11px; border: 0; border-radius: 6px; background: none; color: var(--muted);
+  font: inherit; font-size: 12px; line-height: 1.4; white-space: nowrap; cursor: pointer; }
+.modes > button:hover:not(:disabled) { color: var(--text); }
+.modes > button[aria-selected="true"] { background: var(--panel2); color: var(--text); box-shadow: inset 0 -2px 0 var(--accent); }
+.modes > button:disabled { opacity: .4; cursor: default; }
+.modes > button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+/* a page's own tabs */
+.modes.tabs { padding: 0; border: 0; border-radius: 0; background: none; align-self: stretch; }
+.modes.tabs > button { padding: 11px 16px 9px; border-radius: 0; border-bottom: 2px solid transparent;
+  font-size: 13px; font-weight: 600; letter-spacing: .02em; }
+.modes.tabs > button[aria-selected="true"] { background: none; box-shadow: none; border-bottom-color: var(--accent); }
+.modes.wide { display: flex; }
+.modes.wide > button { flex: 1; min-width: 0; padding-left: 6px; padding-right: 6px; }

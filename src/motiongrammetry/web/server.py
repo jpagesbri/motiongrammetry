@@ -43,7 +43,7 @@ Preview data is served in the raw SfM frame together with one 4x4 "scene" transf
   GET  /api/workspaces/<ws>/advice?subject= what to change next (advice.py), for assisted mode
   GET  /api/assist                          assisted mode's subject / coverage choices
   GET  /<name>.js, /<name>.css             shared page modules and styles (static/viewcube.js, topbar.js, scanchooser.js,
-                                            scrollbar.js, topbar.css, scrollbar.css)
+                                            scrollbar.js, modes.js, topbar.css, scrollbar.css, modes.css)
   GET  /vendor/<path>                       bundled three.js and three-mesh-bvh (static/vendor)
   GET  /about                               third-party software and licenses (credits.py)
   GET  /api/about[/license?kind=&id=|/notices.txt]   their list, one license text, all notices

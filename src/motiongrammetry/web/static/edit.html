@@ -19,14 +19,11 @@
     grid-template-areas: "top top" "side view"; }
   header { grid-area: top; }
   aside { grid-area: side; background: var(--panel); border-right: 1px solid var(--line); overflow: auto; }
+  aside > .modes.tabs { border-bottom: 1px solid var(--line); }  /* the page's tabs, across the top of the panel */
   section { padding: 12px 14px; border-bottom: 1px solid var(--line); }
   h2 { margin: 0 0 8px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; }
   select, input[type=color] { background: var(--bg); border: 1px solid var(--line); border-radius: 5px; padding: 4px 6px; }
   select { width: 100%; }
-  .modes { display: flex; gap: 0; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
-  .modes button { flex: 1; background: none; border: 0; padding: 8px 6px; cursor: pointer; color: var(--muted); font-weight: 600; }
-  .modes button.on { background: var(--panel2); color: var(--text); box-shadow: inset 0 -2px 0 var(--accent); }
-  .modes button:disabled { opacity: .4; cursor: default; }
   .tools { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
   .tool { background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 6px 4px 5px; cursor: pointer;
     text-align: center; font-size: 12px; position: relative; }
@@ -98,6 +95,7 @@
   .probs .fixhint { color: var(--muted); }
 </style>
 <link rel="stylesheet" href="/topbar.css">
+<link rel="stylesheet" href="/modes.css">
 <link rel="stylesheet" href="/scrollbar.css">
 <script type="importmap">
 { "imports": {
@@ -143,12 +141,12 @@
   <header class="topbar"></header>  <!-- written by topbar.js -->
 
   <aside>
+    <!-- the page's tabs, as Run / Preview on the Scan page; the scan is chosen in the top bar -->
+    <div class="modes tabs wide" id="modeTabs" aria-label="Sculpt or Paint">
+      <button data-value="sculpt" title="reshape the clean mesh (before texturing)">Sculpt mesh</button>
+      <button data-value="paint" title="paint the texture of the textured model">Paint texture</button>
+    </div>
     <section>
-      <h2>Mode</h2>  <!-- the scan is chosen in the top bar -->
-      <div class="modes">
-        <button data-mode="sculpt" title="reshape the clean mesh (before texturing)">Sculpt mesh</button>
-        <button data-mode="paint" title="paint the texture of the textured model">Paint texture</button>
-      </div>
       <div id="modeNote" class="note"></div>
       <div id="modeWarn" class="warn" hidden></div>
       <div id="meshWarn" class="warn" hidden></div>
@@ -241,8 +239,8 @@
   </aside>
 
   <main class="view" id="view">
-    <div class="bar"><span class="seg" id="layoutSeg">
-      <button data-layout="3d">3D</button><button data-layout="split">3D + texture</button><button data-layout="uv">Texture</button></span>
+    <div class="bar"><div class="modes" id="layoutTabs" aria-label="What the view shows">
+      <button data-value="3d" title="the model only">3D</button><button data-value="split" title="the model and its flat texture, side by side">3D + texture</button><button data-value="uv" title="the flat texture only">Texture</button></div>
       <span class="seg" id="fitTexSeg"><button id="fitBtn" title="frame the flat texture (the 3D view: the button next to the view cube)">Fit texture</button></span></div>
     <div class="label2d" id="label2d" hidden>texture</div>
     <svg class="lines" id="lines"><line id="planeLine" stroke="#f0b429" stroke-width="2" stroke-dasharray="6 4" visibility="hidden"/></svg>
@@ -268,6 +266,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { MeshBVH, acceleratedRaycast } from 'three-mesh-bvh';
 import * as SMesh from '/sculpt-mesh.js';  // the sculpt mesh's state and density operations
 import { mountTopbar, setScan, updateScans } from '/topbar.js';
+import { modeControl } from '/modes.js';
 // The scan chooser in the top bar: picking a scan switches the editor to it (the URL's #scan,
 // see hashchange below, asks first about unsaved edits). Deleting the scan being edited leaves the
 // editor for the first scan left; a new or copied scan opens on the Scan page, to be run.
@@ -277,6 +276,10 @@ mountTopbar('edit', {
 });
 
 const $ = (id) => document.getElementById(id);
+// The editor's modes and the view's layout: the one control for tabs and modes (modes.js)
+const modeTabs = modeControl($('modeTabs'), { onSelect: (m) => setMode(m) });
+const layoutTabs = modeControl($('layoutTabs'), { onSelect: (l) => setLayout(l) });
+const modeOff = (m) => $('modeTabs').querySelector(`[data-value=${m}]`).disabled;
 async function api(url, opts = {}) {
   const r = await fetch(url, opts);
   const text = await r.text();
@@ -568,22 +571,33 @@ async function openWorkspace() {
   root.updateMatrixWorld(true); rootInv.copy(root.matrixWorld).invert();
   const has = wsState.exportable || {}, pipe = has.pipeline || [], mine = has.custom || [];
   const canSculpt = pipe.includes('mesh'), canPaint = pipe.includes('textured') || mine.includes('textured');
-  document.querySelector('[data-mode=sculpt]').disabled = !canSculpt;
-  document.querySelector('[data-mode=paint]').disabled = !canPaint;
+  modeTabs.disable('sculpt', !canSculpt);
+  modeTabs.disable('paint', !canPaint);
   if (!canSculpt && !canPaint) { $('center').textContent = 'No clean mesh in this scan yet: run the pipeline up to clean.'; return; }
   await setMode(mode === 'paint' && canPaint ? 'paint' : canSculpt ? 'sculpt' : 'paint');
 }
 
-document.querySelectorAll('[data-mode]').forEach((b) => b.addEventListener('click', () => setMode(b.dataset.mode)));
-async function setMode(m) {
+// One switch at a time: a mode loads its mesh the first time (seconds), and the arrow keys can ask
+// for the other before that is done, so each switch waits for the one before it.
+let modeQueue = Promise.resolve();
+function setMode(m) {
+  const run = modeQueue.then(() => switchMode(m));
+  modeQueue = run.catch(() => {});
+  return run;
+}
+async function switchMode(m) {
   mode = m;
-  document.querySelectorAll('[data-mode]').forEach((b) => b.classList.toggle('on', b.dataset.mode === m));
+  modeTabs.select(m);
+  // remembered in the URL (?mode=paint), so a reload, or switching scans, stays in this mode
+  const u = new URL(location.href);
+  if (m === 'paint') u.searchParams.set('mode', 'paint'); else u.searchParams.delete('mode');
+  if (u.href !== location.href) history.replaceState(history.state, '', u.href);
   $('paintOpts').hidden = m !== 'paint'; $('sculptOpts').hidden = m !== 'sculpt'; $('meshOps').hidden = m !== 'sculpt';
   $('layoutOps').hidden = m !== 'paint';
   if (SM.on && m !== 'paint') seamExit();
   if (plane.n) endPlane();
   isectHide();
-  $('layoutSeg').hidden = m !== 'paint';
+  $('layoutTabs').hidden = m !== 'paint';
   renderTools();
   renderModeInfo();
   $('center').textContent = 'loading…'; $('center').hidden = false;
@@ -629,12 +643,11 @@ function renderModeInfo() {
   $('editTex').hidden = !edited; $('texEdits').hidden = !wsState.can_texture;
   if (m === 'paint') showMeshCheck(edited); else { checkSeq.n++; $('meshWarn').hidden = true; }
 }
-document.querySelectorAll('[data-layout]').forEach((b) => b.addEventListener('click', () => {
-  layout = b.dataset.layout;
-  document.querySelectorAll('[data-layout]').forEach((x) => x.classList.toggle('on', x === b));
+function setLayout(l) {
+  layout = l; layoutTabs.select(l);
   resize(); fit2d();
-}));
-document.querySelector(`[data-layout=${layout}]`).classList.add('on');
+}
+layoutTabs.select(layout);
 $('fitBtn').addEventListener('click', () => { fit2d(); requestRender(); });  // the 3D view: the view cube's frame button
 // view cube (static/viewcube.js), above the status line; only while the 3D view is shown
 let vcube = null;
@@ -1597,7 +1610,7 @@ async function showMeshCheck(edited) {
   const want = [...new Set([paint, edits].flatMap((c) => (c?.problems || []).flatMap((p) => p.fixes)))];
   $('meshWarn').innerHTML = parts.join('')
     + `<div class="btns" style="margin-top:4px"><button class="btn" id="meshWarnFix" title="switch to Sculpt and open Sanitize mesh with these fixes ticked; then save, and texture your edits again">Sanitize mesh…</button></div>`;
-  $('meshWarnFix').disabled = document.querySelector('[data-mode=sculpt]').disabled;
+  $('meshWarnFix').disabled = modeOff('sculpt');
   $('meshWarnFix').addEventListener('click', () => sanitizeFromPaint(want));
   $('meshWarn').hidden = false;
 }
@@ -1611,7 +1624,7 @@ function askMesh(action, check) {  // resolves 'go', 'fix' or null
   $('chkText').innerHTML = `<b>${escH(check.mesh[0].toUpperCase() + check.mesh.slice(1))}</b> has problems that break or spoil texturing:`;
   $('chkList').innerHTML = probList(check.problems);
   $('chkGo').textContent = `${action} anyway`;
-  $('chkFix').disabled = document.querySelector('[data-mode=sculpt]').disabled;
+  $('chkFix').disabled = modeOff('sculpt');
   $('chkModal').hidden = false; $('chkFix').focus();
   return new Promise((ok) => { chkAnswer = ok; });
 }
@@ -2352,7 +2365,7 @@ function showLook(r) {
     uvPlane.scale.set(uv2d.aspect, 1, 1); frame2d.scale.set(uv2d.aspect, 1, 1);
     uvPlane.material.map = tex; uvPlane.material.needsUpdate = true;
     $('label2d').textContent = `preview · ${r.pieces.toLocaleString()} pieces${r.recut ? ` (${r.recut} cut further to lie flat)` : ''} · not applied`;
-    if (layout === '3d') document.querySelector('[data-layout=split]').click();  // the flat view shows it
+    if (layout === '3d') setLayout('split');  // the flat view shows it
     fit2d(); requestRender();
   });
 }

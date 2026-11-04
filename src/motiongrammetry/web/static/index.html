@@ -22,11 +22,7 @@
   .right { display: flex; flex-direction: column; min-width: 0; }
   /* Scan: a Run tab (assisted or manual) and a Preview tab (3D, frames and masks, files) */
   .work { grid-area: work; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
-  .gtabs { display: flex; align-items: center; gap: 2px; padding: 0 12px; border-bottom: 1px solid var(--line); background: var(--panel); flex: none; }
-  .gtab { background: none; border: 0; border-bottom: 2px solid transparent; padding: 11px 16px 9px; color: var(--muted);
-    font-weight: 600; cursor: pointer; letter-spacing: .02em; }
-  .gtab:hover { color: var(--text); }
-  .gtab.on { color: var(--text); border-bottom-color: var(--accent); }
+  .gbar { display: flex; align-items: center; gap: 2px; padding: 0 12px; border-bottom: 1px solid var(--line); background: var(--panel); flex: none; }
   .gnote { margin-left: 14px; font-size: 12px; }
   .splitchk { margin-left: auto; font-size: 12px; }
   .splitchk[hidden] { display: none; }
@@ -98,8 +94,8 @@
   .drawer-toggle { background: none; border: 0; color: var(--text); font-weight: 600; cursor: pointer; padding: 3px 0; }
   .drawer-toggle .caret { display: inline-block; transition: transform .15s; color: var(--muted); }
   .drawer.open .caret { transform: rotate(90deg); }
-  .drawer-head .tabs, .drawer-head label, .drawer-head #logTitle { display: none; }
-  .drawer.open .drawer-head .tabs, .drawer.open .drawer-head label, .drawer.open .drawer-head #logTitle { display: inline-flex; }
+  .drawer-head .modes, .drawer-head label, .drawer-head #logTitle { display: none; }
+  .drawer.open .drawer-head .modes, .drawer.open .drawer-head label, .drawer.open .drawer-head #logTitle { display: inline-flex; }
   .drawer-body { display: none; height: 34vh; min-height: 140px; padding: 0 14px 10px; flex-direction: column; }
   .drawer.open .drawer-body { display: flex; }
   .drawer-body .history { max-height: none; flex: 1; }
@@ -318,9 +314,6 @@
   .step.run .l { color: var(--text); font-weight: 600; }
   .step.pending { color: var(--muted); }
   .step.failed .dot, .step.stopped .dot { background: var(--bad); border-color: var(--bad); }
-  .tabs { display: inline-flex; gap: 2px; }
-  .tab { background: none; border: 1px solid var(--line); border-radius: 5px; padding: 2px 8px; cursor: pointer; color: var(--muted); font-size: 12px; }
-  .tab.on { color: var(--text); border-color: var(--accent); }
   .history { max-height: 220px; overflow: auto; border: 1px solid var(--line); border-radius: 6px; margin-bottom: 6px; }
   .history div { display: grid; grid-template-columns: 92px 62px 1fr 50px; gap: 6px; padding: 4px 8px; font-size: 12px;
     border-bottom: 1px solid var(--line); cursor: pointer; }
@@ -340,6 +333,7 @@
   }
 </style>
 <link rel="stylesheet" href="/topbar.css">
+<link rel="stylesheet" href="/modes.css">
 <link rel="stylesheet" href="/scrollbar.css">
 <script type="importmap">
 { "imports": {
@@ -405,16 +399,18 @@
 
 
   <div class="work" id="work">
-    <nav class="gtabs">
-      <button class="gtab" data-g="run" title="run the pipeline, assisted or not">Run <span class="pip" id="runPip" hidden></span></button>
-      <button class="gtab" data-g="preview" title="the 3D result, the keyframes and their masks, the files">Preview <span class="pip" id="pvPip" hidden></span></button>
+    <div class="gbar">
+      <div class="modes tabs" id="gTabs" aria-label="Run or Preview">
+        <button data-value="run" id="tabRun" aria-controls="paneRun" title="run the pipeline, assisted or not">Run <span class="pip" id="runPip" hidden></span></button>
+        <button data-value="preview" id="tabPreview" aria-controls="panePreview" title="the 3D result, the keyframes and their masks, the files">Preview <span class="pip" id="pvPip" hidden></span></button>
+      </div>
       <span class="muted gnote" id="orientNote"></span>
       <label class="muted splitchk" id="splitLbl" title="Run and Preview side by side (wide screens)"><input type="checkbox" id="splitChk"> side by side</label>
-    </nav>
+    </div>
     <div class="gpanes">
-      <div class="gpane gp-run" data-g="run">
+      <div class="gpane gp-run" data-g="run" id="paneRun" role="tabpanel" aria-labelledby="tabRun">
         <div class="runbar">
-          <span class="seg" id="modeSeg"><button data-mode="assisted" title="one step at a time: every option explained, suggested values for your capture, advice after each step">Assisted</button><button data-mode="manual" title="every step and option, run several steps at once">Manual</button></span>
+          <div class="modes" id="modeTabs" aria-label="Assisted or Manual"><button data-value="assisted" title="one step at a time: every option explained, suggested values for your capture, advice after each step">Assisted</button><button data-value="manual" title="every step and option, run several steps at once">Manual</button></div>
           <label class="runpreset" title="named sets of options for the capture problems that come up most often">Preset <select id="preset"><option value="">none</option></select></label>
           <span class="grow"></span>
           <a class="runstatus" id="runStatus"></a>
@@ -431,7 +427,7 @@
         <div class="drawer" id="drawer">
           <div class="drawer-head">
             <button class="drawer-toggle" id="drawerToggle"><span class="caret">▸</span> Log <span class="pip" id="logPip" hidden></span></button>
-            <span class="tabs"><button class="tab on" data-tab="live">Live</button><button class="tab" data-tab="history">History</button></span>
+            <div class="modes" id="logTabs" aria-label="Live log or history"><button data-value="live" title="the log of the run going on now">Live</button><button data-value="history" title="every run of this scan: click one to open its log">History</button></div>
             <label class="muted"><input type="checkbox" id="hideGlog" checked> hide COLMAP internals</label>
             <span id="logTitle" class="muted"></span>
           </div>
@@ -439,9 +435,9 @@
         </div>
       </div>
 
-      <div class="gpane gp-preview" data-g="preview">
+      <div class="gpane gp-preview" data-g="preview" id="panePreview" role="tabpanel" aria-labelledby="tabPreview">
         <div class="pvbar">
-          <span class="seg" id="pvSeg"><button data-pv="3d">3D model</button><button data-pv="frames">Frames &amp; masks</button></span>
+          <div class="modes" id="pvTabs" aria-label="3D model or frames"><button data-value="3d" title="the model in 3D, with the cameras and points (W: next display mode)">3D model</button><button data-value="frames" title="the keyframes, their masks and how well they fit">Frames &amp; masks</button></div>
           <span class="muted" id="pvHint"></span>
         </div>
         <div class="pv3d" id="pv3d">
@@ -524,6 +520,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mountTopbar, setScan, updateScans, uploadVideo, thumbUrl, pageLabel as topPageLabel } from '/topbar.js';
+import { modeControl } from '/modes.js';
 // The scan chooser in the top bar: picking a scan selects it here; a new or copied scan opens
 // here; a deleted one is left for the next; a scan's ⋯ menu also uploads or replaces its video.
 mountTopbar('scan', {
@@ -536,6 +533,12 @@ mountTopbar('scan', {
 });
 
 const $ = (id) => document.getElementById(id);
+// The page's tabs and modes, all the one control (modes.js); each remembers its choice as before
+const gTabs = modeControl($('gTabs'), { onSelect: (g) => showG(g) });              // Run / Preview: mg.gtab
+const modeTabs = modeControl($('modeTabs'), { onSelect: (m) => setMode(m) });      // Assisted / Manual: mg.mode.<scan>
+const pvTabs = modeControl($('pvTabs'), { onSelect: (m) => showPv(m) });           // 3D model / Frames & masks: mg.pv
+const logTabs = modeControl($('logTabs'), { onSelect: (m) => setLogMode(m) });     // the log: Live / History
+logTabs.select('live');
 const STAGES = ['frames', 'mask', 'sfm', 'mvs', 'vggt', 'clean', 'texture'];
 const DEFAULT_ON = new Set(['frames', 'mask', 'sfm', 'mvs', 'clean', 'texture']);
 const LAYERS = [
@@ -1629,7 +1632,7 @@ function renderRail() {
 }
 function renderRunBar() {
   const manual = runMode === 'manual', running = jobSnap?.status === 'running';
-  document.querySelectorAll('#modeSeg button').forEach((b) => b.classList.toggle('on', b.dataset.mode === runMode));
+  modeTabs.select(runMode);
   $('preset').value = RO.preset || '';
   $('runBtn').hidden = $('checkBtn').hidden = !manual;
   $('runBtn').textContent = `Run selected (${RO.sel.length})`;
@@ -1904,7 +1907,6 @@ function modeFor(name) {
   return m || (wsState?.done?.frames ? 'manual' : 'assisted');
 }
 const modeHint = renderRunBar;
-document.querySelectorAll('#modeSeg button').forEach((b) => b.addEventListener('click', () => setMode(b.dataset.mode)));
 const openAssist = async () => { await loadAdvice(); renderRun(); };
 
 // The log: a drawer under the steps, closed unless you open it or a step fails.
@@ -1935,7 +1937,7 @@ function layoutG() {
   const sp = split && canSplit();
   $('work').classList.toggle('split', sp);
   $('splitLbl').hidden = !canSplit(); $('splitChk').checked = split;
-  document.querySelectorAll('.gtab').forEach((b) => b.classList.toggle('on', sp || b.dataset.g === gtab));
+  gTabs.select(gtab); gTabs.all(sp);
   document.querySelectorAll('.gpane').forEach((p) => p.classList.toggle('on', sp || p.dataset.g === gtab));
   if (isShown('preview')) $('pvPip').hidden = true;
   if (isShown('run')) $('runPip').hidden = true;
@@ -1943,7 +1945,6 @@ function layoutG() {
   if (curPage() === 'place') { if (isShown('run')) renderRun(); else unmountPlace(); }
   if (isShown('preview') && pvMode === 'frames') fvOpen();
 }
-document.querySelectorAll('.gtab').forEach((b) => b.addEventListener('click', () => showG(b.dataset.g)));
 $('splitChk').addEventListener('change', () => {
   split = $('splitChk').checked;
   try { localStorage.setItem('mg.split', split ? '1' : '0'); } catch {}
@@ -1956,11 +1957,10 @@ function showPv(m) {
   pvMode = m;
   try { localStorage.setItem('mg.pv', m); } catch {}
   $('pv3d').hidden = m !== '3d'; $('pvFrames').hidden = m !== 'frames';
-  document.querySelectorAll('#pvSeg button').forEach((b) => b.classList.toggle('on', b.dataset.pv === m));
+  pvTabs.select(m);
   $('pvHint').textContent = m === 'frames' ? '← → step through the keyframes · scroll to zoom, drag to pan, double-click to fit' : 'W: next display mode';
   if (m === 'frames') fvOpen();
 }
-document.querySelectorAll('#pvSeg button').forEach((b) => b.addEventListener('click', () => showPv(b.dataset.pv)));
 function glimpseHtml() {  // the latest result, small, for the Run tab
   const w = scans.find((x) => x.name === current);
   if (!w || w.preview == null) return '<div class="muted glimpse-cap">nothing to show yet</div>';
@@ -2561,12 +2561,11 @@ async function openLog(path) {
 }
 function setLogMode(mode) {
   logMode = mode;
-  document.querySelectorAll('.tab').forEach((b) => b.classList.toggle('on', b.dataset.tab === (mode === 'history' ? 'history' : 'live')));
+  logTabs.select(mode === 'history' ? 'history' : 'live');
   $('history').hidden = mode !== 'history';
   if (mode === 'live') { $('logTitle').textContent = ''; $('log').textContent = ''; jobSince = 0; }
   if (mode === 'history') { $('logTitle').textContent = 'click a run to open its log'; refreshHistory(); }
 }
-document.querySelectorAll('.tab').forEach((b) => b.addEventListener('click', () => setLogMode(b.dataset.tab)));
 
 let filmKey = '';
 function renderFilm() {

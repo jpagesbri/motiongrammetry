@@ -50,6 +50,28 @@ mg ui --root ~/scans --port 9000
     outer area, when the pointer reaches the bar, and at every step of a drag, so the end of the
     track is always the end of the content. It is hidden from screen readers; the area itself stays
     scrollable by keyboard.
+- **Tabs and modes** (`static/modes.js`, styled by `modes.css`, linked in the page's `<head>`): one
+  control for every switch between views, so all pages look and behave the same. On Scan: **Run** /
+  **Preview**, **Assisted** / **Manual**, **3D model** / **Frames & masks**, the log's **Live** /
+  **History**; on Edit: **Sculpt mesh** / **Paint texture** and the view's **3D** / **3D + texture**
+  / **Texture**. (Options of one view, such as the frame viewer's Photo / Overlay / … or the density's
+  Relative / Absolute, stay small `.seg` button rows: they change a setting, not what is shown.)
+  - One control, two looks. `.tabs`, a page's own tabs (Run / Preview across the Scan page, Sculpt
+    mesh / Paint texture across the top of the editor's side panel): words in a bar, the chosen one
+    underlined in the accent colour. The default, a mode inside a page: a segmented control, the
+    chosen option raised and underlined. `.wide` shares the row. Both behave the same.
+  - The page writes buttons with `data-value` in a `.modes` element and calls
+    `modeControl(el, { onSelect })`, which returns `select(v)`, `all(on)` (side by side: both tabs
+    shown selected) and `disable(v, off)`.
+  - A WAI-ARIA tab list (`role="tablist"`, `role="tab"`, `aria-selected`, Run / Preview with
+    `role="tabpanel"` panes), with a roving tabindex: one Tab stop per control, ← → (↑ ↓) to the next
+    usable option, Home / End, selection follows the focus. Those keys stop at the control, so the
+    page's own shortcuts on them (← → / Home / End step through the keyframes) don't fire as well.
+  - The choice is remembered where it was: the tab (`mg.gtab`), the Preview's view (`mg.pv`) and
+    side by side in browser storage, Assisted / Manual per scan (`mg.mode.<scan>`); the editor's mode
+    in the URL (`?mode=paint`, kept on reload and when switching scans). Switching the editor's mode
+    keeps both modes' unsaved edits; switches wait for each other, as a mode loads its mesh the first
+    time.
 - **About** (`/about`): the third-party software, AI models and Python packages the app uses, each
   with its license text (`credits.py`: Python packages are read from the installed distributions,
   the rest is listed there with texts in `licenses/`), what those licenses ask (VGGT-1B weights are
@@ -58,7 +80,7 @@ mg ui --root ~/scans --port 9000
   same file for redistribution.
 - **Help** (`/help`): the full how-to with screenshots: filming, every screen and stage, every
   option (read live from `options.py`), presets, outputs, printing, editing and troubleshooting.
-- **Scan** (`/`) has two tabs (side by side on wide screens): **Run** and **Preview** (the 3D model, the keyframes and masks, the files). A dot on a tab means
+- **Scan** (`/`) has two tabs (the tabs and modes control; side by side on wide screens): **Run** and **Preview** (the 3D model, the keyframes and masks, the files). A dot on a tab means
   something new there; nothing switches tabs on its own.
 - **Run tab**: one layout for both modes. On the left the steps, which are the pipeline (status,
   time, progress bar, a mark when there are warnings or advice); on the right the selected step's
