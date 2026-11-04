@@ -23,7 +23,9 @@ dependencies = [
 mask = ["rembg>=2.0.60", "onnxruntime>=1.18"]
 # Feed-forward reconstruction (VGGT). Wants a CUDA GPU; works on CPU for ~20-30 frames.
 vggt = ["torch>=2.3", "torchvision>=0.18", "huggingface_hub>=0.23", "einops", "safetensors"]  # plus: uv pip install --no-deps git+https://github.com/facebookresearch/vggt
-dev = ["pytest>=8"]
+# Tests. pytest-playwright drives a real browser for tests/browser (the web UI's pages); they skip until
+# the browser is installed once: .venv/bin/playwright install chromium-headless-shell
+dev = ["pytest>=8", "pytest-playwright>=0.7"]
 
 [project.urls]
 Homepage = "https://github.com/jpagesbri/motiongrammetry"
@@ -41,3 +43,7 @@ build-backend = "hatchling.build"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["tests"]
+markers = [
+    "browser: drives the web UI in a real browser (tests/browser, Playwright); skips when no browser is installed",
+    "console_error(pattern): a console error matching this regex is expected in this browser test",
+]
