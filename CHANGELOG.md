@@ -13,7 +13,8 @@ the image with that version, and the About page and `mg --version` show it.
 - **One control for tabs and modes** (part of #23): Run / Preview, Assisted / Manual, 3D model /
   Frames & masks and the log's Live / History on the Scan page, and Sculpt mesh / Paint texture and
   3D / 3D + texture / Texture on the Edit page, are one control. Sculpt mesh / Paint texture are now
-  tabs like Run / Preview, across the top of the editor's side panel; the modes inside a page are a
+  tabs like Run / Preview, in the same bar under the top bar (no longer in the side panel, where
+  they scrolled out of sight); the modes inside a page are a
   row of options with the chosen one raised and underlined. The keyboard works on all of
   them (Tab to reach one, ← → to switch, Home / End), and screen readers hear them as tabs. The
   editor's mode is kept in the address (`?mode=paint`), so a reload stays in Paint.

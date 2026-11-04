@@ -15,11 +15,11 @@
   html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
     font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
   button, input, select { font: inherit; color: inherit; }
-  .app { display: grid; height: 100vh; grid-template-columns: 290px 1fr; grid-template-rows: 44px 1fr;
-    grid-template-areas: "top top" "side view"; }
+  .app { display: grid; height: 100vh; grid-template-columns: 290px 1fr; grid-template-rows: 44px auto minmax(0, 1fr);
+    grid-template-areas: "top top" "tabs tabs" "side view"; }
+  .app > .pagebar { grid-area: tabs; }  /* the page's tabs (modes.css), across the page as on Scan */
   header { grid-area: top; }
   aside { grid-area: side; background: var(--panel); border-right: 1px solid var(--line); overflow: auto; }
-  aside > .modes.tabs { border-bottom: 1px solid var(--line); }  /* the page's tabs, across the top of the panel */
   section { padding: 12px 14px; border-bottom: 1px solid var(--line); }
   h2 { margin: 0 0 8px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; }
   select, input[type=color] { background: var(--bg); border: 1px solid var(--line); border-radius: 5px; padding: 4px 6px; }
@@ -140,12 +140,15 @@
 <div class="app">
   <header class="topbar"></header>  <!-- written by topbar.js -->
 
-  <aside>
-    <!-- the page's tabs, as Run / Preview on the Scan page; the scan is chosen in the top bar -->
-    <div class="modes tabs wide" id="modeTabs" aria-label="Sculpt or Paint">
+  <!-- the page's tabs, in the same bar and place as Run / Preview on the Scan page; the scan is chosen in the top bar -->
+  <div class="pagebar">
+    <div class="modes tabs" id="modeTabs" aria-label="Sculpt or Paint">
       <button data-value="sculpt" title="reshape the clean mesh (before texturing)">Sculpt mesh</button>
       <button data-value="paint" title="paint the texture of the textured model">Paint texture</button>
     </div>
+  </div>
+
+  <aside>
     <section>
       <div id="modeNote" class="note"></div>
       <div id="modeWarn" class="warn" hidden></div>

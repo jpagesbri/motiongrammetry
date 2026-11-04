@@ -816,6 +816,7 @@ def test_tabs_and_modes_are_the_one_shared_control(server):
         assert text in js, text
     # one control, two looks: a page's own tabs (underlined, as Run / Preview were) and a segmented mode inside a page
     assert '.modes > button[aria-selected="true"]' in css and ".modes.tabs > button" in css and ":focus-visible" in css
+    assert ".pagebar {" in css  # the bar that holds a page's tabs, the same on every page
     pages = {}
     for page in ["/", "/edit"]:
         with urllib.request.urlopen(base + page) as r:
@@ -831,8 +832,12 @@ def test_tabs_and_modes_are_the_one_shared_control(server):
     assert 'role="tabpanel" aria-labelledby="tabRun"' in scan and 'role="tabpanel" aria-labelledby="tabPreview"' in scan
     for ctl in ["gTabs", "modeTabs", "pvTabs", "logTabs"]:
         assert f"const {ctl} = modeControl($('{ctl}')" in scan, ctl
-    # Edit: Sculpt mesh / Paint texture (the page's tabs, as on Scan, the panel's width), and the view's layout
-    assert re.search(r'<div class="modes tabs wide" id="modeTabs"[^>]*>\s*<button data-value="sculpt"', edit)
+    # Edit: Sculpt mesh / Paint texture, the page's tabs in the same bar under the top bar as on Scan (not in the
+    # side panel, which scrolls), and the view's layout
+    for html in (scan, edit):
+        assert re.search(r'<div class="pagebar">.*?\s*<div class="modes tabs" id="(gTabs|modeTabs)"', html)
+    assert re.search(r'<div class="pagebar">.*?\s*<div class="modes tabs" id="modeTabs"[^>]*>\s*<button data-value="sculpt"', edit)
+    assert edit.index('id="modeTabs"') < edit.index("<aside") and '"tabs tabs"' in edit and ".gbar" not in scan
     assert '<button data-value="paint"' in edit and '<div class="modes" id="layoutTabs"' in edit
     for ctl in ["modeTabs", "layoutTabs"]:
         assert f"const {ctl} = modeControl($('{ctl}')" in edit, ctl
