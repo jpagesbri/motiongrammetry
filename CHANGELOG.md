@@ -10,6 +10,12 @@ the image with that version, and the About page and `mg --version` show it.
 
 ## Unreleased
 
+- **Export from any page** (part of #23): **Export…** is in the top bar next to the scan, on Scan,
+  Edit, Help and About, and in each scan's ⋯ menu. It opens the same Export window as before (the
+  contents, formats, sizes, downloads and remembered settings), which the Preview's Export panel and
+  the assisted run's last step still open too. A scan with nothing to export yet says so and points
+  to Run. On Edit, with unsaved edits, the window says that it exports the saved files only.
+
 - **One control for tabs and modes** (part of #23): Run / Preview, Assisted / Manual, 3D model /
   Frames & masks and the log's Live / History on the Scan page, and Sculpt mesh / Paint texture and
   3D / 3D + texture / Texture on the Edit page, are one control. Sculpt mesh / Paint texture are now

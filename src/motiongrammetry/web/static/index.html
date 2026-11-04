@@ -161,33 +161,6 @@
   .btn.danger-solid { background: var(--bad); border-color: var(--bad); color: #fff; font-weight: 600; }
   .win-head { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--line); }
   .win-head .x { margin-left: auto; background: none; border: 0; color: var(--muted); cursor: pointer; font-size: 16px; }
-  .win-body { flex: 1; display: grid; grid-template-columns: 360px 1fr; grid-template-rows: minmax(0, 1fr); min-height: 0; }
-  .ex-form { display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--line); }
-  .ex-scroll { flex: 1; min-height: 0; overflow: auto; padding: 12px 14px 8px; }
-  .ex-foot { flex: none; max-height: 45%; overflow: auto; padding: 10px 14px 12px; border-top: 1px solid var(--line); }
-  .ex-foot .btns { margin-top: 0; }
-  .ex-form select, .ex-form input[type=number] { width: 150px; }
-  .ex-preview { position: relative; min-width: 0; background: var(--bg); }
-  .ex-preview canvas { display: block; width: 100%; height: 100%; }
-  .ex-empty { position: absolute; inset: 0; display: grid; place-items: center; }
-  .ex-empty[hidden] { display: none; }
-  .ex-sec { margin: 14px 0 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
-  .ex-sec:first-child { margin-top: 2px; }
-  .ex-item { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px; padding: 5px 0; }
-  .ex-item + .ex-item { border-top: 1px solid var(--line); }
-  .ex-item label { cursor: pointer; line-height: 1.3; }
-  .ex-item small { display: block; color: var(--muted); font-size: 11px; }
-  .ex-item.off label { cursor: default; opacity: .5; }
-  .ex-item .stale { color: var(--warn); font-size: 11px; }
-  .ex-item .ex-state { margin-left: 6px; font-size: 11px; }
-  .ex-item .ex-state.ready { color: var(--ok); } .ex-item .ex-state.outdated { color: var(--warn); }
-  .ex-item .ex-one { width: 128px; padding-left: 9px; color: var(--muted); font-size: 12px; }
-  .ex-item.off .ex-one { opacity: .5; }
-  .ex-form .ex-item select { width: 128px; }
-  .ex-files a { display: grid; grid-template-columns: 1fr auto; gap: 8px; padding: 3px 0; color: var(--accent); font-size: 12px; }
-  .ex-files a span { color: var(--muted); font-family: var(--mono); font-size: 11px; }
-  .ex-pick { position: absolute; top: 10px; left: 10px; z-index: 2; width: auto; }
-  .ex-pick[hidden] { display: none; }
   .as-body { grid-template-columns: 190px 1fr; }
   .as-steps { margin: 0; padding: 12px 10px 12px 30px; border-right: 1px solid var(--line); overflow: auto; color: var(--muted); }
   .as-steps li { padding: 4px 0; cursor: default; }
@@ -334,6 +307,7 @@
 <link rel="stylesheet" href="/topbar.css">
 <link rel="stylesheet" href="/modes.css">
 <link rel="stylesheet" href="/scrollbar.css">
+<link rel="stylesheet" href="/export.css">
 <script type="importmap">
 { "imports": {
     "three": "/vendor/three/build/three.module.js",
@@ -353,43 +327,6 @@
       </div>
       <p id="repText"></p>
       <div class="btns"><button class="btn primary" id="repGo">Replace the video</button><button class="btn" id="repCancel">Cancel</button></div>
-    </div>
-  </div>
-</div>
-<div class="modal" id="exportModal" hidden>
-  <div class="win">
-    <div class="win-head"><b>Export</b><span class="muted" id="exScan"></span><button class="x" id="exClose" title="close (Esc)">✕</button></div>
-    <div class="win-body">
-      <div class="ex-form"><div class="ex-scroll">
-        <div class="ex-sec">Version</div>
-        <label class="row">From <select id="exSource"><option value="pipeline">the pipeline</option><option value="custom">your edits (custom)</option></select></label>
-        <div class="ex-sec">Contents</div>
-        <div id="exItems"></div>
-        <div class="ex-sec">Placement</div>
-        <label class="row" title="how to stand the model up: the support plane, the camera orbit, or as SfM left it">Up <select id="exUp">
-          <option value="auto">auto</option><option value="plane">support plane</option><option value="camera">camera orbit</option><option value="none">as reconstructed</option></select></label>
-        <div class="opt-help" style="margin:-2px 0 6px">standing wrong? <a id="exOrient" style="color:var(--accent);cursor:pointer">fix the orientation…</a></div>
-        <label class="row" title="the clean model's real height; everything exported together is scaled the same">Height (mm) <input type="number" id="exHeight" min="1" step="1" placeholder="as scanned"></label>
-        <div class="opt-help" id="exHeightHelp">a scan has no scale of its own: GLB in metres, the others in millimetres</div>
-        <div id="exPrint">
-          <div class="ex-sec">3D print</div>
-          <label class="row" title="solid: openings closed with lids; shell: only the scanned surface; auto: shell when lids would invent over a third">Print as <select id="exMode">
-            <option value="auto">auto</option><option value="solid">solid</option><option value="shell">shell</option></select></label>
-          <label class="row" title="inward keeps the scanned surface exactly where it was measured">Shell grows <select id="exSide">
-            <option value="inward">inward (keeps the scanned surface)</option><option value="outward">outward</option><option value="both">both ways</option></select></label>
-          <label class="row">Shell thickness (mm) <input type="number" id="exShell" min="0.4" step="0.1" value="3"></label>
-          <label class="row" title="thinner walls are thickened behind the scanned surface">Minimum wall (mm) <input type="number" id="exWall" min="0" step="0.1" value="0.8"></label>
-          <label class="row">Stand <select id="exStand"><option value="auto">when it would topple</option><option value="none">never</option></select></label>
-          <label class="row" title="the bottom share of the height flattened so it stands (solid only)">Flat base (%) <input type="number" id="exBase" min="0" max="20" step="0.5" value="2"></label>
-        </div>
-        </div><div class="ex-foot">
-        <div class="btns"><button class="btn primary" id="exBuild">Export</button><a class="btn" id="exDownload" hidden download>Download</a></div>
-        <div class="muted" id="exStatus" style="margin-top:6px;font-size:12px"></div>
-        <div class="ex-files" id="exFiles"></div>
-        <div id="exIssues"></div>
-      </div></div>
-      <div class="ex-preview" id="exPreview"><select class="ex-pick" id="exPick" hidden title="which file to look at"></select>
-        <div class="muted ex-empty" id="exEmpty">Export to see the result here</div></div>
     </div>
   </div>
 </div>
@@ -518,8 +455,10 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { projection } from '/projection.js';
 import { mountTopbar, setScan, updateScans, uploadVideo, thumbUrl, pageLabel as topPageLabel } from '/topbar.js';
 import { modeControl } from '/modes.js';
+import { EX_CONTENTS, exStale, openExport, exportHooks } from '/export.js';
 // The scan chooser in the top bar: picking a scan selects it here; a new or copied scan opens
 // here; a deleted one is left for the next; a scan's ⋯ menu also uploads or replaces its video.
 mountTopbar('scan', {
@@ -575,42 +514,6 @@ scene3.add(new THREE.HemisphereLight(0xffffff, 0x404050, 1.6));
 const sun = new THREE.DirectionalLight(0xffffff, 1.4);
 persp.add(sun); sun.position.set(1, 2, 1); scene3.add(persp);
 
-// Perspective or orthographic view of the same orbit: the orthographic camera frames what the
-// perspective one sees at the orbit target and zooms instead of moving. Code that places the
-// camera (fit, fly to a keyframe) moves the perspective one, then framed() brings the other along.
-function projection(persp, controls, light, onSwitch) {
-  const rad = THREE.MathUtils.degToRad, ortho = new THREE.OrthographicCamera(-1, 1, 1, -1, persp.near, persp.far);
-  persp.parent?.add(ortho);
-  const P = {
-    camera: persp, aspect: persp.aspect,
-    set(on) {
-      if (on === !!P.camera.isOrthographicCamera) return;
-      const t = controls.target;
-      if (on) {
-        const half = persp.position.distanceTo(t) * Math.tan(rad(persp.fov / 2));
-        Object.assign(ortho, { top: half, bottom: -half, left: -half * P.aspect, right: half * P.aspect, zoom: 1, near: persp.near, far: persp.far });
-        ortho.position.copy(persp.position); ortho.quaternion.copy(persp.quaternion); ortho.up.copy(persp.up);
-        ortho.updateProjectionMatrix(); P.camera = ortho;
-      } else {
-        const d = ortho.top / ortho.zoom / Math.tan(rad(persp.fov / 2)), dir = ortho.position.clone().sub(t).normalize();
-        persp.position.copy(t).addScaledVector(dir, d); persp.quaternion.copy(ortho.quaternion); persp.up.copy(ortho.up);
-        persp.updateProjectionMatrix(); P.camera = persp;
-      }
-      if (light) P.camera.add(light);
-      controls.object = P.camera; controls.update();
-      onSwitch?.(P.camera);
-    },
-    resize(aspect) {
-      P.aspect = aspect; persp.aspect = aspect; persp.updateProjectionMatrix();
-      ortho.left = -ortho.top * aspect; ortho.right = ortho.top * aspect; ortho.updateProjectionMatrix();
-    },
-    framed() { if (P.camera === ortho) { P.camera = persp; P.set(true); } else controls.update(); },
-    pxPerUnit(h, dist) {  // screen pixels per scene unit at the orbit target
-      return P.camera === ortho ? h * ortho.zoom / (ortho.top - ortho.bottom) : h / (2 * dist * Math.tan(rad(persp.fov / 2)));
-    },
-  };
-  return P;
-}
 let mainCube = null;
 const proj = projection(persp, controls, sun, (c) => { camera = c; if (OR.tc) OR.tc.camera = c; render(); mainCube?.update(); });
 const grid = new THREE.GridHelper(1, 20, 0x2a3140, 0x1d222c);
@@ -1416,7 +1319,6 @@ new ResizeObserver(() => { fvDraw(); fvTrack(); }).observe($('fvStage'));
 
 addEventListener('keydown', (e) => {
   if (e.target.matches('input, select, textarea') || e.ctrlKey || e.metaKey || e.altKey) return;
-  if (!$('exportModal').hidden) return;
   if (isShown('preview') && pvMode === 'frames') {
     if (e.key === 'ArrowRight') { e.preventDefault(); fvStep(1); } else if (e.key === 'ArrowLeft') { e.preventDefault(); fvStep(-1); }
     else if (e.key === 'Home') fvGo(0); else if (e.key === 'End') fvGo(1e9);
@@ -1871,7 +1773,7 @@ function asDone(main) {
     ${tips.map((a) => `<div class="as-advice ${a.level}"><b>${esc(a.title)}</b>${esc(a.detail)}</div>`).join('')}
     <div class="btns"><button class="btn primary" id="asExport">Export…</button><button class="btn" id="asPreview">Open the Preview</button>
       <a class="btn" href="${editorUrl()}">Touch it up in ${topPageLabel('edit')}</a><button class="btn" id="asManual">Switch to Manual</button></div>`;
-  $('asExport').addEventListener('click', () => { showG('preview'); showPv('3d'); openExport(); });
+  $('asExport').addEventListener('click', () => { showG('preview'); showPv('3d'); openExport(current); });
   $('asPreview').addEventListener('click', () => { showG('preview'); showPv('3d'); });
   $('asManual').addEventListener('click', () => setMode('manual'));
 }
@@ -1981,210 +1883,19 @@ function toast(html, open) {
   $('toastX').addEventListener('click', () => { t.hidden = true; });
 }
 
-// ---------------------------------------------------------------- export window
-// Pick what to take out (each content in a format that suits it); several come as one zip.
-const EX_CONTENTS = [
-  { id: 'textured', label: 'Textured model', about: 'the photo texture · viewers, Blender, the web, AR',
-    formats: { glb: 'GLB', obj: 'OBJ + MTL + PNG' }, stage: 'texture', needs: 'run texture first' },
-  { id: 'mesh', label: 'Clean mesh', about: 'a colour per vertex, no texture · editing, measuring',
-    formats: { glb: 'GLB', ply: 'PLY', obj: 'OBJ' }, stage: 'clean', needs: 'run clean first' },
-  { id: 'print', label: '3D print', about: 'one closed solid, Z-up, in mm · slicers',
-    formats: { stl: 'STL', '3mf': '3MF' }, stage: 'clean', needs: 'run clean first' },
-  { id: 'raw', label: 'Raw mesh', about: 'before cleanup, background and all', formats: { ply: 'PLY', obj: 'OBJ', glb: 'GLB' },
-    stage: 'mvs', needs: 'run mvs or vggt first', pipelineOnly: true },
-  { id: 'cloud', label: 'Dense point cloud', about: 'the dense points, background and all', formats: { ply: 'PLY' },
-    stage: 'mvs', needs: 'run mvs first', pipelineOnly: true },
-  { id: 'cameras', label: 'Cameras', about: 'COLMAP model: poses and sparse points · splatting, NeRF', formats: { colmap: 'COLMAP' },
-    stage: 'sfm', needs: 'run sfm first', pipelineOnly: true },
-];
-const EX_FIELDS = { exHeight: 'height_mm', exMode: 'mode', exSide: 'shell_side', exShell: 'shell', exWall: 'min_wall',
-                    exStand: 'stand', exBase: 'base', exUp: 'up' };
-// the scan's own settings (its print_* and up options: the assisted run sets them from what was
-// filmed) until you change them for that scan
-const exDefaults = () => {
-  const d = wsState?.export_defaults || {};
-  return { exHeight: '', exMode: d.mode ?? 'auto', exSide: d.shell_side ?? 'inward', exShell: d.shell ?? 3, exWall: d.min_wall ?? 0.8,
-           exStand: d.stand ?? 'auto', exBase: 100 * (d.base ?? 0.02), exUp: d.up ?? 'auto' };
-};
-let exView = null, exBuilt = [];
-function exSaved() { try { return JSON.parse(localStorage.getItem('mg.export') || '{}'); } catch { return {}; } }
-function exSavedFields() { try { return JSON.parse(localStorage.getItem('mg.export.' + current) || '{}'); } catch { return {}; } }
-function exSave() {
-  const items = Object.fromEntries(EX_CONTENTS.map((c) => [c.id, { on: $('exOn-' + c.id).checked, format: $('exFmt-' + c.id).value }]));
-  try {
-    localStorage.setItem('mg.export', JSON.stringify({ items }));
-    localStorage.setItem('mg.export.' + current, JSON.stringify(Object.fromEntries(Object.keys(EX_FIELDS).map((id) => [id, $(id).value]))));
-  } catch {}
-}
-function exOptions() {
-  const options = {};
-  for (const [id, key] of Object.entries(EX_FIELDS)) {
-    const val = $(id).value;
-    if (val !== '') options[key] = $(id).type === 'number' ? (key === 'base' ? Number(val) / 100 : Number(val)) : val;
-  }
-  return options;
-}
-// Files are made when asked and kept until something they come from changes: each row says whether
-// its file is ready (exporting it again takes no time) or outdated (it is made again).
-let exCheckTimer = 0;
-function exCheck() {
-  clearTimeout(exCheckTimer);
-  exCheckTimer = setTimeout(async () => {
-    const items = exChosen();
-    EX_CONTENTS.forEach((c) => { const el = $('exSt-' + c.id); if (el) el.textContent = ''; });
-    if (!items.length) return;
-    try {
-      const r = await api(`/api/workspaces/${current}/export/status`, { method: 'POST', body: JSON.stringify({ items, source: $('exSource').value, options: exOptions() }) });
-      for (const it of r.items) {
-        const el = $('exSt-' + it.content); if (!el) continue;
-        el.className = 'ex-state ' + it.state;
-        el.textContent = it.state === 'ready' ? `ready · ${exSize(it.size)}` : it.state === 'outdated' ? 'outdated: made again' : '';
-        el.title = it.state === 'ready' ? 'already made from the files as they are now, with these settings' : it.state === 'outdated' ? 'made earlier, from older files or other settings' : '';
-      }
-    } catch { /* the status is a hint: Export still works */ }
-  }, 250);
-}
-function exStale(c, custom) {
-  if (custom) return c.id === 'textured' && wsState.custom?.texture_stale;
-  return (wsState.stale || []).includes(c.stage);
-}
-function exRenderItems() {
-  const custom = $('exSource').value === 'custom', have = new Set(wsState.exportable?.[$('exSource').value] || []);
-  const saved = exSaved().items || {}, prev = Object.fromEntries(EX_CONTENTS.map((c) => [c.id, $('exOn-' + c.id)?.checked]));
-  const first = EX_CONTENTS.find((c) => have.has(c.id))?.id;
-  $('exItems').innerHTML = EX_CONTENTS.map((c) => {
-    const ok = have.has(c.id), why = custom && c.pipelineOnly ? 'only in the pipeline version' : c.needs;
-    const fmt = saved[c.id]?.format in c.formats ? saved[c.id].format : Object.keys(c.formats)[0];
-    const on = ok && (prev[c.id] ?? saved[c.id]?.on ?? c.id === first);
-    return `<div class="ex-item${ok ? '' : ' off'}"><input type="checkbox" id="exOn-${c.id}"${on ? ' checked' : ''}${ok ? '' : ' disabled'}>
-      <label for="exOn-${c.id}">${c.label}${exStale(c, custom) ? ' <span class="stale" title="an earlier stage was re-run since">stale</span>' : ''}
-        <span class="ex-state" id="exSt-${c.id}"></span><small>${ok ? c.about : why}</small></label>
-      ${Object.keys(c.formats).length < 2 ? `<span class="ex-one">${c.formats[fmt]}<input type="hidden" id="exFmt-${c.id}" value="${fmt}"></span>`
-        : `<select id="exFmt-${c.id}"${ok ? '' : ' disabled'}>${Object.entries(c.formats)
-        .map(([v, l]) => `<option value="${v}"${v === fmt ? ' selected' : ''}>${l}</option>`).join('')}</select>`}</div>`;
-  }).join('');
-  EX_CONTENTS.forEach((c) => {
-    $('exOn-' + c.id).addEventListener('change', exFields);
-    $('exFmt-' + c.id).addEventListener('change', () => { exSave(); exCheck(); });
-  });
-  exFields();
-}
-function exChosen() {
-  return EX_CONTENTS.filter((c) => $('exOn-' + c.id)?.checked).map((c) => ({ content: c.id, format: $('exFmt-' + c.id).value }));
-}
-function exFields() {
-  const chosen = exChosen().map((i) => i.content), placed = chosen.some((c) => c !== 'cameras');
-  $('exPrint').hidden = !chosen.includes('print');
-  $('exUp').closest('label').hidden = $('exHeight').closest('label').hidden = !placed;
-  $('exOrient').parentElement.hidden = $('exHeightHelp').hidden = !placed;
-  $('exHeight').placeholder = chosen.includes('print') ? `as scanned (print: ${$('exHeight').dataset.print || 100})` : 'as scanned';
-  const shellish = $('exMode').value !== 'solid';
-  $('exSide').closest('label').hidden = !shellish; $('exShell').closest('label').hidden = !shellish;
-  $('exBuild').disabled = !chosen.length;
-  $('exBuild').textContent = chosen.length > 1 ? `Export ${chosen.length} as a zip` : 'Export';
-  exCheck();
-}
-function exReset() {
-  $('exStatus').textContent = ''; $('exIssues').innerHTML = ''; $('exFiles').innerHTML = ''; $('exDownload').hidden = true;
-}
-function openExport() {
-  if (!current || !wsState) return;
-  const c = wsState.custom || {}, hasCustom = (wsState.exportable?.custom || []).length > 0;
-  $('exSource').querySelector('[value=custom]').disabled = !hasCustom;
-  $('exSource').value = hasCustom && (c.mesh || c.texture) ? 'custom' : 'pipeline';
-  $('exScan').textContent = '· ' + current;
-  $('exUp').querySelector('[value=auto]').textContent = wsState.orientation?.user ? 'your orientation' : 'auto';
-  const saved = exSavedFields(), d = exDefaults();
-  for (const id of Object.keys(EX_FIELDS)) $(id).value = saved[id] ?? d[id];
-  $('exHeight').dataset.print = wsState.export_defaults?.height_mm ?? 100;
-  $('exItems').innerHTML = '';
-  exReset(); exRenderItems();
-  $('exportModal').hidden = false;
-}
-$('exportBtn').addEventListener('click', openExport);
-$('exOrient').addEventListener('click', () => { $('exportModal').hidden = true; showG('preview'); showPv('3d'); orientOpen = true; orientHome(); });
-$('exClose').addEventListener('click', () => { $('exportModal').hidden = true; });
-$('exportModal').addEventListener('click', (e) => { if (e.target === $('exportModal')) $('exportModal').hidden = true; });
-addEventListener('keydown', (e) => { if (e.key === 'Escape') $('exportModal').hidden = true; });
-$('exSource').addEventListener('change', () => { exRenderItems(); exReset(); });
-$('exMode').addEventListener('change', exFields);
-Object.keys(EX_FIELDS).forEach((id) => $(id).addEventListener('change', exCheck));
-const exUrl = (file) => `/api/workspaces/${current}/exports/${encodeURIComponent(file)}?t=${Date.now()}`;
-const exSize = (b) => b >= 1e9 ? gb(b) : b >= 1e6 ? (b / 1e6).toFixed(1) + ' MB' : (b / 1e3).toFixed(0) + ' kB';
-$('exBuild').addEventListener('click', async () => {
-  exSave();
-  const items = exChosen(), options = exOptions();
-  $('exBuild').disabled = true; exReset();
-  $('exStatus').textContent = items.some((i) => i.content === 'print') ? 'exporting (the print is rebuilt as a solid: about half a minute)…' : 'exporting…';
-  const t0 = Date.now();
-  try {
-    const r = await api(`/api/workspaces/${current}/export`, { method: 'POST', body: JSON.stringify({ items, source: $('exSource').value, options }) });
-    $('exDownload').href = exUrl(r.file); $('exDownload').hidden = false; $('exDownload').textContent = `Download ${r.file}`;
-    const p = r.files.find((f) => f.content === 'print')?.info || {};
-    $('exStatus').textContent = `${exSize(r.size)} · ${r.cached ? 'already made, reused' : Math.round((Date.now() - t0) / 1000) + ' s'}`
-      + (p.print_size_mm ? ` · print ${p.print_size_mm.join(' × ')} mm · ${p.print_watertight ? 'watertight' : 'NOT watertight'}` : '')
-      + (p.print?.mode ? ` · as ${p.print.mode}` : '');
-    if (r.bundle) $('exFiles').innerHTML = '<div class="ex-sec">In the zip (or one by one)</div>' + r.files.map((f) =>
-      `<a href="${exUrl(f.file)}" download>${esc(f.label)} · ${EX_CONTENTS.find((c) => c.id === f.content).formats[f.format]}<span>${exSize(f.size)}</span></a>`).join('');
-    $('exIssues').innerHTML = (r.issues || []).map((d) => `<div class="diag ${d.level}">${esc(d.message)}${d.hint ? `<span class="h">→ ${esc(d.hint)}</span>` : ''}</div>`).join('');
-    // a dense cloud can be hundreds of MB: too much for the browser, it is only downloaded
-    exBuilt = r.files.filter((f) => (f.preview || ['glb', 'stl', 'ply'].includes(f.format)) && (f.preview || f.size < 150e6));
-    $('exPick').innerHTML = exBuilt.map((f, i) => `<option value="${i}">${esc(f.label)}</option>`).join('');
-    $('exPick').hidden = exBuilt.length < 2;
-    api(`/api/workspaces/${current}/state`).then((st) => { wsState = st; renderOutputs(); exCheck(); }).catch(() => {});  // print check, rows' state
-    if (exBuilt.length) await exPreview(exBuilt[0]);
-    else exPreview(null, r.files.length > 1 ? 'nothing in this export can be shown here' : 'a zip of several files: no preview');
-  } catch (e) { $('exStatus').textContent = 'failed: ' + e.message; }
-  exFields();
+// ---------------------------------------------------------------- export
+// The Export window is export.js, the same on every page (the top bar's Export…, a scan's ⋯ menu).
+// Here it also opens from the Export panel and the assisted run's last step, fixes the orientation in
+// the Preview, goes to Run when there is nothing to export, and refreshes the panel after an export.
+$('exportBtn').addEventListener('click', () => openExport(current));
+exportHooks({
+  orient: async (name) => {
+    if (name !== current) await select(name);
+    showG('preview'); showPv('3d'); orientOpen = true; orientHome();
+  },
+  run: async (name) => { if (name !== current) await select(name); showG('run'); },
+  exported: (name, st) => { if (name === current) { wsState = st; renderOutputs(); } },
 });
-$('exPick').addEventListener('change', () => exPreview(exBuilt[Number($('exPick').value)]));
-async function exPreview(f, why) {
-  const box = $('exPreview');
-  if (!f) { $('exEmpty').hidden = false; $('exEmpty').textContent = why; if (exView?.mesh) exView.mesh.visible = false, exView.draw(); return; }
-  if (!exView) {
-    const r = new THREE.WebGLRenderer({ antialias: true }); r.setPixelRatio(Math.min(devicePixelRatio, 2));
-    r.outputColorSpace = THREE.SRGBColorSpace; box.appendChild(r.domElement);
-    const sc = new THREE.Scene(); sc.background = new THREE.Color(0x0f1115);
-    const cam = new THREE.PerspectiveCamera(40, 1, 0.01, 1e5);
-    sc.add(new THREE.HemisphereLight(0xffffff, 0x404050, 1.5)); const sun = new THREE.DirectionalLight(0xffffff, 1.6);
-    cam.add(sun); sun.position.set(1, 2, 1); sc.add(cam);
-    const ctl = new OrbitControls(cam, r.domElement);
-    exView = { r, sc, cam, ctl, mesh: null, draw: () => { const w = box.clientWidth, h = box.clientHeight; r.setSize(w, h, false); exView.proj.resize(w / h); r.render(sc, exView.proj.camera); } };
-    exView.proj = projection(cam, ctl, sun, () => { exView.draw(); exView.cube?.update(); });
-    ctl.addEventListener('change', exView.draw);
-    new ResizeObserver(exView.draw).observe(box);
-    viewCube(box, { projection: exView.proj, controls: ctl, render: exView.draw, fit: () => exView.frame?.() }).then((c) => { exView.cube = c; });
-  }
-  $('exEmpty').hidden = true;
-  if (exView.mesh) { exView.sc.remove(exView.mesh); exView.mesh = null; }
-  const file = f.preview || f.file, url = exUrl(file), ext = file.split('.').pop();
-  let obj;
-  if (ext === 'stl' || ext === 'ply') {
-    const { STLLoader } = await import('three/addons/loaders/STLLoader.js');
-    const { PLYLoader } = await import('three/addons/loaders/PLYLoader.js');
-    const geo = await new (ext === 'stl' ? STLLoader : PLYLoader)().loadAsync(url);
-    const colours = !!geo.attributes.color;
-    if (ext === 'ply' && !geo.index) {  // a point cloud
-      const size = (geo.computeBoundingBox(), geo.boundingBox.getSize(new THREE.Vector3()).length());
-      obj = new THREE.Points(geo, new THREE.PointsMaterial({ size: size / 600, vertexColors: colours, color: colours ? 0xffffff : 0xd0d4da }));
-    } else {
-      geo.computeVertexNormals();
-      obj = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0xd0d4da, roughness: .8, vertexColors: colours }));
-    }
-    if (ext === 'stl') obj.rotation.x = -Math.PI / 2;  // slicers are Z-up, the preview Y-up
-  } else {
-    obj = (await new GLTFLoader().loadAsync(url)).scene;
-    obj.traverse((o) => { if (o.isMesh && o.material?.map) o.material = new THREE.MeshBasicMaterial({ map: o.material.map }); });
-  }
-  exView.sc.add(obj); exView.mesh = obj;
-  exView.frame = () => {
-    const b = new THREE.Box3().setFromObject(obj), size = b.getSize(new THREE.Vector3()).length(), c = b.getCenter(new THREE.Vector3());
-    exView.ctl.target.copy(c); exView.cam.near = size / 200; exView.cam.far = size * 20; exView.cam.updateProjectionMatrix();
-    exView.cam.position.copy(c).add(new THREE.Vector3(0.25, 0.2, 1).normalize().multiplyScalar(size * 1.35)); exView.cam.lookAt(c);
-    exView.proj.framed(); exView.draw();
-  };
-  exView.frame();
-}
 
 // ---------------------------------------------------------------- export panel
 const editorUrl = () => '/edit' + (current ? '#' + encodeURIComponent(current) : '');
@@ -2196,7 +1907,7 @@ function renderOutputs() {
   $('editBtn').hidden = !pipe.includes('mesh');
   $('editBtn').href = editorUrl();
   const names = (l) => EX_CONTENTS.filter((c) => l.includes(c.id)).map((c) => c.label.toLowerCase()).join(', ');
-  const stale = EX_CONTENTS.some((c) => pipe.includes(c.id) && exStale(c, false));
+  const stale = EX_CONTENTS.some((c) => pipe.includes(c.id) && exStale(c, false, wsState));
   $('outSummary').innerHTML = (pipe.length ? `Ready: ${esc(names(pipe))}.` : '')
     + (mine.length ? ` Your edits: ${esc(names(mine))}.` : '')
     + (stale ? ' <span style="color:var(--warn)">Some are stale: an earlier stage was re-run.</span>' : '');
@@ -2742,7 +2453,7 @@ if (!initial) setMode('assisted', false);
 (initial ? select(initial) : Promise.resolve()).then(async () => {
   if (params.get('pane') === 'pipeline') { RO.page = 'overview'; setMode('manual', false); }
   if (params.get('page')) goPage(params.get('page'));
-  if (params.get('open') === 'export') { showG('preview'); showPv('3d'); openExport(); }
+  if (params.get('open') === 'export') { showG('preview'); showPv('3d'); openExport(current); }
   if (params.get('open') === 'assist') {
     if (params.get('step')) AS.step = params.get('step');
     if (params.get('subject')) AS.subject = params.get('subject'); if (params.get('coverage')) AS.coverage = params.get('coverage');

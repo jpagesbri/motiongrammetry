@@ -850,6 +850,52 @@ def test_tabs_and_modes_are_the_one_shared_control(server):
         assert gone not in edit, gone
 
 
+def test_every_page_offers_export_through_the_one_shared_module(server):
+    base, _ = server
+    with urllib.request.urlopen(base + "/export.js") as r:
+        assert r.headers["Content-Type"].startswith("text/javascript")
+        js = r.read().decode()
+    with urllib.request.urlopen(base + "/export.css") as r:
+        assert r.headers["Content-Type"].startswith("text/css")
+        css = r.read().decode()
+    with urllib.request.urlopen(base + "/projection.js") as r:
+        assert "export function projection(" in r.read().decode()
+    with urllib.request.urlopen(base + "/topbar.js") as r:
+        bar = r.read().decode()
+    # the window and its logic: the contents and formats, ready / outdated, the downloads, the saved choices
+    for text in ["export const EX_CONTENTS = [", "export async function openExport(name)", "export function exportHooks(",
+                 "/export/status`", "/export`", "/exports/${enc(file)}", "'mg.export'", "'mg.export.' + scan",
+                 "export_defaults", 'id="exDownload"', "import('/projection.js')", "import('/viewcube.js')"]:
+        assert text in js, text
+    # nothing to export yet: it says so and points to Run; unsaved edits: it says it exports the saved files only
+    assert "has nothing to export yet" in js and 'href="/?tab=run#${enc(scan)}">Go to Run</a>' in js
+    assert "Export uses the saved" in js and 'id="exUnsaved"' in js
+    assert ".ex-modal {" in css and ".ex-unsaved {" in css
+    # the top bar: Export… beside the scan chip, and in every scan's ⋯ menu, on every page
+    assert "import { openExport } from '/export.js';" in bar
+    assert '<button class="topexport" id="topExport" disabled' in bar and "openExport(scan)" in bar
+    assert "label: 'Export…'" in bar and "run: () => openExport(w.name)" in bar
+    pages = {}
+    for page in ["/", "/edit", "/help", "/about"]:
+        with urllib.request.urlopen(base + page) as r:
+            pages[page] = html = r.read().decode()
+        head = html[: html.index("<body")]
+        assert '<link rel="stylesheet" href="/export.css">' in head and '<script type="importmap">' in head, page
+        assert "from '/topbar.js'" in html, page
+    scan, edit = pages["/"], pages["/edit"]
+    # the Scan page uses the module for its Export panel and the assisted run's last step: no copy of its own
+    assert "import { EX_CONTENTS, exStale, openExport, exportHooks } from '/export.js';" in scan
+    assert "$('exportBtn').addEventListener('click', () => openExport(current));" in scan
+    assert "$('asExport').addEventListener('click', () => { showG('preview'); showPv('3d'); openExport(current); });" in scan
+    for gone in ['id="exportModal"', "const EX_CONTENTS", "function exRenderItems", "const exUrl", "const exSize",
+                 "async function exPreview", 'id="exSource"', ".ex-item {", "function exSave"]:
+        assert gone not in scan, gone
+    # the editor says whether there are unsaved edits; projection() is shared, not copied
+    assert "import { exportHooks } from '/export.js';" in edit and "S.dirty && 'sculpt edits', P.dirty && 'paint'" in edit
+    for html in (scan, edit):
+        assert "import { projection } from '/projection.js';" in html and "function projection(" not in html
+
+
 def test_the_scan_is_chosen_from_the_top_bar_on_every_page(server):
     base, _ = server
     with urllib.request.urlopen(base + "/scanchooser.js") as r:
