@@ -2416,7 +2416,7 @@ function seamLines() {
   $('seamInfo').textContent = `${n.toLocaleString()} seam edges · Ctrl+Z undoes a stroke`;
   requestRender();
 }
-const seamRedraw = () => { if (!SM.linesPending) { SM.linesPending = true; requestAnimationFrame(seamLines); } };
+const seamRedraw = () => { if (!SM.linesPending) { SM.linesPending = true; requestAnimationFrame(() => { if (SM.linesPending) seamLines(); }); } };
 function seamVertex(hit) {  // the welded corner of the hit face nearest the hit
   const local = hit.point.clone().applyMatrix4(new THREE.Matrix4().copy(SM.disp.matrixWorld).invert());
   let best = -1, bd = Infinity;
@@ -2495,6 +2495,7 @@ function seamUndo() { if (SM.undo.length) { SM.seam = SM.undo.pop(); seamRedraw(
 // The pieces the seams make right now: faces joined across every edge that is not a seam, each piece
 // coloured on a copy of the model shown in its place (it updates after every stroke).
 function seamPieces() {
+  if (SM.linesPending) seamLines();  // lines still to draw would write their count line over this one, pieces left out
   const { nf, E, seam, ef0, ef1 } = SM, parent = new Int32Array(nf);
   for (let f = 0; f < nf; f++) parent[f] = f;
   const find = (x) => { while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; } return x; };
