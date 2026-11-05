@@ -8,6 +8,7 @@ each with the options that would address it and the stages to re-run, so the ass
 
 from __future__ import annotations
 
+from .checks import keyframe_ranges
 from .workspace import Workspace
 
 # What the user said they are scanning (assisted mode, first step) -> starting options.
@@ -102,6 +103,15 @@ def advise(ws: Workspace, subject: str | None = None) -> list[dict]:
                       "the views did not connect well (plain or shiny surfaces, gaps in the video): try the slower "
                       "incremental mapper" + (" with exhaustive matching" if n <= 200 else "") +
                       ", or the low-texture preset", apply, ["sfm", "mvs", "clean", "texture"]))
+        elif not (s.get("camera_path") or {}).get("ok", True):
+            p = s["camera_path"]
+            where = sorted({j["from"] for j in p.get("jumps", [])} | {f["keyframe"] for f in p.get("far", [])})
+            add(_item("sfm", "fix", f"the camera path breaks near keyframe{'s' if len(where) > 1 else ''} "
+                      + ", ".join(keyframe_ranges(where)),
+                      "the keyframes got a position, but some views did not connect, so part of the scene is misplaced "
+                      "or built twice. Film again: walk slowly through doorways and keep part of the room you are "
+                      "leaving in view while you turn; no quick pans or close-ups in passing; for an object, "
+                      "a steady orbit at an even pace"))
         elif s.get("mean_reproj_error_px", 0) > 2.0:
             add(_item("sfm", "tip", f"camera positions are approximate ({s['mean_reproj_error_px']:.1f} px error)",
                       "the subject may have moved, or the video is soft; the result can look smeared"))

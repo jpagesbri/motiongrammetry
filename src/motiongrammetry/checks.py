@@ -448,6 +448,51 @@ def _gate_sfm(ws, r, o):
     if r.get("models", 1) > 1:
         d.append(warn("disconnected", f"SfM split into {r['models']} pieces; only the largest is used",
                       "move more slowly through difficult parts; loop_stride 3"))
+    d += camera_path_diags(r.get("camera_path") or {})
+    return d
+
+
+CAMERA_PATH_HINT = ("the views did not connect there, so part of the scene is misplaced or built twice, however low "
+                    "the reprojection error. Film again: walk slowly through doorways and keep part of the room you "
+                    "are leaving in view while you turn; avoid quick pans and close-ups in passing; for an object, "
+                    "a steady orbit at an even pace. matcher exhaustive or mapper incremental can move the break "
+                    "but rarely remove it; strict stops the pipeline here")
+
+
+def _listing(items: list[str], total: int, most: int = 8) -> str:
+    """The first ``most`` items, then how many of ``total`` are left out."""
+    shown = items[:most]
+    return ", ".join(shown) + (f" and {total - len(shown)} more" if total > len(shown) else "")
+
+
+def keyframe_ranges(keyframes: list[int]) -> list[str]:
+    """[0, 1, 2, 3, 40] -> ["0–3", "40"]"""
+    out, start = [], None
+    for i, k in enumerate(keyframes):
+        if start is None:
+            start = k
+        if i + 1 == len(keyframes) or keyframes[i + 1] != k + 1:
+            out.append(f"{start}–{k}" if k > start else f"{k}")
+            start = None
+    return out
+
+
+def camera_path_diags(p: dict) -> list[Diag]:
+    """Warnings for the camera-path check of sfm.camera_path_check (the sfm gate, and mg check-cameras)."""
+    d = []
+    jumps = sorted(p.get("jumps") or [], key=lambda j: j["from"])
+    if jumps:
+        n = p.get("jump_count", len(jumps))
+        d.append(warn("camera-path-jump", f"the camera path breaks {'once' if n == 1 else f'{n} times'}, where it moved "
+                      "many times the median step from one keyframe to the next: keyframes "
+                      + _listing([f"{j['from']}→{j['to']} ×{j['ratio']:g}" for j in jumps], n), CAMERA_PATH_HINT))
+    far = p.get("far") or []
+    if far:
+        n = p.get("far_count", len(far))
+        d.append(warn("cameras-far-away", f"{n} camera{'s' if n > 1 else ''} far from all the others (keyframes "
+                      + ", ".join(keyframe_ranges([f["keyframe"] for f in far])) + ("…" if n > len(far) else "") +
+                      f", up to ×{max(f['ratio'] for f in far):g} the usual distance from the centre)",
+                      CAMERA_PATH_HINT))
     return d
 
 

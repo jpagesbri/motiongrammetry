@@ -144,6 +144,7 @@ The same pipeline runs from the command line:
 ```bash
 mg run capture.mp4 work/              # the whole pipeline
 mg check work/ --video capture.mp4    # what would fail, and why, without running anything
+mg check-cameras work/                # breaks in the camera path of the scan's SfM model
 mg logs work/ --list                  # what ran, how long it took, the warnings
 ```
 

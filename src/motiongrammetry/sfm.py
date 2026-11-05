@@ -15,11 +15,24 @@ import shutil
 from itertools import combinations
 from pathlib import Path
 
+import numpy as np
 import pycolmap
 
 from .workspace import Workspace
 
 log = logging.getLogger(__name__)
+
+# The camera-path check (issue #49). A model can place every frame at sub-pixel reprojection error
+# and still be wrong as a whole: where neighbouring views share too little (a fast pan through a
+# doorway), SfM may put the next stretch of the walk somewhere else, or build a room twice. Video
+# keyframes are close together in time, so the camera moves by similar amounts from one to the
+# next; a step many times the usual one, or cameras far from all the others, mean a break.
+# Normal object scans peak at x2-x5 the median step (uneven walking pace) and x1-x2 the usual
+# distance; the broken flat walk of issue #49 at x10-x712, its misplaced entrance cameras at x19-x23.
+PATH_JUMP_FACTOR = 10.0  # a step this many times the median step between keyframes is a break
+PATH_FAR_FACTOR = 5.0    # a camera this many times farther from the median centre than most (p75) is misplaced
+PATH_MIN_CAMERAS = 8     # fewer placed cameras: no meaningful median, no check
+PATH_MAX_LISTED = 20     # entries of each kind kept in the manifest
 
 
 def _loop_pairs(names: list[str], stride: int, overlap: int) -> list[tuple[str, str]]:
@@ -135,6 +148,7 @@ def run_sfm(
         "mean_track_length": recon.compute_mean_track_length(),
         "masked_features": use_masks,
         "unregistered": sorted(set(names) - {img.name for img in recon.images.values() if img.has_pose}),
+        "camera_path": camera_path_from_reconstruction(recon, names),
     }
     log.info("SfM: %s", info)
     return info
@@ -163,3 +177,59 @@ def load_reconstruction(ws: Workspace) -> pycolmap.Reconstruction:
     if not (ws.sparse / "images.bin").exists() and not (ws.sparse / "images.txt").exists():
         raise RuntimeError(f"no SfM model at {ws.sparse}; run `mg sfm` (or `mg vggt`) first")
     return pycolmap.Reconstruction(ws.sparse)
+
+
+def camera_path_from_reconstruction(recon: pycolmap.Reconstruction, names: list[str] | None = None) -> dict:
+    """:func:`camera_path_check` on a model: ``names`` are all keyframes in order (unplaced ones
+    included); by default the model's own images, sorted by name."""
+    centres = {img.name: img.projection_center() for img in recon.images.values() if img.has_pose}
+    names = names if names is not None else sorted(centres)
+    return camera_path_check([centres.get(n) for n in names], names)
+
+
+def camera_path_check(centres: list, names: list[str] | None = None, jump_factor: float = PATH_JUMP_FACTOR,
+                      far_factor: float = PATH_FAR_FACTOR) -> dict:
+    """Breaks in the camera path: a pure function of the camera centres, one per keyframe in keyframe
+    order (``None`` for a keyframe SfM could not place).
+
+    - **jumps**: consecutive placed keyframes whose distance is over ``jump_factor`` times the median
+      step. Across unplaced keyframes the distance is divided by the number of steps it spans (a
+      lower bound on the motion per keyframe), so a gap alone is never a jump, but a part placed
+      far off after one still is.
+    - **far**: cameras over ``far_factor`` times farther from the median centre than the 75th
+      percentile of those distances (robust to up to a quarter of the cameras being off).
+
+    Keyframes are given by their position in the list (``frame_00062.jpg`` is 62). Ratios are
+    rounded; ``ok`` is False when anything was flagged."""
+    idx = [i for i, c in enumerate(centres) if c is not None]
+    out = {"cameras": len(idx), "checked": False, "ok": True, "median_step": None, "max_step_ratio": None,
+           "usual_distance": None, "max_far_ratio": None, "jump_factor": jump_factor, "far_factor": far_factor,
+           "jumps": [], "far": [], "jump_count": 0, "far_count": 0}
+    if len(idx) < PATH_MIN_CAMERAS:
+        return out
+    C = np.asarray([centres[i] for i in idx], dtype=float)
+    span = np.diff(idx)
+    steps = np.linalg.norm(np.diff(C, axis=0), axis=1) / span
+    median = float(np.median(steps))
+    dist = np.linalg.norm(C - np.median(C, axis=0), axis=1)
+    usual = float(np.percentile(dist, 75))
+    if median <= 0 or usual <= 0:  # the camera did not move: nothing to compare against
+        return out
+    ratio, far_ratio = steps / median, dist / usual
+    out.update(checked=True, median_step=round(median, 6), max_step_ratio=round(float(ratio.max()), 1),
+               usual_distance=round(usual, 6), max_far_ratio=round(float(far_ratio.max()), 1))
+
+    def name(i):
+        return names[i] if names else None
+
+    jumps = [{"from": idx[k], "to": idx[k + 1], "ratio": round(float(ratio[k]), 1)}
+             for k in np.flatnonzero(ratio > jump_factor)]
+    far = [{"keyframe": idx[k], "ratio": round(float(far_ratio[k]), 1)} for k in np.flatnonzero(far_ratio > far_factor)]
+    for j in jumps:
+        j.update(from_name=name(j["from"]), to_name=name(j["to"]))
+    for f in far:
+        f["name"] = name(f["keyframe"])
+    out.update(ok=not jumps and not far, jump_count=len(jumps), far_count=len(far),
+               jumps=sorted(jumps, key=lambda j: -j["ratio"])[:PATH_MAX_LISTED],
+               far=sorted(sorted(far, key=lambda f: -f["ratio"])[:PATH_MAX_LISTED], key=lambda f: f["keyframe"]))
+    return out

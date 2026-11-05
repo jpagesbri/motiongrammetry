@@ -39,6 +39,7 @@ mg run capture.mp4 work/ --preset person          # people
 mg run capture.mp4 work/ --preset low-texture     # dark/plain objects
 mg run capture.mp4 work/ --method vggt            # feed-forward (GPU recommended)
 mg check work/                                    # what would fail, and why
+mg check-cameras work/                            # breaks in the camera path of an existing SfM model
 mg logs work/ --list                              # run history
 ```
 
@@ -99,7 +100,8 @@ Every stage (`mg <stage>`, `mg run`, or the UI) runs through one wrapper (`pipel
 2. **Quality gates** after each stage turn silent bad results into warnings or failures with a hint:
    too few / blurry keyframes, camera barely moving, empty or background-grabbing masks, poor or
    partial SfM registration, high reprojection error, stretched or implausible focal length,
-   disconnected models, near-empty meshes, cleanup removing everything. `--strict` fails on warnings.
+   disconnected models, a broken camera path (below), near-empty meshes, cleanup removing
+   everything. `--strict` fails on warnings.
 3. **Termination**: the pipeline stops at the first failing stage and marks the rest *skipped*.
    Cancel/Ctrl-C/SIGTERM unwinds cleanly (OpenMVS containers are named and killed, partial depth
    maps removed); a watchdog kills OpenMVS steps silent for `--idle-timeout` minutes; exit codes
@@ -127,6 +129,25 @@ Exit codes: `0` ok · `1` failed · `2` quality gate failed · `3` pre-flight fa
 
 All options (and their help) are in `options.py`; `mg <stage> --help` lists the relevant ones.
 
+### The camera-path check
+
+A model can place every keyframe at sub-pixel reprojection error and still be wrong as a whole:
+where neighbouring views share too little (a quick pan, a doorway, a close-up in passing), SfM may
+put the rest of the walk somewhere else, or build a room twice. So `mg sfm` also checks the path of
+the cameras in keyframe order (`camera_path` in the manifest) and warns:
+
+- `camera-path-jump`: from one keyframe to the next the camera moved over **10×** the median step
+  between keyframes (`PATH_JUMP_FACTOR` in `sfm.py`). Across keyframes SfM could not place, the
+  distance is divided by the number of steps it spans, so a gap alone is never a jump.
+- `cameras-far-away`: cameras over **5×** farther from the median centre than the 75th percentile
+  of those distances (`PATH_FAR_FACTOR`).
+
+They are warnings, like the other gates: `--strict` turns them into a failure that stops the
+pipeline. `mg check-cameras WORK` runs the check alone on an existing model (it only reads; exit
+code 2 when it finds a break). On real scans: normal orbits peak at ×3–×5 the median step and ×1–×2
+the usual distance; the flat walk of issue #49 had jumps of ×12 to ×712 and four entrance cameras
+at ×19–×23.
+
 ## Capture tips
 
 - Orbit 2–3 times at different heights; keep the subject ~60% of the frame.
@@ -134,6 +155,9 @@ All options (and their help) are in `options.py`; `mg <stage> --help` lists the 
 - **People:** they must hold still for the whole orbit (sit them down, ~40–60 s). Breathing and
   hair still blur detail; for moving subjects you need a multi-camera rig.
 - Avoid shiny, transparent and featureless surfaces for the `mvs` path; try `vggt` or 2DGS there.
+- **Rooms:** walk slowly through doorways and keep part of the room you are leaving in view while
+  you turn; avoid quick pans and close-ups in passing. Otherwise the camera path breaks there
+  (`camera-path-jump`).
 
 ## Lessons baked into the defaults
 

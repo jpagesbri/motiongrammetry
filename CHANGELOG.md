@@ -10,6 +10,17 @@ the image with that version, and the About page and `mg --version` show it.
 
 ## Unreleased
 
+- **A check on the camera path in sfm** (part of #49): an SfM can place every keyframe at
+  sub-pixel error and still be wrong as a whole, with part of a walk placed far away or a room
+  built twice, where neighbouring views shared too little. `mg sfm` now follows the cameras in
+  keyframe order and warns, on the stage card, in the log and in the assisted run's advice, when
+  the camera moved over 10× the median step from one keyframe to the next
+  (`camera-path-jump`, naming the keyframes and the multiple) or when cameras sit far from all the
+  others (`cameras-far-away`), with capture advice: walk slowly through doorways, keep part of the
+  room you are leaving in view while you turn, no quick pans or close-ups in passing; for an
+  object, a steady orbit. `--strict` makes it stop the pipeline. `mg check-cameras WORK` runs the
+  check on a scan's existing SfM model, reading only. Help's troubleshooting and filming tips say
+  the same.
 - **Help on every page** (part of #23): a **?** button at the right of the top bar on Scan, Edit
   and About, or the `?` key, opens a short help for what the page shows now (Scan: Assisted, Manual,
   the 3D model or Frames & masks; Edit: Sculpt or Paint), with **Read more in Help →** to the

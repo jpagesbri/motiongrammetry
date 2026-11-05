@@ -107,6 +107,29 @@ def cmd_check(a: argparse.Namespace) -> int:
     return worst
 
 
+def cmd_check_cameras(a: argparse.Namespace) -> int:
+    from .checks import camera_path_diags
+    from .diagnostics import EXIT_GATE, EXIT_OK
+    from .sfm import camera_path_from_reconstruction, load_reconstruction
+
+    ws = Workspace(a.work)
+    recon = load_reconstruction(ws)
+    names = [f.name for f in ws.frame_paths()] or None  # unplaced keyframes count as gaps
+    p = camera_path_from_reconstruction(recon, names)
+    if not p["checked"]:
+        print(f"camera path: not checked ({p['cameras']} cameras placed)")
+        return EXIT_OK
+    print(f"camera path: {p['cameras']} cameras, median step {p['median_step']:.4g} between keyframes, "
+          f"largest ×{p['max_step_ratio']:g} (flagged over ×{p['jump_factor']:g}); farthest camera "
+          f"×{p['max_far_ratio']:g} the usual distance from the centre (flagged over ×{p['far_factor']:g})")
+    diags = camera_path_diags(p)
+    for d in diags:
+        print(f"  {d.level}: {d.message}\n    -> {d.hint}")
+    if not diags:
+        print("  ok: no breaks")
+    return EXIT_GATE if diags else EXIT_OK
+
+
 def cmd_logs(a: argparse.Namespace) -> int:
     ws = Workspace(a.work)
     hist = ws.history()
@@ -335,6 +358,11 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--stages", nargs="+", choices=STAGES)
     _add_options(sp, STAGES)
     sp.set_defaults(fn=cmd_check)
+
+    sp = sub.add_parser("check-cameras", help="check the camera path of the scan's SfM model for breaks (jumps "
+                        "between keyframes, cameras far from the rest); reads only, exit 2 if any")
+    sp.add_argument("work")
+    sp.set_defaults(fn=cmd_check_cameras)
 
     sp = sub.add_parser("logs", help="show the last stage log, or the run history")
     sp.add_argument("work")
