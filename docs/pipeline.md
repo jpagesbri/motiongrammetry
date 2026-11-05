@@ -96,7 +96,11 @@ Every stage (`mg <stage>`, `mg run`, or the UI) runs through one wrapper (`pipel
 1. **Pre-flight checks** refuse to start on known problems: missing or *stale* inputs (e.g. masks
    older than the keyframes, a mesh built from an older SfM), missing OpenMVS / Docker daemon /
    image, not enough disk for the depth maps (estimated per resolution level), low RAM, unreadable
-   video. `mg check WORK` runs them alone; `--force` overrides.
+   video. `mg check WORK` runs them alone; `--force` overrides. A stage is stale when an input it
+   used is newer than its output: keyframes for mask and SfM, the cameras for MVS, the cameras, masks
+   and raw mesh it used for clean, and so on down. SfM counts the masks as an input only when it ran
+   with `--mask-sfm` (its manifest's `masked_features`), so new masks then outdate SfM and everything
+   after it; without it they outdate clean and texture only.
 2. **Quality gates** after each stage turn silent bad results into warnings or failures with a hint:
    too few / blurry keyframes, camera barely moving, empty or background-grabbing masks, poor or
    partial SfM registration, high reprojection error, stretched or implausible focal length,

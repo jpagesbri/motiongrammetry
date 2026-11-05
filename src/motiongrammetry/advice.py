@@ -77,11 +77,13 @@ def advise(ws: Workspace, subject: str | None = None) -> list[dict]:
         n, cov, cv, empty = mk.get("frames", 1) or 1, mk.get("mean_coverage", 0), mk.get("coverage_cv", 0), mk.get("empty_masks", 0)
         other = {"object": "person", "object-hq": "person-hq", "person": "object", "person-hq": "object-hq"}
         current = last_options(ws, "mask").get("mask_model", "object")
+        # New masks outdate clean and texture, and SfM too (so MVS) when it ran with them (mask_sfm).
+        rerun = ["mask"] + (["sfm", "mvs"] if "mask" in ws.sfm_upstream(m) else []) + ["clean", "texture"]
         if empty > 0.05 * n:
             alt = other.get(current, "object-hq")
             add(_item("mask", "fix", f"{empty} keyframes found no subject",
                       f"the segmentation missed the subject in some views: try the {alt} model",
-                      {"mask_model": alt}, ["mask", "clean", "texture"]))
+                      {"mask_model": alt}, rerun))
         if cov < 0.05:
             add(_item("mask", "fix", f"the subject covers only {cov:.0%} of the frame",
                       "film closer: small subjects get few pixels and little detail"))
@@ -89,7 +91,7 @@ def advise(ws: Workspace, subject: str | None = None) -> list[dict]:
             hq = current if current.endswith("-hq") else f"{current}-hq" if current in other else "object-hq"
             add(_item("mask", "tip", "the subject's size jumps between keyframes",
                       "some masks probably caught background or lost part of the subject; check the mask overlay "
-                      f"in the keyframe strip, or try the {hq} model", {"mask_model": hq}, ["mask", "clean", "texture"]))
+                      f"in the keyframe strip, or try the {hq} model", {"mask_model": hq}, rerun))
         if not any(x["stage"] == "mask" for x in out):
             add(_item("mask", "ok", f"subject found in every keyframe ({cov:.0%} of the frame)",
                       "check the mask overlay in the keyframe strip if anything looks off"))

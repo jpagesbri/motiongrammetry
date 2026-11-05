@@ -194,6 +194,60 @@ def test_clean_follows_the_raw_mesh_it_used(tmp_path):
     assert app.stale(ws) == ["mvs", "clean"]
 
 
+def _masks_rerun_after_everything(tmp_path, masked_features):
+    """A scan run through texture, with SfM run with or without the masks, then the masks re-run."""
+    ws = Workspace(tmp_path / "root" / "m")
+    ws.sparse.mkdir(parents=True)
+    _orbit_reconstruction().write(ws.sparse)
+    t = time.time() - 600
+    for i, stage in enumerate(("frames", "mask", "sfm", "mvs", "clean", "texture")):
+        ws.stamp(stage)
+        os.utime(ws.root / ".stamps" / stage, (t + 60 * i, t + 60 * i))
+    ws.record("sfm", {"registered": 3, "masked_features": masked_features})
+    ws.stamp("mask")  # mg mask again (new model, or edited masks): newer than everything
+    return ws
+
+
+def test_new_masks_outdate_an_sfm_that_used_them(tmp_path):
+    """mask_sfm: SfM matched features inside the masks only, so new masks outdate the cameras and
+    everything made from them, and every place that asks agrees."""
+    from motiongrammetry import advice, checks
+
+    ws = _masks_rerun_after_everything(tmp_path, masked_features=True)
+    assert ws.sfm_upstream() == ["frames", "mask"]
+    assert ws.stale_stages() == ["sfm", "mvs", "clean", "texture"]
+    app = App(tmp_path / "root")
+    assert app.stale(ws) == ws.stale_stages()
+    assert app.state(ws)["upstream"]["sfm"] == ["frames", "mask"]  # the UI's "re-run from here" ticks sfm, mvs
+    # pre-flight says why: the masks changed, not just "older than its inputs"
+    msg = [d.message for d in checks._stale_input(ws, "mvs", ["sfm"])]
+    assert msg and "masks changed after sfm ran with them" in msg[0]
+    # the assisted advice for a new mask model re-runs SfM and MVS too
+    ws.record("mask", {"frames": 100, "mean_coverage": 0.3, "coverage_cv": 0.1, "empty_masks": 20})
+    fix = next(a for a in advice.advise(ws) if a["stage"] == "mask" and a["level"] == "fix")
+    assert fix["rerun"] == ["mask", "sfm", "mvs", "clean", "texture"]
+    # cameras VGGT wrote since used no masks
+    ws.stamp("sfm", by="vggt")
+    assert ws.sfm_upstream() == ["frames"]
+
+
+def test_new_masks_leave_an_sfm_without_masks_alone(tmp_path):
+    """Without mask_sfm the masks only matter from clean on, as before."""
+    from motiongrammetry import advice, checks
+
+    ws = _masks_rerun_after_everything(tmp_path, masked_features=False)
+    assert ws.sfm_upstream() == ["frames"]
+    assert ws.stale_stages() == ["clean", "texture"]
+    assert App(tmp_path / "root").state(ws)["upstream"]["sfm"] == ["frames"]
+    assert not checks._stale_input(ws, "mvs", ["sfm"])
+    ws.record("mask", {"frames": 100, "mean_coverage": 0.3, "coverage_cv": 0.1, "empty_masks": 20})
+    fix = next(a for a in advice.advise(ws) if a["stage"] == "mask" and a["level"] == "fix")
+    assert fix["rerun"] == ["mask", "clean", "texture"]
+    # an SfM from before masked_features was recorded counts as one without masks
+    ws.record("sfm", {"registered": 3})
+    assert ws.stale_stages() == ["clean", "texture"]
+
+
 def test_terminal_runs_replace_a_finished_ui_job(tmp_path):
     import time
 

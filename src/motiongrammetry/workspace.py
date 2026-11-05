@@ -21,7 +21,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 STAGES = ["frames", "mask", "sfm", "mvs", "vggt", "clean", "texture"]
-# Which earlier stage's output each stage consumes (used for staleness).
+# Which earlier stage's output each stage consumes (used for staleness). SfM also consumes the masks
+# when it ran with mask_sfm (see sfm_upstream).
 UPSTREAM = {"mask": ["frames"], "sfm": ["frames"], "mvs": ["sfm"], "vggt": ["frames"],
             "clean": ["sfm", "mask", "mvs", "vggt"], "texture": ["clean", "mvs"]}
 # mvs and vggt are alternative producers of the raw mesh; clean depends only on the one it used.
@@ -169,17 +170,34 @@ class Workspace:
         vggt = self.output_mtime("vggt")
         return "vggt" if vggt is not None and vggt >= (self.sparse / "images.bin").stat().st_mtime - 1 else "sfm"
 
+    def sfm_upstream(self, manifest: dict | None = None) -> list[str]:
+        """What the cameras on disk were computed from: the keyframes, plus the masks when SfM ran
+        with mask_sfm (its manifest's ``masked_features``). Read from how SfM actually ran, not from
+        the current options, as clean's raw mesh is: changing the option alone outdates nothing.
+        Cameras written by VGGT used no masks."""
+        m = (self.load_manifest() if manifest is None else manifest).get("sfm") or {}
+        if m.get("masked_features") and self.cameras_from() != "vggt":
+            return ["frames", "mask"]
+        return ["frames"]
+
+    def upstream(self, manifest: dict | None = None) -> dict[str, list[str]]:
+        """UPSTREAM for this scan: with SfM's inputs as it ran here (sfm_upstream)."""
+        return {**UPSTREAM, "sfm": self.sfm_upstream(manifest)}
+
     def stale_stages(self) -> list[str]:
         """Stages whose output is older than their input: re-running an upstream stage
-        (new keyframes, new SfM gauge) leaves downstream files out of step."""
+        (new keyframes, new SfM gauge, new masks for an SfM that used them) leaves downstream
+        files out of step."""
         out = {s: self.output_mtime(s) for s in STAGES}
-        used = self.load_manifest().get("clean", {}).get("input")
+        manifest = self.load_manifest()
+        used = manifest.get("clean", {}).get("input")
         source = self.mesh_producer(used if used else self.raw_mesh())
+        upstream = self.upstream(manifest)
         stale: set[str] = set()
         for stage in STAGES:  # topological order, so staleness propagates
             if out[stage] is None:
                 continue
-            ups = UPSTREAM.get(stage, [])
+            ups = upstream.get(stage, [])
             if stage == "clean":
                 ups = [u for u in ups if u not in RAW_MESH or u == source]
             for up in ups:

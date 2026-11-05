@@ -367,6 +367,7 @@ class App:
             "masks": [f for f in frames if ws.mask_for(f).exists()],
             "layers": self.layers(ws),
             "stale": self.stale(ws),
+            "upstream": ws.upstream(),  # UPSTREAM, with SfM's inputs as it ran here (masks with mask_sfm)
             "disk": self.disk(ws),
             "print_check": exports.print_check(ws),  # the last 3D-print export's report, per version
             "export_defaults": exports.defaults(ws),  # the scan's print_* / up options

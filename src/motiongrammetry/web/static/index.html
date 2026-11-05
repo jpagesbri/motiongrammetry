@@ -2194,7 +2194,8 @@ function rerunFrom(stage) {
   const on = new Set([stage]);
   // MVS needs SfM cameras; after a VGGT run the cameras are VGGT's.
   if (stage === 'mvs' && s.cameras !== 'sfm') on.add('sfm');
-  for (const t of path) if ((upstream[t] || []).some((u) => on.has(u))) on.add(t);
+  const ups = s.upstream || upstream;  // this scan's: SfM depends on the masks if it ran with them
+  for (const t of path) if ((ups[t] || []).some((u) => on.has(u))) on.add(t);
   RO.sel = STAGES.filter((t) => on.has(t));
   RO.from = on.has('clean') && !viaVggt && s.raw_meshes.includes('mvs') ? 'mvs' : viaVggt ? 'vggt' : '';
   roSave(); renderRail(); renderRunBar();
