@@ -109,6 +109,7 @@ other options without starting over. A stage whose input changed after it ran is
   <li>Shiny, transparent, very dark or perfectly plain surfaces (few details to match).</li>
   <li>The subject moving (people breathing is fine; turning the head is not).</li>
   <li>Spinning on the spot instead of walking around.</li>
+  <li>Quick pans, and close-ups in passing. Filming a room or more: turning fast through doorways (walk through slowly, keeping part of the room you leave in view).</li>
 </ul>
 </div>
 
@@ -453,6 +454,7 @@ goes back.</p>
   <tr><td>Parts of a person or object are missing after clean</td><td>The masks were unsure there and carving was strict</td><td>Raise <code>bg_tolerance</code> (0.35) and re-run clean; or <b>Restore</b> in the editor. The assisted run detects this.</td></tr>
   <tr><td>Background (table, wall) stays attached</td><td>The masks included it, or no floor plane was found</td><td>Lower <code>bg_tolerance</code>, use a better <code>mask_model</code>, or <b>Plane cut</b> / <b>Cut away</b> in the editor</td></tr>
   <tr><td>Holes in the clean mesh</td><td>Some masks missed the subject</td><td><code>fill_holes</code> (on by default) restores small ones; <b>Restore</b> brush for the rest</td></tr>
+  <tr><td>The camera path breaks (sfm warning <code>camera-path-jump</code> or <code>cameras-far-away</code>), though every keyframe got a camera</td><td>Neighbouring views shared too little (a quick pan, a doorway, a close-up in passing), so part of the scene was placed elsewhere or built twice</td><td>Film again: walk slowly through doorways, keep part of the room you are leaving in view while you turn, no quick pans; for an object, a steady orbit. <code>mg check-cameras</code> checks an existing scan</td></tr>
   <tr><td>Only some keyframes got a camera (sfm warning)</td><td>Views did not connect: plain or shiny subject, gaps in the video</td><td><code>mapper incremental</code> + <code>matcher exhaustive</code>, or the <code>low-texture</code> preset</td></tr>
   <tr><td>Blurry, smeared model</td><td>Motion blur or the subject moved</td><td>Film slower and brighter; the <code>blurry</code> preset helps a little</td></tr>
   <tr><td>A face or one side only</td><td>The back was never filmed</td><td>Film all the way around; meanwhile print as a shell (automatic)</td></tr>
@@ -469,6 +471,7 @@ goes back.</p>
 <pre>uv run mg doctor                       # check the installation
 uv run mg run video.mp4 workspaces/x   # everything, start to finish
 uv run mg check workspaces/x           # pre-flight checks only
+uv run mg check-cameras workspaces/x   # breaks in the camera path of the scan's SfM
 uv run mg clean workspaces/x --bg-tolerance 0.35   # one stage with an option
 uv run mg ui --port 8765               # this web UI</pre>
 <p>Options use the same names as in the UI, with dashes: <code>--print-mode shell</code>.</p>
