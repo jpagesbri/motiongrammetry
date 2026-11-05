@@ -172,7 +172,8 @@ mg ui --root ~/scans --port 9000
   `DensifyPointCloud: Estimated depth-maps 12`), timings and the key numbers from the manifest
   (registered frames, reprojection error, faces, which raw mesh was cleaned, ...). Outputs older
   than their inputs are flagged **stale** and their layers hidden, since they no longer line up
-  with the cameras. **re-run from here** ticks that stage and the ones depending on it, staying on
+  with the cameras. New masks make clean and texture stale, and SfM and MVS too when SfM ran with
+  `mask_sfm`. **re-run from here** ticks that stage and the ones depending on it, staying on
   one path (MVS or VGGT) so the two are never mixed.
 - **Failures**: a banner with the failing stage, the error, its hint and a link to the log;
   warnings and errors are listed on each stage card.

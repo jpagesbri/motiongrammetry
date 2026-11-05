@@ -175,10 +175,18 @@ def _stale_input(ws: Workspace, stage: str, inputs: list[str]) -> list[Diag]:
     out = []
     for up in inputs:
         if up in stale:
-            out.append(error("stale-input", f"{up} output is older than what it was computed from, so {stage} "
-                             f"would mix results from different runs",
+            why = f"{up} output is older than what it was computed from"
+            if up == "sfm" and _masks_changed_since_sfm(ws):
+                why = "the masks changed after sfm ran with them (mask_sfm)"
+            out.append(error("stale-input", f"{why}, so {stage} would mix results from different runs",
                              f"re-run {up} first (or pass --force to use it anyway)"))
     return out
+
+
+def _masks_changed_since_sfm(ws: Workspace) -> bool:
+    """SfM ran with the masks (mask_sfm) and the masks are newer than it."""
+    sfm, mask = ws.output_mtime("sfm"), ws.output_mtime("mask")
+    return "mask" in ws.sfm_upstream() and None not in (sfm, mask) and mask > sfm + 1.0
 
 
 # ---- pre-flight -----------------------------------------------------------------------------

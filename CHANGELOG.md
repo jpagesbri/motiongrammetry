@@ -21,6 +21,13 @@ the image with that version, and the About page and `mg --version` show it.
   object, a steady orbit. `--strict` makes it stop the pipeline. `mg check-cameras WORK` runs the
   check on a scan's existing SfM model, reading only. Help's troubleshooting and filming tips say
   the same.
+- **New masks outdate an SfM that used them** (part of #14): with `mask_sfm` (`--mask-sfm`, the
+  turntable preset), SfM matches features inside the masks only, yet re-running the masks left it,
+  MVS and the meshes marked up to date. Now the cameras count as stale when the masks changed after
+  an SfM that used them, and so does everything after: the stage cards, `mg check`, the Export
+  window's stale marks, pre-flight ("the masks changed after sfm ran with them") and **re-run from
+  here** on the masks, which now ticks SfM and MVS too, as does the assisted advice to try another
+  mask model. An SfM run without masks is still left alone by new masks (only clean and texture).
 - **Help on every page** (part of #23): a **?** button at the right of the top bar on Scan, Edit
   and About, or the `?` key, opens a short help for what the page shows now (Scan: Assisted, Manual,
   the 3D model or Frames & masks; Edit: Sculpt or Paint), with **Read more in Help →** to the
