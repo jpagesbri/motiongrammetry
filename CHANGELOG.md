@@ -204,6 +204,14 @@ the image with that version, and the About page and `mg --version` show it.
 - **Edit seams… keeps the piece count**: after Ctrl+Z, and sometimes after a stroke, the line under
   the seam tools lost its "N pieces ·" and showed only the seam edges, as the seams redrawn a frame
   later wrote over it. (Found by the new browser tests.)
+- **`mg clean --no-masks` keeps the scene, not a few stray triangles** (part of #49): without masks,
+  clean kept the piece with the largest area. A badly placed camera leaves a few huge triangles far
+  from the rest, and on a walk through a flat those 7,165 faces won over the 1.87 million-face flat
+  itself. Clean now keeps the piece with the most faces, where the depth maps agree. On object scans
+  run without masks it now keeps the subject: on two of three test scans the largest piece was
+  background behind it. With masks, the small pieces kept are measured against that piece too,
+  and a piece of a few large triangles (large area, few faces) is dropped. Object scans cleaned with
+  masks come out the same.
 - **`mg export --out` into a folder that isn't there yet** (#50): `--out exports/` wrote a file
   named `exports`, and the next export replaced it without a word. Now a trailing `/`, an existing
   folder, or a new name without an extension is a folder: it is made (with its parents) and each
