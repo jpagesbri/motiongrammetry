@@ -327,7 +327,7 @@ def _pre_clean(ws, o, video):
     d += _stale_input(ws, "clean", ["sfm"] + ([producer] if producer else []))
     if not o["no_masks"]:
         if not ws.has_masks():
-            d.append(warn("no-masks", "no masks: only the largest connected piece will be kept",
+            d.append(warn("no-masks", "no masks: only the main piece (the one with the most faces) will be kept",
                           "run mask for proper background removal"))
         elif "mask" in ws.stale_stages():
             d.append(error("stale-masks", "masks are older than the keyframes; carving with them would cut "

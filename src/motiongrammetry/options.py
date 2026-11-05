@@ -64,7 +64,7 @@ OPTIONS: list[Opt] = [
     # clean
     Opt("mesh", str, None, "raw mesh to clean instead of the mvs/vggt output (e.g. a 2DGS mesh)", ("clean",),
         group="advanced"),
-    Opt("no_masks", bool, False, "don't carve with masks (keep the largest component only)", ("clean",)),
+    Opt("no_masks", bool, False, "don't carve with masks (keep the main piece only: the one with the most faces)", ("clean",)),
     Opt("bg_tolerance", float, 0.15, "carve vertices seen as background in more than this fraction of views",
         ("clean",), group="advanced"),
     Opt("fill_holes", float, 0.05, "put back carved holes enclosed by the subject, from the raw mesh, up to "

@@ -267,6 +267,40 @@ def test_largest_component_without_masks(tmp_path):
     assert info["faces_out"] == len(big.triangles)
 
 
+def _scene_with_junk():
+    """A dense room-sized piece where the cameras are, and a few huge triangles far away (what
+    a misplaced camera leaves): the junk has more area than the room, the room far more faces."""
+    room = o3d.geometry.TriangleMesh.create_box(4, 4, 2.5).translate((-2, -2, 0))
+    room = room.subdivide_midpoint(5)  # 12 * 4**5 = 12288 faces, area 72
+    junk = o3d.geometry.TriangleMesh(
+        o3d.utility.Vector3dVector([[80, 0, 0], [100, 0, 0], [80, 20, 0], [100, 20, 5]]),
+        o3d.utility.Vector3iVector([[0, 1, 2], [1, 3, 2]]))  # 2 faces, area > 400
+    return room, junk
+
+
+def test_without_masks_the_densest_piece_is_kept_not_the_largest_area(tmp_path):
+    room, junk = _scene_with_junk()
+    assert junk.get_surface_area() > room.get_surface_area()
+    o3d.io.write_triangle_mesh(str(tmp_path / "raw.ply"), room + junk)
+    info = clean_mesh(tmp_path / "raw.ply", tmp_path / "clean.ply")
+    v = np.asarray(o3d.io.read_triangle_mesh(str(tmp_path / "clean.ply")).vertices)
+    assert info["components_kept"] == 1
+    assert info["faces_out"] == len(room.triangles)
+    assert np.abs(v).max() <= 2.5
+
+
+def test_pieces_to_keep_measures_from_the_densest_piece():
+    from motiongrammetry.clean import pieces_to_keep
+
+    # main (most faces), a detached ear (5% of its area and faces), a speck, and huge junk
+    faces = np.array([100_000, 5_000, 50, 4])
+    areas = np.array([10.0, 0.5, 0.01, 50.0])
+    assert pieces_to_keep(faces, areas, 0.02).tolist() == [True, True, False, False]
+    assert pieces_to_keep(faces, areas, 0.02, only_main=True).tolist() == [True, False, False, False]
+    # the old rule measured from the junk's area: 2% of 50 = 1 dropped the ear, kept the junk
+    assert (areas >= 0.02 * areas.max()).tolist() == [True, False, False, True]
+
+
 def test_loop_pairs_skip_sequential_neighbours():
     names = [f"{i}" for i in range(30)]
     pairs = _loop_pairs(names, stride=5, overlap=6)

@@ -110,6 +110,26 @@ def restore_holes(
     return carve & ~np.where(carve, hole[np.maximum(label, 0)], False), int(hole.sum())
 
 
+def pieces_to_keep(faces: np.ndarray, areas: np.ndarray, min_component: float,
+                   only_main: bool = False) -> np.ndarray:
+    """Which connected pieces of the mesh to keep, from each piece's face count and area.
+
+    The main piece is the one with the most faces, not the largest area: the reconstruction puts
+    faces where the depth maps agree, so a well-seen surface is dense, while a misplaced camera
+    leaves a few huge triangles far from the rest (on a walk through a flat, 7k faces spanning
+    more area than the 1.9M-face flat itself). Other pieces are kept when they have at least
+    ``min_component`` of the main piece's area and of its faces (a piece of a few huge triangles
+    has the area but not the faces); with ``only_main``, none are.
+    """
+    main = int(np.argmax(faces))
+    if only_main:
+        keep = np.zeros(len(faces), bool)
+    else:
+        keep = (areas >= min_component * areas[main]) & (faces >= min_component * faces[main])
+    keep[main] = True
+    return keep
+
+
 def clean_mesh(
     mesh_path: Path,
     out_path: Path,
@@ -168,15 +188,13 @@ def clean_mesh(
     mesh.remove_duplicated_vertices()
     mesh.remove_non_manifold_edges()
 
-    # Keep components with at least `min_component` of the largest one's area.
     clusters, counts, areas = mesh.cluster_connected_triangles()
     clusters = np.asarray(clusters)
     areas = np.asarray(areas)
     if len(areas):
-        keep = areas >= min_component * areas.max()
-        if recon is None or masks_dir is None:
-            # No masks: the subject is assumed to be the largest piece.
-            keep = areas == areas.max()
+        # No masks: only the main piece is kept (the subject, or the room of a scene).
+        keep = pieces_to_keep(np.asarray(counts), areas, min_component,
+                              only_main=recon is None or masks_dir is None)
         mesh.remove_triangles_by_mask(~keep[clusters])
         mesh.remove_unreferenced_vertices()
         info["components_kept"] = int(keep.sum())
@@ -889,7 +907,7 @@ def clean_workspace_mesh(ws: Workspace, mesh_path: Path, use_masks: bool = True,
     if use_masks and ws.has_masks() and recon is not None:
         masks = ws.masks
     elif use_masks:
-        log.warning("no masks in %s: keeping only the largest connected component", ws.masks)
+        log.warning("no masks in %s: keeping only the main connected piece (the most faces)", ws.masks)
     ground = _ground_for_workspace(ws, recon) if recon is not None else None
     if ground is not None:
         log.info("support plane found (normal %s)", np.round(ground[0], 3).tolist())
