@@ -48,7 +48,8 @@ Preview data is served in the raw SfM frame together with one 4x4 "scene" transf
                                             warnings its runs pause on
   GET  /<name>.js, /<name>.css             shared page modules and styles (static/viewcube.js, topbar.js, scanchooser.js,
                                             scrollbar.js, modes.js, export.js, projection.js, pagehelp.js,
-                                            icons.js, topbar.css, scrollbar.css, modes.css, export.css, pagehelp.css)
+                                            icons.js, topbar.css, scrollbar.css, modes.css, export.css, pagehelp.css,
+                                            notes.js, notes.css, camerapath.js)
   GET  /vendor/<path>                       bundled three.js and three-mesh-bvh (static/vendor)
   GET  /about                               third-party software and licenses (credits.py)
   GET  /api/about[/license?kind=&id=|/notices.txt]   their list, one license text, all notices
@@ -1218,7 +1219,11 @@ def make_handler(app: App):
                 from ..options import as_json
                 from ..presets import PRESETS
 
-                return self._json({"options": as_json(), "presets": PRESETS, "upstream": UPSTREAM})
+                from ..diagnostics import SHORT
+
+                # short: every diagnostic code's title and line, for those stored before they carried them
+                return self._json({"options": as_json(), "presets": PRESETS, "upstream": UPSTREAM,
+                                   "short": {k: list(v) for k, v in SHORT.items()}})
             if parts[:2] != ["api", "workspaces"] or len(parts) < 4:
                 raise KeyError(self.path)
             ws, what = app.ws(parts[2]), parts[3]

@@ -225,15 +225,17 @@ def test_collapse_in_the_gate_advice_and_mg_check_cameras(tmp_path, monkeypatch,
 JARGON = re.compile(r"×|median|reproj|mapper|matcher|SfM|mask_sfm|incremental|exhaustive|\bpx\b")
 
 
-def _texts(p):
-    out = [p["headline"], p["summary"], p["impact"], p["tip"], *(f["text"] for f in p["flags"])]
-    if p["fix"]:
-        out += [p["fix"]["label"], *(f"{c['label']} {c['from']} {c['to']}" for c in p["fix"]["changes"])]
-    return out
+def _texts(a):
+    p = a["plain"]
+    return [a["short"], a["line"], a["action"], p["impact"], p["tip"], *(f["text"] for f in p["flags"]),
+            *(f"{c['label']} {c['from']} {c['to']}" for c in a["changes"])]
 
 
-def _sentences(text):
-    return len(re.findall(r"[.!?](\s|$)", text))
+def _sfm_item(tmp_path, **sfm):
+    ws = Workspace(tmp_path / "w")
+    ws.record("sfm", {"frames": 143, "registered": 143, "points3D": 9000, "mean_reproj_error_px": 0.68, **sfm})
+    [a] = [a for a in advise(ws) if a["stage"] == "sfm"]
+    return a
 
 
 SLOWER = {"mapper": "incremental", "matcher": "exhaustive"}
@@ -251,22 +253,18 @@ def test_breaks_that_follow_each_other_are_one():
     assert camera_path_breaks({"jumps": [{"from": 65, "to": 70, "ratio": 40}]}) == [{"from": 65, "to": 70, "label": "65–69"}]
 
 
-def test_plain_warning_for_a_broken_path_is_short():
-    p = camera_path_plain(BREAKS, SLOWER, DEFAULTS)
-    assert p["kind"] == "jump" and p["headline"] == "Camera path broken"
-    assert p["summary"] == ("Some views didn't connect, so the camera positions don't line up. "
-                            "The model will likely have misplaced or doubled parts.")
-    assert _sentences(p["summary"]) <= 2 and len(p["headline"].split()) <= 4
+def test_plain_warning_for_a_broken_path_is_short(tmp_path):
+    a = _sfm_item(tmp_path, camera_path=BREAKS)
+    assert (a["short"], a["line"], a["action"]) == ("Camera path broken", "Views don't connect at 4 places.", "Thorough solver")
+    p = a["plain"]
+    assert p["kind"] == "jump" and len(p["breaks"]) == 4
     assert [f["text"] for f in p["flags"]] == ["Views don't connect at keyframes 0–3", "Views don't connect at keyframe 32",
                                                "Views don't connect at keyframe 62", "Views don't connect at keyframe 81"]
-    assert {f["icon"] for f in p["flags"]} == {"break"} and len(p["breaks"]) == 4
-    assert p["tip"] == "Quick turns and doorways often cause this." and _sentences(p["tip"]) == 1
-    assert p["impact"] == "the model will likely have misplaced or doubled parts"
-    assert p["fix"] == {"label": "Use the thorough camera solver", "slower": True, "changes": [
-        {"label": "Camera solver", "from": "fast", "to": "thorough"},
-        {"label": "Photo matching", "from": "neighbouring photos", "to": "every pair of photos"}]}
-    assert p["summaries"] == {"camera-path-jump": "camera path breaks at 4 places"}
-    assert not any(JARGON.search(t) for t in _texts(p))
+    assert p["tip"] == "Quick turns and doorways often cause this." and p["impact"] == "Likely misplaced or doubled parts."
+    assert a["changes"] == [{"label": "Solver", "from": "fast", "to": "thorough"},
+                            {"label": "Matching", "from": "neighbours", "to": "all pairs"}]
+    assert set(a["codes"]) == set(CAMERA_PATH_CODES)
+    assert not any(JARGON.search(t) for t in _texts(a))
 
 
 def test_many_breaks_are_counted_after_a_few():
@@ -275,66 +273,57 @@ def test_many_breaks_are_counted_after_a_few():
     assert len(p["flags"]) == 5 and p["flags"][-1]["text"] == "…and 4 more" and len(p["breaks"]) == 8
 
 
-def test_plain_warning_when_the_slower_setting_was_tried():
-    p = camera_path_plain(BREAKS, {}, {"mapper": "incremental", "matcher": "exhaustive"})
-    assert p["fix"] is None and p["headline"] == "Camera path broken"
+def test_plain_warning_when_the_slower_setting_was_tried(tmp_path):
+    a = _sfm_item(tmp_path, camera_path=BREAKS, mapper="incremental", matcher="exhaustive")
+    assert a["apply"] == {} and a["action"] == "" and a["changes"] == [] and a["short"] == "Camera path broken"
 
 
-def test_plain_warning_for_cameras_far_away_and_both():
-    p = camera_path_plain(FAR, SLOWER, DEFAULTS)
-    assert p["kind"] == "far" and p["headline"] == "Photos placed far away"
-    assert p["flags"] == [{"icon": "far", "text": "Four photos placed far away (keyframes 0–3)"}]
-    assert "stray" in p["summary"] and _sentences(p["summary"]) == 2
-    assert p["summaries"] == {"cameras-far-away": "4 photos placed far away"}
+def test_plain_warning_for_cameras_far_away_and_both(tmp_path):
+    a = _sfm_item(tmp_path, camera_path=FAR)
+    assert (a["short"], a["line"]) == ("Photos placed far away", "4 photos far from the others.")
+    assert a["plain"]["kind"] == "far" and a["plain"]["flags"] == [{"icon": "far", "text": "Four photos placed far away (keyframes 0–3)"}]
+    assert a["plain"]["impact"] == "Likely stray, misplaced pieces."
     both = camera_path_plain({**BREAKS, "far": FAR["far"], "far_count": 4})
-    assert both["headline"] == "Camera path broken" and both["flags"][-1]["icon"] == "far" and len(both["flags"]) == 5
+    assert both["kind"] == "jump" and both["flags"][-1]["icon"] == "far" and len(both["flags"]) == 5
     one = camera_path_plain({**FAR, "far": [{"keyframe": 7, "ratio": 9}], "far_count": 1})
     assert one["flags"][0]["text"] == "One photo placed far away (keyframe 7)"
-    assert not any(JARGON.search(t) for x in (p, both, one) for t in _texts(x))
+    assert not any(JARGON.search(t) for t in _texts(a))
 
 
-def test_plain_warning_for_collapsed_cameras():
-    masked = camera_path_plain(COLLAPSED, {"mask_sfm": False}, {**DEFAULTS, "mask_sfm": True})
-    assert masked["kind"] == "collapsed" and masked["headline"] == "Camera movement not found"
-    assert masked["summary"] == ("The program couldn't work out how the camera moved. "
-                                 "The model will likely come out mostly empty or garbled.")
-    assert [f["icon"] for f in masked["flags"]] == ["stack", "mask"]
-    assert masked["flags"][0]["text"] == "38 of 60 photos placed on top of each other"
-    assert masked["fix"] == {"label": "Place the cameras without the masks", "slower": False, "changes": [
-        {"label": "Place cameras from the subject's outline", "from": "yes", "to": "no"}]}
-    assert masked["summaries"] == {"cameras-collapsed": "38 of 60 cameras on top of each other"}
-    plain = camera_path_plain(COLLAPSED, SLOWER, DEFAULTS)
-    assert [f["icon"] for f in plain["flags"]] == ["stack"] and plain["fix"]["label"] == "Use the thorough camera solver"
-    assert "not a problem with the video" in plain["tip"]
-    assert camera_path_plain(COLLAPSED, {}, SLOWER)["fix"] is None
-    assert not any(JARGON.search(t) for x in (masked, plain) for t in _texts(x))
+def test_plain_warning_for_collapsed_cameras(tmp_path):
+    a = _sfm_item(tmp_path, camera_path=COLLAPSED, masked_features=True)
+    assert (a["short"], a["line"], a["action"]) == ("Camera movement not found",
+                                                    "The camera's movement couldn't be worked out.", "Retry without masks")
+    assert [f["icon"] for f in a["plain"]["flags"]] == ["stack", "mask"]
+    assert a["plain"]["flags"][0]["text"] == "38 of 60 photos placed on top of each other"
+    assert a["changes"] == [{"label": "Masks for cameras", "from": "on", "to": "off"}]
+    assert a["plain"]["impact"] == "Likely a mostly empty or garbled model."
+    b = _sfm_item(tmp_path, camera_path=COLLAPSED)
+    assert b["action"] == "Thorough solver" and "not a problem with the video" in b["plain"]["tip"]
+    assert _sfm_item(tmp_path, camera_path=COLLAPSED, mapper="incremental", matcher="exhaustive")["apply"] == {}
+    assert not any(JARGON.search(t) for t in _texts(a) + _texts(b))
 
 
-@pytest.mark.parametrize("sfm, apply, fix", [
-    ({"camera_path": BREAKS}, SLOWER, "Use the thorough camera solver"),
-    ({"camera_path": BREAKS, "mapper": "incremental", "matcher": "exhaustive"}, {}, None),
-    ({"camera_path": COLLAPSED, "masked_features": True}, {"mask_sfm": False}, "Place the cameras without the masks"),
+@pytest.mark.parametrize("sfm, apply, action", [
+    ({"camera_path": BREAKS}, SLOWER, "Thorough solver"),
+    ({"camera_path": BREAKS, "mapper": "incremental", "matcher": "exhaustive"}, {}, ""),
+    ({"camera_path": COLLAPSED, "masked_features": True}, {"mask_sfm": False}, "Retry without masks"),
     ({"camera_path": COLLAPSED, "masked_features": True, "mapper": "incremental", "matcher": "exhaustive"},
-     {"mask_sfm": False}, "Place the cameras without the masks"),
-    ({"camera_path": COLLAPSED}, SLOWER, "Use the thorough camera solver"),
-    ({"camera_path": COLLAPSED, "mapper": "incremental", "matcher": "exhaustive"}, {}, None),
+     {"mask_sfm": False}, "Retry without masks"),
+    ({"camera_path": COLLAPSED}, SLOWER, "Thorough solver"),
+    ({"camera_path": COLLAPSED, "mapper": "incremental", "matcher": "exhaustive"}, {}, ""),
 ])
-def test_the_advice_item_carries_the_plain_warning(tmp_path, sfm, apply, fix):
-    ws = Workspace(tmp_path / "w")
-    ws.record("sfm", {"frames": 143, "registered": 143, "points3D": 9000, "mean_reproj_error_px": 0.68, **sfm})
-    [a] = [a for a in advise(ws) if a["stage"] == "sfm"]
+def test_the_advice_item_carries_the_plain_warning(tmp_path, sfm, apply, action):
+    a = _sfm_item(tmp_path, **sfm)
     assert a["level"] == "fix" and a["apply"] == apply and a["rerun"] == (["sfm", "mvs", "clean", "texture"] if apply else [])
     assert a["plain"]["kind"] == ("collapsed" if sfm["camera_path"]["collapsed"] else "jump")
-    assert (a["plain"]["fix"] or {}).get("label") == fix
+    assert a["action"] == action
 
 
 def test_the_fix_says_what_the_last_run_used(tmp_path):
-    ws = Workspace(tmp_path / "w")
-    ws.record("sfm", {"frames": 143, "registered": 143, "camera_path": BREAKS, "mapper": "incremental",
-                      "matcher": "sequential"})
-    [a] = [a for a in advise(ws) if a["stage"] == "sfm"]
+    a = _sfm_item(tmp_path, camera_path=BREAKS, mapper="incremental", matcher="sequential")
     # only what changes is listed
-    assert a["plain"]["fix"]["changes"] == [{"label": "Photo matching", "from": "neighbouring photos", "to": "every pair of photos"}]
+    assert a["changes"] == [{"label": "Matching", "from": "neighbours", "to": "all pairs"}]
 
 
 def test_only_camera_path_warnings_carry_a_plain_warning(tmp_path):

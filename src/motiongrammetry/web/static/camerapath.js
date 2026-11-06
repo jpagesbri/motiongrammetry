@@ -105,13 +105,22 @@ function collapsedMapSvg(pts) {  // photos sharing a spot: one stack of cameras 
   const pad = 18, s = Math.min((MAP.w - 2 * pad) / span, (MAP.h - 2 * pad) / span);
   const cx = MAP.x + MAP.w / 2, cy = MAP.y + MAP.h / 2, mx = (x0 + x1) / 2, mz = (z0 + z1) / 2;
   let out = '';
+  const placed = [];  // labels drawn so far: a label that would overlap one is left out
+  const at = (g) => [cx + (g.x - mx) * s, cy + (g.z - mz) * s];
   groups.sort((a, b) => a.n - b.n).forEach((g) => {
-    const x = cx + (g.x - mx) * s, y = cy + (g.z - mz) * s;
+    const [x, y] = at(g);
     if (g.n === 1) { out += camGlyph(x, y, C.ok, 0.7); return; }
     const layers = Math.min(4, g.n);
     for (let i = layers - 1; i >= 0; i--) out += camGlyph(x + i * 1.8, y - i * 1.8, i ? C.muted : C.warn, 0.75, i ? '' : 'cp-stack');
-    out += `<text x="${r1(x + 10)}" y="${r1(y + 3)}" font-size="9" fill="${C.text}">×${g.n}</text>`;
   });
+  [...groups].filter((g) => g.n > 1).sort((a, b) => b.n - a.n).forEach((g) => {
+    const [x, y] = at(g), lx = x + 10, ly = y + 3;
+    if (placed.some(([px, py]) => Math.abs(px - lx) < 22 && Math.abs(py - ly) < 11)) return;
+    placed.push([lx, ly]);
+    out += `<text class="cp-count" x="${r1(lx)}" y="${r1(ly)}" font-size="9" fill="${C.text}">×${g.n}</text>`;
+  });
+  const stacked = groups.filter((g) => g.n > 1);
+  out += `<text x="${MAP.x + 6}" y="${MAP.y + MAP.h + 27}" font-size="10" fill="${C.warn}">${stacked.reduce((t, g) => t + g.n, 0)} photos in ${stacked.length} stacks</text>`;
   return out;
 }
 

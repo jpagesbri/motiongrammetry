@@ -10,21 +10,22 @@ the image with that version, and the About page and `mg --version` show it.
 
 ## Unreleased
 
-- **Assisted mode shows a broken camera path as a short card with a picture, and waits** (part of
-  #49): when Place the cameras ends with a camera-path warning, Assisted no longer prints "the camera
-  path breaks 7 times … ×32.4" and its long hint. The Result box has one line per warning ("camera
-  path breaks at 4 places", "4 photos placed far away"), the full text folded under "technical
-  details". A card shows a headline ("Camera path broken", "Photos placed far away", "Camera
-  movement not found"), a figure drawn from the scan (the cameras seen from above with the breaks in
-  red and far photos in orange; the keyframes as a strip with a broken-link marker at each break; for
-  a collapse, stacks of cameras on the same spots), two sentences, one line per problem, a one-line
-  tip, and three buttons. **Use the thorough camera solver…** (or **Place the cameras without the
-  masks…** after `mask_sfm`) first says in the page what it will do (the settings from → to, the
-  steps it re-runs, roughly how long, what it replaces), then sets the step's options and re-runs.
-  **Continue…** first says what runs next, how long, and the likely defect in the model. **Stop**
-  runs nothing and keeps the card. Assisted runs now stop after SfM on these warnings instead of
-  going on to the raw mesh, clean and texture (for example after **Apply & re-run** on the masks).
-  Manual and the CLI keep the technical messages and run every ticked step.
+- **One short style for warnings, at every step of Assisted and in Manual** (part of #49): every
+  warning, suggestion and result on the Scan page is now the same note: an icon, a title of a few
+  words, one short line, the buttons (1-3 words: "Thorough solver", "Try HQ masks", "Continue",
+  "Stop"), and one **Details** toggle, closed, with the full message and hint. Manual's stage cards
+  and step pages, the failure banner and **Check** use it too; the CLI and the logs keep the full
+  messages. Every diagnostic code and advice item has its short form (a test fails if one is
+  missing or too long), and an advice item's Details hold the diagnostics it explains, so the same
+  problem is no longer said twice (Find the subject said it three ways). Every fix first shows a
+  short confirmation in the page (the settings from → to, the steps it re-runs, roughly how long),
+  then sets the step's options and re-runs.
+  **A broken camera path** (Place the cameras) is such a note with a figure drawn from the scan:
+  the cameras seen from above with the breaks in red and far photos in orange, the keyframes as a
+  strip with a marker at each break, or for a collapse the cameras stacked on the same spots. Its
+  buttons are the fix, **Continue** (which says first what runs next, how long and the likely
+  defect) and **Stop** (nothing runs). Assisted runs now stop after SfM on these warnings instead of
+  going on to the raw mesh, clean and texture; Manual runs every ticked step.
 - **sfm says plainly when the cameras collapse onto each other** (part of #49): an SfM run can put
   many cameras on top of each other (seen with `--mask-sfm` on an orbit video: 60 cameras at 23
   positions, at a normal 0.57 px error). The camera-path check reported it as dozens of path breaks

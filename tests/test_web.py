@@ -379,7 +379,8 @@ def test_state_reports_mesh_sources(server):
     state = call(base + "/api/workspaces/m/state")[1]
     assert state["raw_meshes"] == ["mvs", "vggt"] and state["raw_source"] == "vggt"
     assert state["clean_source"] == "mvs"
-    assert "upstream" in call(base + "/api/options")[1]
+    opts = call(base + "/api/options")[1]
+    assert "upstream" in opts and opts["short"]["masks-empty"] == ["Subject missed in some frames", "Some masks are empty."]
 
 
 def _post_bytes(url, data):
