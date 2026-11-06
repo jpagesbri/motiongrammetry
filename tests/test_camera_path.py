@@ -111,6 +111,13 @@ def test_advice_points_to_the_capture(tmp_path):
     sfm = [a for a in advise(ws) if a["stage"] == "sfm"]
     assert len(sfm) == 1 and sfm[0]["level"] == "fix"
     assert sfm[0]["title"] == "the camera path breaks near keyframe 80" and "doorways" in sfm[0]["detail"]
+    # the defaults ran: first the slower solver (it fixed orbit's break), with a re-run from SfM
+    assert sfm[0]["apply"] == {"mapper": "incremental", "matcher": "exhaustive"}
+    assert sfm[0]["rerun"] == ["sfm", "mvs", "clean", "texture"] and "First try" in sfm[0]["detail"]
+    # already tried: only filming again is left
+    ws.record("sfm", {**ws.load_manifest()["sfm"], "mapper": "incremental", "matcher": "exhaustive"})
+    sfm = [a for a in advise(ws) if a["stage"] == "sfm"]
+    assert sfm[0]["apply"] == {} and sfm[0]["rerun"] == [] and sfm[0]["detail"].endswith("even pace")
 
 
 def _fake_model(centres):

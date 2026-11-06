@@ -463,8 +463,9 @@ def _gate_sfm(ws, r, o):
 CAMERA_PATH_HINT = ("the views did not connect there, so part of the scene is misplaced or built twice, however low "
                     "the reprojection error. Film again: walk slowly through doorways and keep part of the room you "
                     "are leaving in view while you turn; avoid quick pans and close-ups in passing; for an object, "
-                    "a steady orbit at an even pace. matcher exhaustive or mapper incremental can move the break "
-                    "but rarely remove it; strict stops the pipeline here")
+                    "a steady orbit at an even pace. Before filming again, try mapper incremental with matcher "
+                    "exhaustive (slower): it can connect views the defaults missed (it fixed a break on an orbit "
+                    "video). strict stops the pipeline here")
 
 
 CAMERAS_COLLAPSED_HINT = ("this is not a filming problem like a doorway: the solver did not find how the camera moved. "
