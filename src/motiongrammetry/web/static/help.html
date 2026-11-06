@@ -146,6 +146,14 @@ notice tells you, with its suggestions. The assistant remembers where you were f
 did not connect (and the mapper / matcher that fixes it); a clean step that carved away parts of the subject where the masks
 were unsure (it measures how sure they were); quarter-resolution depth maps; a scan filmed from one side only.</p>
 <p>For frames, masks and cameras, <b>Show the flagged keyframes</b> opens the frame viewer on the keyframes that look wrong.</p>
+<p><b>When the camera positions don't line up.</b> If <b>Place the cameras</b> finds that some views did not connect (a
+quick turn, a doorway: part of the scene would be misplaced or built twice) or that it could not work out how the camera
+moved (many photos placed at the same spot), the assisted run stops after that step, even when you asked for the later
+steps too (for example with <b>Apply &amp; re-run</b>). It says in plain words what happened, what continuing would cost
+(the next steps' time) and what the model would look like, and offers three choices: <b>Try the slower setting</b> (or
+<b>Try without the masks</b>, when the masks were used to place the cameras), which places the cameras again and stops
+again if it still doesn't line up; <b>Stop here and film again</b>, with what to do differently; <b>Continue anyway</b>.
+The technical message is under <b>technical details</b>. Manual shows it as before and runs every ticked step.</p>
 <p class="try"><a href="/?open=assist" target="_blank">Open the assisted run →</a></p>
 
 <h2 id="generate">The Scan page</h2>
@@ -454,7 +462,7 @@ goes back.</p>
   <tr><td>Parts of a person or object are missing after clean</td><td>The masks were unsure there and carving was strict</td><td>Raise <code>bg_tolerance</code> (0.35) and re-run clean; or <b>Restore</b> in the editor. The assisted run detects this.</td></tr>
   <tr><td>Background (table, wall) stays attached</td><td>The masks included it, or no floor plane was found</td><td>Lower <code>bg_tolerance</code>, use a better <code>mask_model</code>, or <b>Plane cut</b> / <b>Cut away</b> in the editor</td></tr>
   <tr><td>Holes in the clean mesh</td><td>Some masks missed the subject</td><td><code>fill_holes</code> (on by default) restores small ones; <b>Restore</b> brush for the rest</td></tr>
-  <tr><td>The camera path breaks (sfm warning <code>camera-path-jump</code> or <code>cameras-far-away</code>), though every keyframe got a camera</td><td>Neighbouring views shared too little (a quick pan, a doorway, a close-up in passing), so part of the scene was placed elsewhere or built twice</td><td>First re-run SfM with the incremental mapper and exhaustive matching (slower): it can connect views the defaults missed. If it still breaks, film again: walk slowly through doorways, keep part of the room you are leaving in view while you turn, no quick pans; for an object, a steady orbit. <code>mg check-cameras</code> checks an existing scan</td></tr>
+  <tr><td>The camera path breaks (sfm warning <code>camera-path-jump</code> or <code>cameras-far-away</code>), though every keyframe got a camera</td><td>Neighbouring views shared too little (a quick pan, a doorway, a close-up in passing), so part of the scene was placed elsewhere or built twice</td><td>First re-run SfM with the incremental mapper and exhaustive matching (slower): it can connect views the defaults missed (the assisted run stops after SfM and offers it as <b>Try the slower setting</b>). If it still breaks, film again: walk slowly through doorways, keep part of the room you are leaving in view while you turn, no quick pans; for an object, a steady orbit. <code>mg check-cameras</code> checks an existing scan</td></tr>
   <tr><td>Many cameras sit on top of each other (sfm warning <code>cameras-collapsed</code>), though the error is low</td><td>SfM did not recover how the camera moved: typically <code>mask_sfm</code> on a video where the camera moves (it is for turntables, camera fixed), too few features inside the masks, or the global mapper. Not a filming problem</td><td>Run SfM again without <code>mask_sfm</code> (the assisted advice offers it), or with <code>mapper incremental</code> and <code>matcher exhaustive</code> (the turntable preset's settings)</td></tr>
   <tr><td>Only some keyframes got a camera (sfm warning)</td><td>Views did not connect: plain or shiny subject, gaps in the video</td><td><code>mapper incremental</code> + <code>matcher exhaustive</code>, or the <code>low-texture</code> preset</td></tr>
   <tr><td>Blurry, smeared model</td><td>Motion blur or the subject moved</td><td>Film slower and brighter; the <code>blurry</code> preset helps a little</td></tr>

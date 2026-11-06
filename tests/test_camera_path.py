@@ -1,12 +1,13 @@
 """The camera-path check of sfm (issue #49): breaks in the path that reprojection error can't see."""
 
+import re
 from types import SimpleNamespace
 
 import numpy as np
 import pytest
 
 from motiongrammetry import checks, cli
-from motiongrammetry.advice import advise
+from motiongrammetry.advice import CAMERA_PATH_CODES, advise, camera_path_plain
 from motiongrammetry.sfm import camera_path_check, camera_path_from_reconstruction
 from motiongrammetry.workspace import Workspace
 
@@ -218,3 +219,98 @@ def test_collapse_in_the_gate_advice_and_mg_check_cameras(tmp_path, monkeypatch,
     assert cli.main(["check-cameras", str(tmp_path / "w2")]) == 2
     out = capsys.readouterr().out
     assert "37 of 59 steps are ~0" in out and "cameras-collapsed" not in out and "sit on top of each other" in out
+
+
+# ---------------------------------------------------------------- the assisted run's plain-language warning
+JARGON = re.compile(r"×|median|reproj|mapper|matcher|SfM|step between|\bpx\b")  # none of these in the plain texts
+
+
+def _plain_texts(p):
+    return [p["headline"], p["what"], p["impact"], p["film"]] + ([p["slower"]["label"]] if p["slower"] else [])
+
+
+BREAKS = {"ok": False, "collapsed": False, "jumps": [{"from": 3, "to": 4, "ratio": 711.8},
+                                                      {"from": 62, "to": 63, "ratio": 31.1},
+                                                      {"from": 81, "to": 82, "ratio": 12.1}],
+          "jump_count": 3, "far": [], "far_count": 0}
+FAR = {**BREAKS, "jumps": [], "jump_count": 0, "far": [{"keyframe": k, "ratio": 22.8} for k in range(4)], "far_count": 4}
+COLLAPSED = {"ok": False, "collapsed": True, "cameras": 60, "collapsed_cameras": 38, "distinct_positions": 23,
+             "still_steps": 37, "steps": 59, "jumps": [], "far": []}
+
+
+def test_plain_warning_for_a_broken_path():
+    p = camera_path_plain(BREAKS)
+    assert p["kind"] == "jump" and p["headline"] == "Some camera positions don't line up"
+    assert p["what"].startswith("Some camera positions don't line up with the others (around keyframes 3, 62 and 81).")
+    assert "quick turn, a doorway" in p["what"]
+    # what continuing does: the next steps run, for how long, and the defect it leaves in the model
+    assert p["impact"].startswith("If you continue, the next steps") and "several minutes" in p["impact"]
+    assert p["time"] == "several minutes"
+    assert "wrong place" in p["impact"] and "appear twice" in p["impact"] and "can't repair" in p["impact"]
+    assert p["slower"]["label"] == "Try the slower setting" and "takes a few times longer" in p["slower"]["text"]
+    assert p["film"].startswith("Film again: walk slowly through doorways")
+    assert not any(JARGON.search(t) for t in _plain_texts(p))
+
+
+def test_plain_warning_when_the_slower_setting_was_tried():
+    p = camera_path_plain(BREAKS, tried=True)
+    assert p["slower"] is None and p["film"].startswith("The slower setting was already used for this run")
+
+
+def test_plain_warning_for_cameras_far_away_and_both():
+    p = camera_path_plain(FAR)
+    assert p["kind"] == "far" and p["what"].startswith("Four photos were placed far away from all the others (keyframes 0–3).")
+    assert "stray pieces of surface" in p["impact"] and "appear twice" not in p["impact"]
+    both = camera_path_plain({**BREAKS, "far": FAR["far"], "far_count": 4})
+    assert "(around keyframes 3, 62 and 81), and four photos were placed far away" in both["what"]
+    assert "appear twice" in both["impact"] and "stray pieces" in both["impact"]
+    one = camera_path_plain({**FAR, "far": [{"keyframe": 7, "ratio": 9}], "far_count": 1})
+    assert one["what"].startswith("One photo was placed far away from all the others (keyframe 7).")
+    # more breaks than listed in the manifest (it keeps 20)
+    many = camera_path_plain({**BREAKS, "jump_count": 30})
+    assert "(around keyframes 3, 62, 81 and others)" in many["what"]
+    assert not any(JARGON.search(t) for x in (p, both, one) for t in _plain_texts(x))
+
+
+def test_plain_warning_for_collapsed_cameras():
+    masked = camera_path_plain(COLLAPSED, masked=True)
+    assert masked["kind"] == "collapsed" and masked["headline"] == "The camera's movement could not be worked out"
+    assert masked["what"].startswith("The program could not work out how the camera moved: 38 of 60 photos were "
+                                     "placed at the same spot")
+    assert "turntable" in masked["what"]
+    assert "mostly empty or garbled" in masked["impact"] and masked["impact"].startswith("If you continue")
+    assert masked["slower"]["label"] == "Try without the masks"
+    assert masked["film"].startswith("Filming is not the cause here, so try the other setting first")
+    plain = camera_path_plain(COLLAPSED)
+    assert "calculation problem, not a filming one" in plain["what"] and plain["slower"]["label"] == "Try the slower setting"
+    tried = camera_path_plain(COLLAPSED, tried=True)
+    assert tried["slower"] is None and "did not help either" in tried["film"]
+    # without mask_sfm and already tried, the masks are still offered when SfM used them
+    assert camera_path_plain(COLLAPSED, masked=True, tried=True)["slower"]["label"] == "Try without the masks"
+    assert not any(JARGON.search(t) for x in (masked, plain, tried) for t in _plain_texts(x))
+
+
+@pytest.mark.parametrize("sfm, apply, slower", [
+    ({"camera_path": BREAKS}, {"mapper": "incremental", "matcher": "exhaustive"}, "Try the slower setting"),
+    ({"camera_path": BREAKS, "mapper": "incremental", "matcher": "exhaustive"}, {}, None),
+    ({"camera_path": COLLAPSED, "masked_features": True}, {"mask_sfm": False}, "Try without the masks"),
+    ({"camera_path": COLLAPSED, "masked_features": True, "mapper": "incremental", "matcher": "exhaustive"},
+     {"mask_sfm": False}, "Try without the masks"),
+    ({"camera_path": COLLAPSED}, {"mapper": "incremental", "matcher": "exhaustive"}, "Try the slower setting"),
+    ({"camera_path": COLLAPSED, "mapper": "incremental", "matcher": "exhaustive"}, {}, None),
+])
+def test_the_advice_item_carries_the_plain_warning(tmp_path, sfm, apply, slower):
+    ws = Workspace(tmp_path / "w")
+    ws.record("sfm", {"frames": 143, "registered": 143, "points3D": 9000, "mean_reproj_error_px": 0.68, **sfm})
+    [a] = [a for a in advise(ws) if a["stage"] == "sfm"]
+    assert a["level"] == "fix" and a["apply"] == apply and a["rerun"] == (["sfm", "mvs", "clean", "texture"] if apply else [])
+    assert a["plain"]["kind"] == ("collapsed" if sfm["camera_path"]["collapsed"] else "jump")
+    assert (a["plain"]["slower"] or {}).get("label") == slower
+
+
+def test_only_camera_path_warnings_carry_a_plain_warning(tmp_path):
+    ws = Workspace(tmp_path / "w")
+    ws.record("sfm", {"frames": 143, "registered": 143, "points3D": 9000, "mean_reproj_error_px": 0.68,
+                      "camera_path": {"ok": True, "collapsed": False}})
+    assert all("plain" not in a for a in advise(ws))
+    assert set(CAMERA_PATH_CODES) == {"camera-path-jump", "cameras-far-away", "cameras-collapsed"}

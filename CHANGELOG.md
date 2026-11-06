@@ -10,6 +10,19 @@ the image with that version, and the About page and `mg --version` show it.
 
 ## Unreleased
 
+- **Assisted mode explains a broken camera path in plain words, and waits** (part of #49): when
+  Place the cameras ends with a camera-path warning, its page no longer shows "the camera path
+  breaks 7 times … ×32.4". It says what happened ("Some camera positions don't line up with the
+  others (around keyframes 3, 62 and 81). The views there didn't connect…", or for a collapse "the
+  program could not work out how the camera moved: 38 of 60 photos were placed at the same spot"),
+  what continuing leads to (the next steps' time, and the model's likely defect: parts misplaced, a
+  room built twice, or a mostly empty model), and offers three choices: **Try the slower setting**
+  (or **Try without the masks** after `mask_sfm`), **Stop here and film again** with the capture
+  advice, **Continue anyway**. The technical message stays under "technical details", and Manual
+  and the CLI keep it as before. Assisted runs now stop after SfM on these warnings instead of
+  going on to the raw mesh, clean and texture (for example after **Apply & re-run**), so nothing
+  slow runs on cameras that are known to be wrong until you choose; Manual runs every ticked step.
+
 - **sfm says plainly when the cameras collapse onto each other** (part of #49): an SfM run can put
   many cameras on top of each other (seen with `--mask-sfm` on an orbit video: 60 cameras at 23
   positions, at a normal 0.57 px error). The camera-path check reported it as dozens of path breaks
