@@ -110,7 +110,7 @@ def cmd_check(a: argparse.Namespace) -> int:
 def cmd_check_cameras(a: argparse.Namespace) -> int:
     from .checks import camera_path_diags
     from .diagnostics import EXIT_GATE, EXIT_OK
-    from .sfm import camera_path_from_reconstruction, load_reconstruction
+    from .sfm import PATH_STILL_FRACTION, camera_path_from_reconstruction, load_reconstruction
 
     ws = Workspace(a.work)
     recon = load_reconstruction(ws)
@@ -119,9 +119,14 @@ def cmd_check_cameras(a: argparse.Namespace) -> int:
     if not p["checked"]:
         print(f"camera path: not checked ({p['cameras']} cameras placed)")
         return EXIT_OK
-    print(f"camera path: {p['cameras']} cameras, median step {p['median_step']:.4g} between keyframes, "
-          f"largest ×{p['max_step_ratio']:g} (flagged over ×{p['jump_factor']:g}); farthest camera "
-          f"×{p['max_far_ratio']:g} the usual distance from the centre (flagged over ×{p['far_factor']:g})")
+    if p["collapsed"]:
+        print(f"camera path: {p['cameras']} cameras, median step {p['median_step']:.3g} between keyframes for a usual "
+              f"distance of {p['usual_distance']:.4g} from the centre: {p['still_steps']} of {p['steps']} steps "
+              f"are ~0 (under ×{PATH_STILL_FRACTION:g} that distance)")
+    else:
+        print(f"camera path: {p['cameras']} cameras, median step {p['median_step']:.4g} between keyframes, "
+              f"largest ×{p['max_step_ratio']:g} (flagged over ×{p['jump_factor']:g}); farthest camera "
+              f"×{p['max_far_ratio']:g} the usual distance from the centre (flagged over ×{p['far_factor']:g})")
     diags = camera_path_diags(p)
     for d in diags:
         print(f"  {d.level}: {d.message}\n    -> {d.hint}")

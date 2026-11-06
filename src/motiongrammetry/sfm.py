@@ -33,6 +33,16 @@ PATH_JUMP_FACTOR = 10.0  # a step this many times the median step between keyfra
 PATH_FAR_FACTOR = 5.0    # a camera this many times farther from the median centre than most (p75) is misplaced
 PATH_MIN_CAMERAS = 8     # fewer placed cameras: no meaningful median, no check
 PATH_MAX_LISTED = 20     # entries of each kind kept in the manifest
+# A collapse is the opposite failure: SfM puts many cameras on top of each other (seen with mask_sfm
+# on an orbit video and the global mapper: 60 cameras at 23-26 positions, at a normal 0.4-0.6 px
+# reprojection error). A step under PATH_STILL_FRACTION times the usual distance from the centre is
+# "no motion": keyframes a few video frames apart never come that close. On real models the smallest
+# steps are 2e-3 to 2e-2 of that distance (orbits, plant, face, the flat walk), the "still" steps of
+# a collapsed orbit 1e-6 to 1.3e-4: 5e-4 sits between, with a margin of ~4 either side. When at least
+# PATH_COLLAPSED_SHARE of the steps are still, the motion was not recovered: the median step is then
+# ~0, so step ratios are meaningless and no jumps or far cameras are reported.
+PATH_STILL_FRACTION = 5e-4
+PATH_COLLAPSED_SHARE = 0.25
 
 
 def _loop_pairs(names: list[str], stride: int, overlap: int) -> list[tuple[str, str]]:
@@ -198,13 +208,17 @@ def camera_path_check(centres: list, names: list[str] | None = None, jump_factor
       far off after one still is.
     - **far**: cameras over ``far_factor`` times farther from the median centre than the 75th
       percentile of those distances (robust to up to a quarter of the cameras being off).
+    - **collapsed**: at least ``PATH_COLLAPSED_SHARE`` of the steps are under ``PATH_STILL_FRACTION``
+      times that usual distance: cameras on top of each other, the motion not recovered. Then
+      ``collapsed_cameras`` (cameras sharing their position with another) and ``distinct_positions``
+      are given, and no jumps or far cameras (their ratios would be against a median step of ~0).
 
     Keyframes are given by their position in the list (``frame_00062.jpg`` is 62). Ratios are
     rounded; ``ok`` is False when anything was flagged."""
     idx = [i for i, c in enumerate(centres) if c is not None]
     out = {"cameras": len(idx), "checked": False, "ok": True, "median_step": None, "max_step_ratio": None,
            "usual_distance": None, "max_far_ratio": None, "jump_factor": jump_factor, "far_factor": far_factor,
-           "jumps": [], "far": [], "jump_count": 0, "far_count": 0}
+           "jumps": [], "far": [], "jump_count": 0, "far_count": 0, "collapsed": False}
     if len(idx) < PATH_MIN_CAMERAS:
         return out
     C = np.asarray([centres[i] for i in idx], dtype=float)
@@ -213,7 +227,25 @@ def camera_path_check(centres: list, names: list[str] | None = None, jump_factor
     median = float(np.median(steps))
     dist = np.linalg.norm(C - np.median(C, axis=0), axis=1)
     usual = float(np.percentile(dist, 75))
-    if median <= 0 or usual <= 0:  # the camera did not move: nothing to compare against
+    if dist.max() <= 0:  # all cameras at one point: no scale at all
+        return out
+    # over three quarters at one point make the usual distance 0: then the farthest camera is the scale
+    tol = PATH_STILL_FRACTION * (usual if usual > 0 else float(dist.max()))
+    still = int(np.sum(steps * span < tol))  # the distance itself, not per keyframe: across a gap too
+    if still >= PATH_COLLAPSED_SHARE * len(steps):
+        reps, size = [], []  # positions within tol of each other are one
+        for c in C:
+            k = next((k for k, r in enumerate(reps) if np.linalg.norm(c - r) < tol), None)
+            if k is None:
+                reps.append(c)
+                size.append(1)
+            else:
+                size[k] += 1
+        out.update(checked=True, ok=False, collapsed=True, median_step=float(f"{median:.3g}"),
+                   usual_distance=float(f"{usual:.6g}"), still_steps=still, steps=len(steps),
+                   distinct_positions=len(reps), collapsed_cameras=int(sum(n for n in size if n > 1)))
+        return out
+    if median <= 0 or usual <= 0:
         return out
     ratio, far_ratio = steps / median, dist / usual
     out.update(checked=True, median_step=round(median, 6), max_step_ratio=round(float(ratio.max()), 1),

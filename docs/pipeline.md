@@ -145,6 +145,15 @@ the cameras in keyframe order (`camera_path` in the manifest) and warns:
   distance is divided by the number of steps it spans, so a gap alone is never a jump.
 - `cameras-far-away`: cameras over **5×** farther from the median centre than the 75th percentile
   of those distances (`PATH_FAR_FACTOR`).
+- `cameras-collapsed`: at least **a quarter** of the steps between keyframes are ~0, under
+  **1/2000** of that 75th-percentile distance (`PATH_COLLAPSED_SHARE`, `PATH_STILL_FRACTION`): SfM
+  put cameras on top of each other and did not recover the motion, whatever the reprojection error.
+  Real keyframes a few video frames apart never come that close (the smallest steps of normal
+  models are 1/500 to 1/50 of it, the still steps of a collapsed orbit 1e-6 to 1.3e-4). It names how many cameras share a position
+  and how many distinct positions are left, and replaces the two warnings above, whose multiples
+  would be against a median step of ~0. Seen with `mask_sfm` on an orbit video (the masks are for
+  turntables, where the camera stays still) and the global mapper: run SfM without `mask_sfm`, or
+  with `mapper incremental` and `matcher exhaustive` (the turntable preset's settings).
 
 They are warnings, like the other gates: `--strict` turns them into a failure that stops the
 pipeline. `mg check-cameras WORK` runs the check alone on an existing model (it only reads; exit

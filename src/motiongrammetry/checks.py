@@ -467,6 +467,13 @@ CAMERA_PATH_HINT = ("the views did not connect there, so part of the scene is mi
                     "but rarely remove it; strict stops the pipeline here")
 
 
+CAMERAS_COLLAPSED_HINT = ("this is not a filming problem like a doorway: the solver did not find how the camera moved. "
+                          "Typical causes: mask_sfm on a video where the camera moves round the subject (it is for "
+                          "turntables: camera fixed, object turning), too few features inside the masks, the global "
+                          "mapper. Run sfm again without mask_sfm, or with mapper incremental and matcher exhaustive "
+                          "(the turntable preset's settings); strict stops the pipeline here")
+
+
 def _listing(items: list[str], total: int, most: int = 8) -> str:
     """The first ``most`` items, then how many of ``total`` are left out."""
     shown = items[:most]
@@ -488,6 +495,11 @@ def keyframe_ranges(keyframes: list[int]) -> list[str]:
 def camera_path_diags(p: dict) -> list[Diag]:
     """Warnings for the camera-path check of sfm.camera_path_check (the sfm gate, and mg check-cameras)."""
     d = []
+    if p.get("collapsed"):
+        n, k = p["collapsed_cameras"], p["distinct_positions"]
+        return [warn("cameras-collapsed", f"{n} of {p['cameras']} cameras sit on top of each other (only {k} distinct "
+                     f"position{'s' if k != 1 else ''}; {p['still_steps']} of {p['steps']} steps between keyframes are "
+                     "~0): SfM did not recover the motion", CAMERAS_COLLAPSED_HINT)]
     jumps = sorted(p.get("jumps") or [], key=lambda j: j["from"])
     if jumps:
         n = p.get("jump_count", len(jumps))
