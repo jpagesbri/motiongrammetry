@@ -20,12 +20,15 @@ the image with that version, and the About page and `mg --version` show it.
   problem is no longer said twice (Find the subject said it three ways). Every fix first shows a
   short confirmation in the page (the settings from → to, the steps it re-runs, roughly how long),
   then sets the step's options and re-runs.
-  **A broken camera path** (Place the cameras) is such a note with a figure drawn from the scan:
-  the cameras seen from above with the breaks in red and far photos in orange, the keyframes as a
-  strip with a marker at each break, or for a collapse the cameras stacked on the same spots. Its
-  buttons are the fix, **Continue** (which says first what runs next, how long and the likely
-  defect) and **Stop** (nothing runs). Assisted runs now stop after SfM on these warnings instead of
-  going on to the raw mesh, clean and texture; Manual runs every ticked step.
+  **A broken camera path** (Place the cameras) is such a note, with **Continue** (which says first
+  what runs next, how long and the likely defect), **Stop** (nothing runs) and **View path**: the
+  path large, over the page, drawn from the scan (the cameras from above with the breaks in red and
+  far photos in orange, the keyframes as a strip with a marker at each break, or for a collapse the
+  cameras stacked on the same spots). Pointing at a camera shows its keyframe, thumbnail and what is
+  wrong with it; pointing at a break marks its two keyframes; arrow keys step through the
+  keyframes; wheel and drag zoom and pan; a click opens the keyframe in the Frames viewer. Assisted
+  runs now stop after SfM on these warnings instead of going on to the raw mesh, clean and texture;
+  Manual runs every ticked step.
 - **sfm says plainly when the cameras collapse onto each other** (part of #49): an SfM run can put
   many cameras on top of each other (seen with `--mask-sfm` on an orbit video: 60 cameras at 23
   positions, at a normal 0.57 px error). The camera-path check reported it as dozens of path breaks

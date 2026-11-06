@@ -455,8 +455,11 @@ import { mountTopbar, setScan, updateScans, uploadVideo, thumbUrl, pageLabel as 
 import { modeControl } from '/modes.js';
 import { openExport, exportHooks } from '/export.js';
 import { pageHelp, hint } from '/pagehelp.js';
-import { cameraPathFigure, flagIcon } from '/camerapath.js';
+import { openPathView, pathViewOpen, flagIcon } from '/camerapath.js';
 import { noteHtml, diagNote, diagShort, diagDetails, confirmHtml, setShortForms } from '/notes.js';
+// A camera-path note's "View path" button (see viewPath)
+const VIEW_PATH = '<button class="btn" data-viewpath>View path</button>';
+const CAMERA_CODES = ['camera-path-jump', 'cameras-far-away', 'cameras-collapsed'];
 // The scan chooser in the top bar: picking a scan selects it here; a new or copied scan opens
 // here; a deleted one is left for the next; a scan's ⋯ menu also uploads or replaces its video.
 mountTopbar('scan', {
@@ -690,7 +693,7 @@ async function reloadScene() {
     // Rough scale for the ground grid: transformed extent.
     grid.scale.setScalar(extent * 1.5); grid.visible = true;
     setLayer('cameras', buildCameras(camData), `${camData.length}`);
-    renderCpFigure();  // the camera-path card's figure uses the same camera positions
+    if (pathViewOpen()) viewPath();  // opened before the cameras had loaded
     for (const k of ['sparse', 'dense']) {
       if (s.layers[k] && (layerOn[k] || k === 'sparse')) { status(`loading ${k}…`); setLayer(k, ...(await loadPoints(k))); }
       else if (!s.layers[k]) setLayer(k, null);
@@ -1755,7 +1758,6 @@ function stagePage(main, st) {
 const NEXT_AFTER = (st) => AS_STAGES.slice(AS_STAGES.indexOf(st) + 1);
 const STEP_SHORT = { frames: 'Keyframes', mask: 'Masks', sfm: 'Cameras', mvs: 'Mesh', vggt: 'VGGT', clean: 'Clean', texture: 'Texture' };
 const STEP_MIN = { frames: [0.5, 1], mask: [1, 3], sfm: [1, 3], mvs: [5, 30], vggt: [1, 2], clean: [1, 1], texture: [1, 5] };
-let cpShown = null;  // {plain, path} of the camera-path card on the page, for its figure
 function heldBack(st) {
   return jobSnap?.paused?.stage === st ? jobSnap.paused.skipped : NEXT_AFTER(st);
 }
@@ -1788,11 +1790,10 @@ function resultNotesHtml(st, tips, diags, { assisted, stale, plain, running }) {
   says.forEach((a) => {
     const i = tips.indexOf(a), card = a === plain;
     const fix = a.action ? `<button class="btn primary" data-fix="${i}" ${dis}>${esc(a.action)}</button>` : '';
-    if (card) cpShown = { plain: a.plain, path: m[st]?.camera_path || {} };
     const paused = card && jobSnap?.paused?.stage === st, stopped = card && AS.cpStopped === st;
     html += noteHtml({ level: a.level, title: a.short, line: paused ? `${a.line} The run stopped here.` : a.line,
-      figure: card ? '<div class="cp-fig" id="cpFigure"></div>' : '',
-      buttons: fix + (card ? `<button class="btn" id="cpContinue" ${dis}>Continue</button><button class="btn" id="cpStop" ${dis}>Stop</button>` : a.level === 'fix' ? frames : ''),
+      buttons: fix + (card ? `<button class="btn" id="cpContinue" ${dis}>Continue</button><button class="btn" id="cpStop" ${dis}>Stop</button>` : '')
+        + (a.plain ? VIEW_PATH : a.level === 'fix' ? frames : ''),
       extra: `<div class="note-confirm" data-confirm="${i}" hidden></div>`
         + (card ? `<div class="note-said" id="cpStopped" ${stopped ? '' : 'hidden'}>Stopped. Nothing else runs; come back any time.</div>` : ''),
       details: adviceDetails(a, diags), id: card ? 'asPlain' : '', attrs: `data-item="${i}"` });
@@ -1800,14 +1801,17 @@ function resultNotesHtml(st, tips, diags, { assisted, stale, plain, running }) {
   loose.forEach((d) => { html += diagNote(d); });
   return html;
 }
-function renderCpFigure() {
-  const el = $('cpFigure'); if (!el || !cpShown) return;
+// "View path" on a camera-path note (Assisted, Manual's step page and stage card): the path large and
+// interactive, in the page (camerapath.js). Clicking a camera there opens its keyframe in the Frames viewer.
+function viewPath() {
   const toScene = (c) => { if (!sceneT) return c; const v = new THREE.Vector3(...c).applyMatrix4(sceneT); return [v.x, v.y, v.z]; };
-  el.innerHTML = cameraPathFigure({ plain: cpShown.plain, path: cpShown.path, frames: wsState?.frames || [], cams: camData || [], toScene });
+  openPathView({ path: wsState?.manifest?.sfm?.camera_path || {}, frames: wsState?.frames || [], cams: camData || [], toScene,
+    thumb: (name) => `/api/workspaces/${encodeURIComponent(current)}/thumb/frames/${encodeURIComponent(name)}`,
+    onPick: (k) => { showG('preview'); FV.filter = 'all'; showPv('frames'); fvGo(k); } });
 }
+document.addEventListener('click', (e) => { if (e.target.closest('[data-viewpath]')) viewPath(); });
 function bindNotes(box, st, tips) {
   if (!box) return;
-  renderCpFigure();
   const fail = (e) => { $('asResult').innerHTML = `<div class="err">${esc(e.message)}</div>`; };
   const ask = (i, spec, run) => {  // the in-page confirmation under the note's buttons
     box.querySelectorAll('.note-confirm').forEach((c) => { c.hidden = true; c.innerHTML = ''; });
@@ -2267,7 +2271,9 @@ function renderStages() {
       if (st === 'running' && lastLog[s] && lastLog[s] !== logPath) prev = cached(lastLog[s]);
     }
     const canSteps = !!STEPS[s] && (inJob || logPath);
-    const diagHtml = diags.filter((d) => d.level !== 'info' || st !== 'running').map((d) => diagNote(d, { compact: true })).join('');
+    const shown = diags.filter((d) => d.level !== 'info' || st !== 'running');
+    const firstPath = shown.find((d) => CAMERA_CODES.includes(d.code));
+    const diagHtml = shown.map((d) => diagNote(d, { compact: true, buttons: d === firstPath ? VIEW_PATH : '' })).join('');
     return `<div class="stage ${st}"><div class="top"><span class="badge"></span><span class="name">${s}</span>
       <span class="links">${canSteps ? `<a data-steps="${s}">${showSteps ? 'hide steps' : 'steps'}</a> · ` : ''}${logPath ? `<a data-log="${logPath}">log</a> · ` : ''}<a data-rerun="${s}" title="tick this stage and the ones that depend on it">re-run from here</a></span>
       <span class="time">${st === 'running' && tr ? stepCounter(tr) : st === 'running' && prog != null ? Math.round(prog * 100) + '% · ' : ''}${t}</span></div>
