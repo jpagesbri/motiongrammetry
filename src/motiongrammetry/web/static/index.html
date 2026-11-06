@@ -186,12 +186,21 @@
   .as-advice.fix { border-color: var(--warn); background: rgba(240,180,41,.07); }
   .as-advice.ok { border-color: rgba(76,195,138,.5); }
   .as-advice b { display: block; }
-  .as-plain p { margin: 6px 0; } .as-plain h5 { margin: 10px 0 4px; font-size: 13px; }
-  .as-plain .paused { font-weight: 600; }
-  .as-choice { display: grid; grid-template-columns: 210px 1fr; gap: 10px; align-items: start; padding: 5px 0; }
-  .as-choice .btn { width: 100%; }
-  .as-stopped { margin: 6px 0; padding: 6px 8px; border-radius: 6px; background: var(--panel2); }
-  .as-plain .tech { margin-top: 8px; font-size: 12px; color: var(--muted); }
+  .as-plain .cp-head { font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+  .as-plain .cp-paused { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .cp-fig { margin: 8px 0 4px; } .cp-figure { display: block; width: 100%; max-width: 640px; height: auto; }
+  .as-plain .cp-sum { margin: 4px 0 6px; }
+  .cp-flags { list-style: none; margin: 0 0 4px; padding: 0; font-size: 13px; }
+  .cp-flags li { display: flex; align-items: center; gap: 7px; padding: 2px 0; }
+  .cp-flags .cp-icon { flex: none; color: var(--bad); font-size: 15px; } .cp-flags .cp-icon-far, .cp-flags .cp-icon-stack, .cp-flags .cp-icon-mask { color: var(--warn); }
+  .as-plain .cp-tip { color: var(--muted); font-size: 12px; margin: 2px 0 8px; }
+  .cp-confirm, .cp-stopped { margin: 8px 0 2px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel2); font-size: 13px; }
+  .cp-confirm > b { display: block; margin-bottom: 6px; font-size: 14px; }
+  .cp-confirm .row { display: grid; grid-template-columns: 120px 1fr; gap: 8px; padding: 2px 0; }
+  .cp-confirm .row > span:first-child { color: var(--muted); }
+  .cp-confirm .chg s { color: var(--muted); } .cp-confirm .chg b { display: inline; color: var(--accent); }
+  .cp-confirm .impact { color: var(--warn); margin-top: 4px; }
+  .as-plain .tech, .as-advice .tech { margin-top: 6px; font-size: 12px; color: var(--muted); }
   label.row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 6px 0; }
   input[type=text], input[type=number], select { background: var(--bg); border: 1px solid var(--line);
     border-radius: 5px; padding: 5px 7px; min-width: 0; }
@@ -310,7 +319,7 @@
     .view { min-height: 60vh; }
     .as-place { grid-template-columns: 1fr; height: auto; }
     .as-place .slot { height: 50vh; }
-    .as-choice { grid-template-columns: 1fr; gap: 4px; }
+    .cp-confirm .row { grid-template-columns: 1fr; gap: 0; }
   }
 </style>
 <link rel="stylesheet" href="/topbar.css">
@@ -461,6 +470,7 @@ import { mountTopbar, setScan, updateScans, uploadVideo, thumbUrl, pageLabel as 
 import { modeControl } from '/modes.js';
 import { openExport, exportHooks } from '/export.js';
 import { pageHelp, hint } from '/pagehelp.js';
+import { cameraPathFigure, flagIcon } from '/camerapath.js';
 // The scan chooser in the top bar: picking a scan selects it here; a new or copied scan opens
 // here; a deleted one is left for the next; a scan's ⋯ menu also uploads or replaces its video.
 mountTopbar('scan', {
@@ -694,6 +704,7 @@ async function reloadScene() {
     // Rough scale for the ground grid: transformed extent.
     grid.scale.setScalar(extent * 1.5); grid.visible = true;
     setLayer('cameras', buildCameras(camData), `${camData.length}`);
+    renderCpFigure();  // the assisted card's figure uses the same camera positions
     for (const k of ['sparse', 'dense']) {
       if (s.layers[k] && (layerOn[k] || k === 'sparse')) { status(`loading ${k}…`); setLayer(k, ...(await loadPoints(k))); }
       else if (!s.layers[k]) setLayer(k, null);
@@ -1667,7 +1678,7 @@ async function runStages(stages) {
   await api(`/api/workspaces/${current}/run`, { method: 'POST', body: JSON.stringify({ stages, options: runOptions(), pause_on }) });
   liveTracks = {}; trackState = { stage: null }; trackSince = 0; stepsClosed.clear(); setLogMode('live'); lastFailure = null;
   jobSnap = { status: 'running', current: stages[0], stages: Object.fromEntries(stages.map((s, i) => [s, { status: i ? 'queued' : 'running' }])) };
-  AS.waiting = stages; renderRun();
+  AS.waiting = stages; AS.cpStopped = null; renderRun();
 }
 const asRun = runStages;
 const prevTrack = (s) => { const t = lastLog[s] && fileTracks[lastLog[s]]; return t && t !== 'loading' ? t : null; };
@@ -1703,8 +1714,7 @@ function stagePage(main, st) {
   const j = jobSnap?.stages?.[st];
   const allDiags = ((j?.diagnostics?.length ? j.diagnostics : (wsState?.manifest?.diagnostics || {})[st]) || []).filter((d) => d.level !== 'info' || !mine);
   const plain = assisted && done ? tips.find((a) => a.plain) : null;  // said plainly, with the choices (below)
-  const pauseCodes = asChoices?.pause_on || [];
-  const diags = plain ? allDiags.filter((d) => !pauseCodes.includes(d.code)) : allDiags;
+  const diags = allDiags;
   const f = jobSnap?.failure || lastFailure;
   const opts = optSpec.filter((o) => o.stages.includes(st) && !o.stages.includes('*'));
   const shown = assisted ? opts.filter((o) => o.group === 'basic' || o.name in RO.values) : opts.filter((o) => o.group === 'basic');
@@ -1736,8 +1746,8 @@ function stagePage(main, st) {
   } else if (done) {
     const m = wsState.manifest || {};
     $('asResult').innerHTML = `<div class="as-advice ${tips.some((a) => a.level === 'fix') || state === 'stale' ? '' : 'ok'}"><b>Result</b>${esc(stageDetail(st, m) || 'done')}
-        ${diags.map((d) => `<div class="diag ${d.level}">${esc(d.message)}${d.hint ? `<span class="h">→ ${esc(d.hint)}</span>` : ''}</div>`).join('')}</div>` +
-      (plain ? plainWarningHtml(plain, tips.indexOf(plain), allDiags.filter((d) => pauseCodes.includes(d.code)), st, next, running) : '') +
+        ${assisted ? shortDiagsHtml(diags, plain?.plain.summaries) : diags.map((d) => `<div class="diag ${d.level}">${esc(d.message)}${d.hint ? `<span class="h">→ ${esc(d.hint)}</span>` : ''}</div>`).join('')}</div>` +
+      (plain ? plainWarningHtml(plain, st, running) : '') +
       tips.filter((a) => (a.level !== 'ok' || assisted) && a !== plain).map((a) => `<div class="as-advice ${a.level}"><b>${a.level === 'ok' ? '✓ ' : a.level === 'fix' ? '⚠ ' : 'ℹ '}${esc(a.title)}</b>${esc(a.detail)}
         ${Object.keys(a.apply).length ? `<div class="muted" style="margin-top:4px">suggested: ${Object.entries(a.apply).map(([k, v]) => `<code>${k} = ${v}</code>`).join(', ')}${a.rerun.length ? ` · re-runs ${a.rerun.join(' → ')}` : ''}</div>` : ''}
         <div class="btns">${Object.keys(a.apply).length ? `<button class="btn primary" data-asfix="${tips.indexOf(a)}">Apply &amp; re-run</button>` : ''}
@@ -1757,46 +1767,106 @@ function stagePage(main, st) {
   main.querySelectorAll('[data-log]').forEach((a) => a.addEventListener('click', (e) => { e.preventDefault(); openLog(a.dataset.log); }));
   main.querySelectorAll('[data-rerun]').forEach((a) => a.addEventListener('click', () => rerunFrom(a.dataset.rerun)));
   main.querySelectorAll('[data-asframes]').forEach((b) => b.addEventListener('click', () => openFrames(b.tagName === 'BUTTON' ? 'flagged' : 'all')));
-  $('asAnyway')?.addEventListener('click', () => {
-    const held = jobSnap?.paused?.stage === st ? jobSnap.paused.skipped : [];
-    if (held.length) runStages(held).catch((e) => { $('asResult').innerHTML = `<div class="err">${esc(e.message)}</div>`; });
-    else goPage(next);
-  });
-  $('asFilm')?.addEventListener('click', () => { $('asStopped').hidden = false; $('asStopped').scrollIntoView({ block: 'nearest' }); });
+  if (plain) bindPlainWarning(plain, st);
   main.querySelectorAll('[data-asfix]').forEach((b) => b.addEventListener('click', () => {
     const a = tips[+b.dataset.asfix];
     Object.entries(a.apply).forEach(([k, v]) => setOpt(k, v, a.title));
     runStages(a.rerun.length ? a.rerun : [st]).catch((e) => { $('asResult').innerHTML = `<div class="err">${esc(e.message)}</div>`; });
   }));
 }
-// SfM's camera-path warning in Assisted, said plainly (advice.camera_path_plain): what happened, what
-// continuing leads to, and the choices: the slower setting (the advice's apply and re-run), filming
-// again, or going on. An assisted run stops after SfM on it (pause_on) until you choose. The
-// technical message stays under "technical details", as Manual and the log show it.
-function nextStepsTime(fallback) {
-  const s = ['mvs', 'clean', 'texture'].reduce((t, k) => t + (lastDur[k] || 0), 0);
-  return lastDur.mvs ? `about ${dur(s)}, as long as last time` : `${fallback} (usually ${AS_INFO.mvs[2]} for the raw mesh alone)`;
+// Assisted's Result box: one short line per warning; the full messages and hints folded underneath
+// (Manual shows them in full, as the CLI and the log do).
+function shortDiagsHtml(diags, summaries = {}) {
+  if (!diags.length) return '';
+  const full = diags.filter((d) => d.hint || summaries?.[d.code]);
+  return diags.map((d) => `<div class="diag ${d.level}">${esc(summaries?.[d.code] || d.message)}</div>`).join('') +
+    (full.length ? `<details class="tech"><summary>technical details</summary>${diags.map((d) => `<div class="diag ${d.level}">${esc(d.code)}: ${esc(d.message)}${d.hint ? `<span class="h">→ ${esc(d.hint)}</span>` : ''}</div>`).join('')}</details>` : '');
 }
-function plainWarningHtml(a, i, diags, st, next, running) {
-  const p = a.plain, held = jobSnap?.paused?.stage === st ? jobSnap.paused.skipped : [];
-  const choice = (btn, text) => `<div class="as-choice">${btn}<span>${esc(text)}</span></div>`;
-  return `<div class="as-advice fix as-plain" id="asPlain"><b>⚠ ${esc(p.headline)}</b>
-      ${held.length ? `<p class="paused">I stopped after this step: ${held.map((s) => esc(pageLabel(s))).join(', ')} did not run yet. What do you want to do?</p>` : ''}
-      <p>${esc(p.what)}</p>
-      <p>${esc(p.impact.replace(p.time, nextStepsTime(p.time)))}</p>
-      <h5>What you can do</h5>
-      ${p.slower && Object.keys(a.apply).length ? choice(`<button class="btn primary" id="asSlower" data-asfix="${i}" ${running ? 'disabled' : ''}>${esc(p.slower.label)}</button>`, p.slower.text) : ''}
-      ${choice('<button class="btn" id="asFilm">Stop here and film again</button>', p.film)}
-      ${next ? choice(`<button class="btn" id="asAnyway" ${running ? 'disabled' : ''}>Continue anyway</button>`, held.length
-        ? `Runs what was held back (${held.map(pageLabel).join(' → ')}) on these camera positions, defects included.`
-        : `Goes on to the next step (${pageLabel(next)}) with these camera positions, defects included.`) : ''}
-      <div class="as-stopped" id="asStopped" hidden>Nothing more runs on this scan. When you have filmed again, make a new scan with the new video
-        (<b>New scan…</b> in the scan menu at the top), or replace this one's video (its <b>⋯</b> menu → <b>Replace the video…</b>).</div>
-      <details class="tech"><summary>technical details</summary>
-        <div>${esc(a.title)}: ${esc(a.detail)}</div>
-        ${diags.map((d) => `<div class="diag ${d.level}">${esc(d.code)}: ${esc(d.message)}${d.hint ? `<span class="h">→ ${esc(d.hint)}</span>` : ''}</div>`).join('')}
-        ${Object.keys(a.apply).length ? `<div class="muted">${esc(p.slower?.label || 'suggested')}: ${Object.entries(a.apply).map(([k, v]) => `<code>${k} = ${v}</code>`).join(', ')} · re-runs ${a.rerun.join(' → ')}</div>` : ''}
-      </details></div>`;
+// SfM's camera-path warning in Assisted (advice.camera_path_plain): a headline, a figure drawn from the
+// scan (camerapath.js), two sentences, one line per problem, and three buttons. The fix and Continue
+// each say first, in the page, exactly what they will do; Stop runs nothing. An assisted run stops
+// after SfM on these warnings (pause_on) until you choose.
+const NEXT_AFTER = (st) => AS_STAGES.slice(AS_STAGES.indexOf(st) + 1);
+let cpShown = null;  // {plain, path} of the card on the page, for its figure
+function heldBack(st) {
+  return jobSnap?.paused?.stage === st ? jobSnap.paused.skipped : NEXT_AFTER(st);
+}
+const roughly = (s) => (s < 90 ? 'about a minute' : `about ${Math.round(s / 60)} minutes`);
+function nextStepsTime(stages) {
+  const known = stages.filter((k) => lastDur[k]);
+  if (lastDur.mvs && stages.includes('mvs')) return `${roughly(known.reduce((t, k) => t + lastDur[k], 0))}, as long as last time`;
+  return `usually ${AS_INFO.mvs[2]} for the raw mesh, plus a few minutes for the rest`;
+}
+function renderCpFigure() {
+  const el = $('cpFigure'); if (!el || !cpShown) return;
+  const toScene = (c) => { if (!sceneT) return c; const v = new THREE.Vector3(...c).applyMatrix4(sceneT); return [v.x, v.y, v.z]; };
+  el.innerHTML = cameraPathFigure({ plain: cpShown.plain, path: cpShown.path, frames: wsState?.frames || [], cams: camData || [], toScene });
+}
+function plainWarningHtml(a, st, running) {
+  const p = a.plain, paused = jobSnap?.paused?.stage === st, stopped = AS.cpStopped === st;
+  cpShown = { plain: p, path: wsState?.manifest?.[st]?.camera_path || {} };
+  const dis = running ? 'disabled' : '';
+  return `<div class="as-advice fix as-plain" id="asPlain">
+      <div class="cp-head">⚠ ${esc(p.headline)}</div>
+      ${paused ? '<div class="cp-paused">The run stopped here to ask you before going on.</div>' : ''}
+      <div class="cp-fig" id="cpFigure"></div>
+      <p class="cp-sum">${esc(p.summary)}</p>
+      <ul class="cp-flags">${p.flags.map((f) => `<li>${flagIcon(f.icon)}<span>${esc(f.text)}</span></li>`).join('')}</ul>
+      <p class="cp-tip">Tip: ${esc(p.tip)}</p>
+      <div class="btns">
+        ${p.fix ? `<button class="btn primary" id="cpFix" ${dis}>${esc(p.fix.label)}…</button>` : ''}
+        <button class="btn" id="cpContinue" ${dis}>Continue…</button>
+        <button class="btn" id="cpStop" ${dis}>Stop</button></div>
+      <div class="cp-confirm" id="cpConfirm" hidden></div>
+      <div class="cp-stopped" id="cpStopped" ${stopped ? '' : 'hidden'}>Stopped. Nothing else runs: the scan stays as it is after ${esc(pageLabel(st))}. You can come back here to re-run or continue.</div>
+      <details class="tech"><summary>technical details</summary>${esc(a.title)}: ${esc(a.detail)}
+        ${Object.keys(a.apply).length ? `<div>${Object.entries(a.apply).map(([k, v]) => `<code>${k} = ${v}</code>`).join(', ')} · re-runs ${a.rerun.join(' → ')}</div>` : ''}</details></div>`;
+}
+function bindPlainWarning(a, st) {
+  const p = a.plain, box = $('cpConfirm');
+  renderCpFigure();
+  const ask = (html, go) => {  // the in-page confirmation: what will happen, then Do it / Cancel
+    $('cpStopped').hidden = true;
+    box.innerHTML = html + '<div class="btns"><button class="btn primary" id="cpYes"></button><button class="btn" id="cpNo">Cancel</button></div>';
+    box.hidden = false;
+    $('cpYes').textContent = go.label;
+    $('cpYes').addEventListener('click', go.run);
+    $('cpNo').addEventListener('click', () => { box.hidden = true; box.innerHTML = ''; });
+    box.scrollIntoView({ block: 'nearest' });
+  };
+  const row = (k, v) => `<div class="row"><span>${k}</span><span>${v}</span></div>`;
+  const fail = (e) => { $('asResult').innerHTML = `<div class="err">${esc(e.message)}</div>`; };
+  $('cpFix')?.addEventListener('click', () => {
+    const f = p.fix, rerun = a.rerun, later = rerun.filter((s) => s !== st);
+    const made = later.filter((s) => wsState?.done?.[s]);
+    const sfmTime = lastDur[st] ? (f.slower ? `${roughly(lastDur[st] * 4)} for the cameras (a few times longer than last time)` : `${roughly(lastDur[st])} for the cameras`)
+      : `${AS_INFO[st][2]}${f.slower ? ' or a few times more' : ''} for the cameras`;
+    ask(`<b>${f.slower ? 'Re-run with the thorough camera solver?' : 'Re-run the cameras without the masks?'}</b>
+      ${f.changes.map((c) => row(esc(c.label), `<span class="chg"><s>${esc(c.from)}</s> → <b>${esc(c.to)}</b></span>`)).join('')}
+      ${row('Re-runs', rerun.map((s) => esc(pageLabel(s))).join(' → '))}
+      ${row('Time', `${sfmTime}, then ${nextStepsTime(later)}`)}
+      ${row('Replaces', `the current camera positions${made.length ? ' and what was made from them' : ''}`)}
+      <div class="muted">If the path still breaks, the run stops after the cameras and asks again.</div>`,
+    { label: 'Re-run now', run: () => {
+      Object.entries(a.apply).forEach(([k, v]) => setOpt(k, v, `camera path: ${f.label.toLowerCase()}`));
+      renderRun();  // the step's options show the new values
+      runStages(rerun.length ? rerun : [st]).catch(fail);
+    } });
+  });
+  $('cpContinue')?.addEventListener('click', () => {
+    const next = heldBack(st);
+    if (!next.length) return;
+    ask(`<b>Continue with these camera positions?</b>
+      ${row('Runs next', next.map((s) => esc(pageLabel(s))).join(' → '))}
+      ${row('Time', nextStepsTime(next))}
+      <div class="impact">⚠ ${esc(p.impact[0].toUpperCase() + p.impact.slice(1))}.</div>`,
+    { label: 'Continue', run: () => { runStages(next).then(() => goPage(next[0])).catch(fail); } });
+  });
+  $('cpStop')?.addEventListener('click', () => {
+    box.hidden = true; box.innerHTML = '';
+    AS.cpStopped = st; asSave();
+    $('cpStopped').hidden = false;
+  });
 }
 function renderLastSteps() {  // the finished run's sub-steps with their times, read from its log
   const el = $('lastSteps'), st = curPage(); if (!el || !lastLog[st]) return;

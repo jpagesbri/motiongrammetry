@@ -48,100 +48,100 @@ def _item(stage, level, title, detail, apply=None, rerun=None, plain=None):
 
 
 # The quality warnings of sfm's camera-path check. An assisted run stops after SfM on them (the
-# server's `pause_on`) and asks what to do, with the plain-language texts of camera_path_plain.
+# server's `pause_on`) and asks what to do, with the short texts of camera_path_plain.
 CAMERA_PATH_CODES = ("camera-path-jump", "cameras-far-away", "cameras-collapsed")
-NEXT_STEPS_TIME = "several minutes"  # the page puts the last run's times in its place when it has them
+MOST_FLAGS = 4  # break flags listed one per line; the rest are counted
 
-
-def _and(items: list[str]) -> str:
-    return items[0] if len(items) == 1 else ", ".join(items[:-1]) + " and " + items[-1]
-
-
-def _keyframes(ks: list[int], more: bool = False) -> str:
-    r = keyframe_ranges(sorted(set(ks)))
-    single = len(r) == 1 and "–" not in r[0]
-    return ("keyframe " if single else "keyframes ") + _and(r + (["others"] if more else []))
+# The sfm options a camera-path fix changes, in words: (label, {value: words}).
+SETTING_WORDS = {
+    "mapper": ("Camera solver", {"global": "fast", "incremental": "thorough"}),
+    "matcher": ("Photo matching", {"sequential": "neighbouring photos", "exhaustive": "every pair of photos",
+                                   "vocab_tree": "similar-looking photos"}),
+    "mask_sfm": ("Place cameras from the subject's outline", {True: "yes", False: "no"}),
+}
+SETTING_DEFAULTS = {"mapper": "global", "matcher": "sequential", "mask_sfm": False}
 
 
 def _count(n: int) -> str:
     return ["no", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"][n] if n <= 10 else str(n)
 
 
-def camera_path_plain(p: dict, masked: bool = False, tried: bool = False) -> dict:
-    """The camera-path warning of an SfM run (its manifest's ``camera_path``) said plainly, for the
-    assisted run: what happened, what continuing leads to, and the choices. No jargon: the
-    technical message stays in the diagnostics (Manual mode, the CLI, the logs).
+def _kf(r: str) -> str:
+    return ("keyframes " if "–" in r else "keyframe ") + r
 
-    ``masked``: SfM used the masks (mask_sfm). ``tried``: it already ran with the slower setting
-    (incremental mapper, exhaustive matching), so that is not offered again.
+
+def camera_path_breaks(p: dict) -> list[dict]:
+    """The jumps of a camera path grouped where they follow each other (0→1, 1→2, 2→3 is one break
+    at keyframes 0–3): one marker in the page's figure and one flag each."""
+    out = []
+    for j in sorted(p.get("jumps") or [], key=lambda j: j["from"]):
+        if out and j["from"] == out[-1]["to"]:
+            out[-1]["to"] = j["to"]
+        else:
+            out.append({"from": j["from"], "to": j["to"]})
+    for b in out:
+        b["label"] = f"{b['from']}–{b['to'] - 1}" if b["to"] - 1 > b["from"] else f"{b['from']}"
+    return out
+
+
+def camera_path_plain(p: dict, apply: dict | None = None, ran: dict | None = None) -> dict:
+    """The camera-path warning of an SfM run (its manifest's ``camera_path``) in a few plain words, for
+    the assisted run's card: a headline, at most two short sentences, one line per problem found
+    (with an icon name), a one-line tip, what continuing does to the model, and the fix as settings
+    changed from -> to. No jargon: the technical messages stay in the diagnostics (Manual, CLI, logs).
+
+    ``apply``: the options the advice item would set (empty: nothing left to try). ``ran``: the
+    options SfM last ran with (mapper, matcher, mask_sfm), for the "from" side of the fix.
     """
-    next_steps = (f"If you continue, the next steps (the raw mesh, isolating the subject, the texture) run, "
-                  f"which takes {NEXT_STEPS_TIME}, ")
-    film = ("Film again: walk slowly through doorways and, while you turn, keep part of the room you are "
-            "leaving in view. No quick pans, nothing passing close to the lens. For an object, go round it at "
-            "a steady, even pace.")
+    apply, ran = apply or {}, {**SETTING_DEFAULTS, **{k: v for k, v in (ran or {}).items() if v is not None}}
+    changes = [{"label": SETTING_WORDS[k][0], "from": SETTING_WORDS[k][1].get(ran[k], str(ran[k])),
+                "to": SETTING_WORDS[k][1].get(v, str(v))} for k, v in apply.items() if k in SETTING_WORDS and ran[k] != v]
+    fix = None
+    if apply:
+        masks = "mask_sfm" in apply
+        fix = {"label": "Place the cameras without the masks" if masks else "Use the thorough camera solver",
+               "slower": not masks, "changes": changes}
+    flags, summaries = [], {}
     if p.get("collapsed"):
         n, total = p.get("collapsed_cameras", 0), p.get("cameras", 0)
-        what = (f"The program could not work out how the camera moved: {n} of {total} photos were placed at the "
-                "same spot, as if the camera had not moved between them. ")
-        what += ("This happens when the outline of the subject (the masks) is used to place the cameras while the "
-                 "camera itself moves: that setting is meant for a turntable, where the camera stays still and "
-                 "the object turns." if masked else
-                 "This is a calculation problem, not a filming one.")
-        impact = ("and the model will likely come out mostly empty or garbled: with the photos piled up at a few "
-                  "spots there is nothing to measure depth from, so you get scattered fragments, if anything.")
-        if masked:
-            slower = {"label": "Try without the masks",
-                      "text": "Place the cameras again without using the subject's outline, the usual way when the "
-                              "camera moves round the subject. If the camera really stayed still while the object "
-                              "turned, don't: keep the masks and try the slower setting (mapper incremental, "
-                              "matcher exhaustive) in Manual instead."}
-        elif not tried:
-            slower = {"label": "Try the slower setting",
-                      "text": "Place the cameras again with a slower, more thorough method that compares every "
-                              "photo with every other. This step then takes a few times longer; it usually "
-                              "recovers the movement."}
-        else:
-            slower = None
-        again = "film again, going round the subject at a steady, even pace, the camera moving and not only turning."
-        film = ("Filming is not the cause here, so try the other setting first. If that fails too, " + again
-                if slower else "Filming is not the cause here, but the slower setting did not help either: " + again)
-        return {"kind": "collapsed", "headline": "The camera's movement could not be worked out", "what": what,
-                "impact": next_steps + impact, "slower": slower, "film": film, "time": NEXT_STEPS_TIME}
+        flags.append({"icon": "stack", "text": f"{n} of {total} photos placed on top of each other"})
+        if ran["mask_sfm"]:
+            flags.append({"icon": "mask", "text": "Cameras placed from the subject's outline (a turntable setting)"})
+        summaries["cameras-collapsed"] = f"{n} of {total} cameras on top of each other"
+        return {"kind": "collapsed", "headline": "Camera movement not found",
+                "summary": "The program couldn't work out how the camera moved. "
+                           "The model will likely come out mostly empty or garbled.",
+                "impact": "the model will likely come out mostly empty or garbled",
+                "flags": flags, "breaks": [],
+                "tip": ("Using the outline is meant for a turntable, where the camera stays still."
+                        if ran["mask_sfm"] else "This is a calculation problem, not a problem with the video."),
+                "fix": fix, "summaries": summaries}
 
-    jumps = p.get("jumps") or []
+    breaks = camera_path_breaks(p)
     far = p.get("far") or []
-    what = ""
-    if jumps:
-        more = p.get("jump_count", len(jumps)) > len(jumps)
-        what = ("Some camera positions don't line up with the others (around "
-                + _keyframes([j["from"] for j in jumps], more) + ")")
+    for b in breaks[:MOST_FLAGS]:
+        flags.append({"icon": "break", "text": f"Views don't connect at {_kf(b['label'])}"})
+    if len(breaks) > MOST_FLAGS:
+        flags.append({"icon": "break", "text": f"…and {len(breaks) - MOST_FLAGS} more"})
+    if breaks:
+        summaries["camera-path-jump"] = (f"camera path breaks at {len(breaks)} place{'s' if len(breaks) > 1 else ''}")
     if far:
         n = p.get("far_count", len(far))
-        placed = (("one photo was" if n == 1 else f"{_count(n)} photos were") + " placed far away from all the others ("
-                  + _keyframes([f["keyframe"] for f in far], n > len(far)) + ")")
-        what = what + ", and " + placed if jumps else placed[0].upper() + placed[1:]
-    what += (". The views there didn't connect to the ones around them, usually because of a quick turn, a "
-             "doorway, or something passing close to the lens.")
-    impact = "and the model will likely show it: "
-    if jumps:
-        impact += ("parts of the scene end up in the wrong place, and a room or a surface can appear twice, shifted "
-                   "against itself. ")
-        if far:
-            impact += "The photos placed far away add stray pieces of surface, away from the rest. "
+        where = ", ".join(keyframe_ranges(sorted(f["keyframe"] for f in far)))
+        flags.append({"icon": "far", "text": (f"{_count(n).capitalize()} photo{'s' if n > 1 else ''} placed far away "
+                                              f"({'keyframes' if n > 1 else 'keyframe'} {where}{'…' if n > len(far) else ''})")})
+        summaries["cameras-far-away"] = f"{n} photo{'s' if n > 1 else ''} placed far away"
+    if breaks:
+        headline, summary = "Camera path broken", ("Some views didn't connect, so the camera positions don't line "
+                                                   "up. The model will likely have misplaced or doubled parts.")
+        impact = "the model will likely have misplaced or doubled parts"
     else:
-        impact += ("stray pieces of surface away from the rest, and what those photos saw is missing or in the wrong "
-                   "place. ")
-    impact += "Cleaning up and texturing can't repair that."
-    slower = None if tried else {
-        "label": "Try the slower setting",
-        "text": "Place the cameras again with a slower, more thorough method that compares every photo with every "
-                "other. This step then takes a few times longer. It can connect the views that didn't line up, "
-                "but not always: if it works, the next steps follow; if not, the run stops here again."}
-    if tried:
-        film = "The slower setting was already used for this run, so filming again is what's left. " + film
-    return {"kind": "jump" if jumps else "far", "headline": "Some camera positions don't line up", "what": what,
-            "impact": next_steps + impact, "slower": slower, "film": film, "time": NEXT_STEPS_TIME}
+        headline, summary = "Photos placed far away", ("Some photos didn't connect to the rest and were placed far "
+                                                       "away. The model will likely have stray, misplaced pieces.")
+        impact = "the model will likely have stray, misplaced pieces"
+    return {"kind": "jump" if breaks else "far", "headline": headline, "summary": summary, "impact": impact,
+            "flags": flags, "breaks": breaks, "tip": "Quick turns and doorways often cause this.",
+            "fix": fix, "summaries": summaries}
 
 
 def last_options(ws: Workspace, stage: str) -> dict:
@@ -219,7 +219,8 @@ def advise(ws: Workspace, subject: str | None = None) -> list[dict]:
                          "the slower incremental mapper with exhaustive matching did not help either; film again"
                          if tried else "try the slower incremental mapper with exhaustive matching"),
                       apply, ["sfm", "mvs", "clean", "texture"] if apply else None,
-                      plain=camera_path_plain(p, masked=bool(masked), tried=tried)))
+                      plain=camera_path_plain(p, apply, {"mapper": s.get("mapper"), "matcher": s.get("matcher"),
+                                                         "mask_sfm": bool(masked)})))
         elif not (s.get("camera_path") or {}).get("ok", True):
             p = s["camera_path"]
             where = sorted({j["from"] for j in p.get("jumps", [])} | {f["keyframe"] for f in p.get("far", [])})
@@ -235,7 +236,8 @@ def advise(ws: Workspace, subject: str | None = None) -> list[dict]:
                       "First try the slower incremental mapper with exhaustive matching, which can connect views the "
                       "defaults missed. If it still breaks: " + film[0].lower() + film[1:]),
                       apply, ["sfm", "mvs", "clean", "texture"] if apply else None,
-                      plain=camera_path_plain(p, tried=tried)))
+                      plain=camera_path_plain(p, apply, {"mapper": s.get("mapper"), "matcher": s.get("matcher"),
+                                                         "mask_sfm": bool(s.get("masked_features"))})))
         elif s.get("mean_reproj_error_px", 0) > 2.0:
             add(_item("sfm", "tip", f"camera positions are approximate ({s['mean_reproj_error_px']:.1f} px error)",
                       "the subject may have moved, or the video is soft; the result can look smeared"))
