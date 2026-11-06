@@ -84,6 +84,8 @@ def test_run_validation(server):
     assert status == 400 and "no video" in body["error"]
     status, body = call(base + "/api/workspaces/w/run", "POST", {"stages": ["bogus"]})
     assert status == 400
+    status, body = call(base + "/api/workspaces/w/run", "POST", {"stages": ["sfm"], "pause_on": "camera-path-jump"})
+    assert status == 400 and "pause_on" in body["error"]
 
 
 def test_upload_sets_video(server):
@@ -261,6 +263,46 @@ def test_terminal_runs_replace_a_finished_ui_job(tmp_path):
     assert app.job(ws) is job
     ws.append_history({"stage": "clean", "status": "ok", "started": time.time()})
     assert app.job(ws) is None
+
+
+_FAKE_STAGE = """
+import sys, time
+from motiongrammetry.workspace import Workspace
+stage, root = sys.argv[1], sys.argv[2]
+diags = [{"level": "warning", "code": "camera-path-jump", "message": "m", "hint": ""}] if stage == "sfm" else []
+Workspace(root).append_history({"stage": stage, "status": "warning" if diags else "ok", "diagnostics": diags,
+                                "started": time.time()})
+print("ran", stage)
+"""
+
+
+@pytest.mark.parametrize("stages, pause_on, status, ran", [
+    (["sfm", "mvs", "clean"], ["camera-path-jump", "cameras-collapsed"], "paused", ["sfm"]),
+    (["sfm", "mvs", "clean"], None, "done", ["sfm", "mvs", "clean"]),          # Manual: carries on, as before
+    (["sfm", "mvs", "clean"], ["cameras-collapsed"], "done", ["sfm", "mvs", "clean"]),  # another warning
+    (["sfm"], ["camera-path-jump"], "done", ["sfm"]),                          # nothing left to hold back
+])
+def test_a_run_pauses_after_a_stage_with_a_chosen_warning(tmp_path, monkeypatch, stages, pause_on, status, ran):
+    """The assisted run passes sfm's camera-path warnings as pause_on: the run stops after SfM, the
+    next stages skipped, and waits for the user's choice instead of building a broken model."""
+    import sys
+
+    from motiongrammetry.web.server import Job
+
+    monkeypatch.setattr(Job, "_cmd", lambda self, stage: [sys.executable, "-c", _FAKE_STAGE, stage, str(self.ws.root)])
+    ws = Workspace(tmp_path / "w")
+    job = Job(ws, stages, {}, None, pause_on)
+    job.thread.join(30)
+    snap = job.snapshot(0)
+    assert snap["status"] == status
+    assert [h["stage"] for h in ws.history()] == ran
+    assert snap["stages"]["sfm"]["status"] == "warning"
+    if status == "paused":
+        assert snap["paused"] == {"stage": "sfm", "codes": ["camera-path-jump"], "skipped": ["mvs", "clean"]}
+        assert [snap["stages"][s]["status"] for s in ("mvs", "clean")] == ["skipped", "skipped"]
+        assert snap["failure"] is None and any("paused after sfm" in line for line in snap["log"])
+    else:
+        assert snap["paused"] is None
 
 
 def _sfm_workspace(root, name="src"):
@@ -712,6 +754,7 @@ def test_advice_reads_the_results_and_suggests_what_to_change(server):
     assert status == 200 and any(i["stage"] == "sfm" for i in r)
     status, r = call(base + "/api/assist")
     assert status == 200 and "person" in r["subjects"] and "partial" in r["coverage"]
+    assert r["pause_on"] == ["camera-path-jump", "cameras-far-away", "cameras-collapsed"]  # what assisted runs stop on
 
 
 def test_help_page_is_served(server):

@@ -153,7 +153,15 @@ mg ui --root ~/scans --port 9000
 - **Assisted** (Run tab): a guided run. It asks what was filmed and how, picks starting options with
   the reason for each, then goes one stage at a time explaining every option; after each stage
   `advice.py` reads the results (keyframes, mask coverage, registered cameras, how much clean carved
-  and how sure the masks were, ...) and offers fixes with "apply & re-run". While a step runs it
+  and how sure the masks were, ...) and offers fixes with "apply & re-run". When SfM ends with a
+  camera-path warning (`camera-path-jump`, `cameras-far-away`, `cameras-collapsed`), its page says
+  it in plain language instead (`advice.camera_path_plain`: what happened, what continuing leads
+  to, with the next steps' time from the last run when known) with three choices: **Try the slower
+  setting** (or **Try without the masks** after `mask_sfm`; the advice's apply & re-run), **Stop
+  here and film again**, **Continue anyway**; the technical message is folded under "technical
+  details". Assisted runs send these codes as `pause_on` (`GET /api/assist` lists them), so a run
+  that includes later steps stops after SfM (job status `paused`, the rest `skipped`) and
+  **Continue anyway** runs what was held back. Manual is unchanged. While a step runs it
   shows the sub-steps, the latest result, the log on request and Stop (switching to Manual, the
   Preview or another scan never stops a run). The last step, **Place your model**, checks the
   orientation. It remembers where it was per scan (browser storage).

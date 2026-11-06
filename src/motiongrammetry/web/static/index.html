@@ -186,6 +186,12 @@
   .as-advice.fix { border-color: var(--warn); background: rgba(240,180,41,.07); }
   .as-advice.ok { border-color: rgba(76,195,138,.5); }
   .as-advice b { display: block; }
+  .as-plain p { margin: 6px 0; } .as-plain h5 { margin: 10px 0 4px; font-size: 13px; }
+  .as-plain .paused { font-weight: 600; }
+  .as-choice { display: grid; grid-template-columns: 210px 1fr; gap: 10px; align-items: start; padding: 5px 0; }
+  .as-choice .btn { width: 100%; }
+  .as-stopped { margin: 6px 0; padding: 6px 8px; border-radius: 6px; background: var(--panel2); }
+  .as-plain .tech { margin-top: 8px; font-size: 12px; color: var(--muted); }
   label.row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 6px 0; }
   input[type=text], input[type=number], select { background: var(--bg); border: 1px solid var(--line);
     border-radius: 5px; padding: 5px 7px; min-width: 0; }
@@ -304,6 +310,7 @@
     .view { min-height: 60vh; }
     .as-place { grid-template-columns: 1fr; height: auto; }
     .as-place .slot { height: 50vh; }
+    .as-choice { grid-template-columns: 1fr; gap: 4px; }
   }
 </style>
 <link rel="stylesheet" href="/topbar.css">
@@ -1462,6 +1469,7 @@ function renderDisk() {  // on the raw-mesh page, next to resolution_level
 // its options. Assisted goes one step at a time with explanations and suggested values; Manual
 // shows every option, lets you tick several steps and adds an overview of them all.
 const AS_STAGES = ['frames', 'mask', 'sfm', 'mvs', 'clean', 'texture'];
+const RUN_OK = ['done', 'warning', 'paused'];  // how a run can end without failing (paused: waits for a choice)
 const AS_INFO = {
   frames: ['Pick keyframes', 'Reads the video, scores every frame for sharpness and keeps the sharpest ones, spread evenly along your path around the subject. Blurred and duplicate views are dropped.', 'under a minute'],
   mask: ['Find the subject', 'An AI segmentation model outlines the subject in every keyframe. These masks later decide what is subject and what is background.', '1-3 minutes'],
@@ -1544,7 +1552,7 @@ function renderRunBar() {
   $('runBtn').disabled = running || !RO.sel.length || !current;
   $('cancelBtn').hidden = !running;
   const s = $('runStatus'), tr = running && liveTracks[jobSnap.current];
-  s.className = 'runstatus' + (running ? ' run' : jobSnap && !['done', 'warning'].includes(jobSnap.status) && jobSnap.status ? ' bad' : '');
+  s.className = 'runstatus' + (running ? ' run' : jobSnap && !RUN_OK.includes(jobSnap.status) && jobSnap.status ? ' bad' : '');
   s.textContent = running ? `running ${pageLabel(jobSnap.current) || jobSnap.current}${tr ? ' · ' + stepCounter(tr).replace(/ · $/, '') : ''}`
     : jobSnap?.status ? `last run: ${jobSnap.status}` : '';
   s.title = running ? 'open this step' : '';
@@ -1652,7 +1660,11 @@ async function asSubject(main) {
 }
 async function runStages(stages) {
   $('runErr').textContent = ''; $('checkOut').innerHTML = ''; $('rerunInfo').textContent = '';
-  await api(`/api/workspaces/${current}/run`, { method: 'POST', body: JSON.stringify({ stages, options: runOptions() }) });
+  // Assisted stops after a step whose warnings need a choice (SfM's camera path), instead of
+  // building the next steps on top of it; Manual runs every ticked step, as asked.
+  if (runMode === 'assisted') asChoices ||= await api('/api/assist');
+  const pause_on = runMode === 'assisted' ? asChoices.pause_on : [];
+  await api(`/api/workspaces/${current}/run`, { method: 'POST', body: JSON.stringify({ stages, options: runOptions(), pause_on }) });
   liveTracks = {}; trackState = { stage: null }; trackSince = 0; stepsClosed.clear(); setLogMode('live'); lastFailure = null;
   jobSnap = { status: 'running', current: stages[0], stages: Object.fromEntries(stages.map((s, i) => [s, { status: i ? 'queued' : 'running' }])) };
   AS.waiting = stages; renderRun();
@@ -1689,7 +1701,10 @@ function stagePage(main, st) {
   const state = stageState(st), done = state === 'done' || state === 'stale';
   const tips = AS.advice.filter((a) => a.stage === st);
   const j = jobSnap?.stages?.[st];
-  const diags = ((j?.diagnostics?.length ? j.diagnostics : (wsState?.manifest?.diagnostics || {})[st]) || []).filter((d) => d.level !== 'info' || !mine);
+  const allDiags = ((j?.diagnostics?.length ? j.diagnostics : (wsState?.manifest?.diagnostics || {})[st]) || []).filter((d) => d.level !== 'info' || !mine);
+  const plain = assisted && done ? tips.find((a) => a.plain) : null;  // said plainly, with the choices (below)
+  const pauseCodes = asChoices?.pause_on || [];
+  const diags = plain ? allDiags.filter((d) => !pauseCodes.includes(d.code)) : allDiags;
   const f = jobSnap?.failure || lastFailure;
   const opts = optSpec.filter((o) => o.stages.includes(st) && !o.stages.includes('*'));
   const shown = assisted ? opts.filter((o) => o.group === 'basic' || o.name in RO.values) : opts.filter((o) => o.group === 'basic');
@@ -1710,7 +1725,7 @@ function stagePage(main, st) {
     <div class="btns">
       <button class="btn primary" id="asGo" ${running ? 'disabled' : ''}>${mine ? 'Running…' : done ? 'Re-run this step' : 'Run this step'}</button>
       ${!assisted ? `<button class="btn" data-rerun="${st}" title="tick this step and the ones that depend on it, then Run selected">Tick this and later steps</button>` : ''}
-      ${assisted && done && !running && next ? `<button class="btn primary" id="asNext">Continue: ${pageLabel(next)}</button>` : ''}
+      ${assisted && done && !running && next && !plain ? `<button class="btn primary" id="asNext">Continue: ${pageLabel(next)}</button>` : ''}
       ${assisted && prev ? '<button class="btn" id="asBack">Back</button>' : ''}
       ${!mine ? `<button class="btn" id="asLogBtn">${drawerOpen ? 'Hide log' : 'Show log'}</button>` : ''}</div>`;
   if (f && f.stage === st && !mine && state !== 'done') {
@@ -1722,7 +1737,8 @@ function stagePage(main, st) {
     const m = wsState.manifest || {};
     $('asResult').innerHTML = `<div class="as-advice ${tips.some((a) => a.level === 'fix') || state === 'stale' ? '' : 'ok'}"><b>Result</b>${esc(stageDetail(st, m) || 'done')}
         ${diags.map((d) => `<div class="diag ${d.level}">${esc(d.message)}${d.hint ? `<span class="h">→ ${esc(d.hint)}</span>` : ''}</div>`).join('')}</div>` +
-      tips.filter((a) => a.level !== 'ok' || assisted).map((a) => `<div class="as-advice ${a.level}"><b>${a.level === 'ok' ? '✓ ' : a.level === 'fix' ? '⚠ ' : 'ℹ '}${esc(a.title)}</b>${esc(a.detail)}
+      (plain ? plainWarningHtml(plain, tips.indexOf(plain), allDiags.filter((d) => pauseCodes.includes(d.code)), st, next, running) : '') +
+      tips.filter((a) => (a.level !== 'ok' || assisted) && a !== plain).map((a) => `<div class="as-advice ${a.level}"><b>${a.level === 'ok' ? '✓ ' : a.level === 'fix' ? '⚠ ' : 'ℹ '}${esc(a.title)}</b>${esc(a.detail)}
         ${Object.keys(a.apply).length ? `<div class="muted" style="margin-top:4px">suggested: ${Object.entries(a.apply).map(([k, v]) => `<code>${k} = ${v}</code>`).join(', ')}${a.rerun.length ? ` · re-runs ${a.rerun.join(' → ')}` : ''}</div>` : ''}
         <div class="btns">${Object.keys(a.apply).length ? `<button class="btn primary" data-asfix="${tips.indexOf(a)}">Apply &amp; re-run</button>` : ''}
           ${a.level !== 'ok' && FRAME_STAGES.has(st) ? '<button class="btn" data-asframes>Show the flagged keyframes</button>' : ''}</div></div>`).join('') +
@@ -1741,11 +1757,46 @@ function stagePage(main, st) {
   main.querySelectorAll('[data-log]').forEach((a) => a.addEventListener('click', (e) => { e.preventDefault(); openLog(a.dataset.log); }));
   main.querySelectorAll('[data-rerun]').forEach((a) => a.addEventListener('click', () => rerunFrom(a.dataset.rerun)));
   main.querySelectorAll('[data-asframes]').forEach((b) => b.addEventListener('click', () => openFrames(b.tagName === 'BUTTON' ? 'flagged' : 'all')));
+  $('asAnyway')?.addEventListener('click', () => {
+    const held = jobSnap?.paused?.stage === st ? jobSnap.paused.skipped : [];
+    if (held.length) runStages(held).catch((e) => { $('asResult').innerHTML = `<div class="err">${esc(e.message)}</div>`; });
+    else goPage(next);
+  });
+  $('asFilm')?.addEventListener('click', () => { $('asStopped').hidden = false; $('asStopped').scrollIntoView({ block: 'nearest' }); });
   main.querySelectorAll('[data-asfix]').forEach((b) => b.addEventListener('click', () => {
     const a = tips[+b.dataset.asfix];
     Object.entries(a.apply).forEach(([k, v]) => setOpt(k, v, a.title));
     runStages(a.rerun.length ? a.rerun : [st]).catch((e) => { $('asResult').innerHTML = `<div class="err">${esc(e.message)}</div>`; });
   }));
+}
+// SfM's camera-path warning in Assisted, said plainly (advice.camera_path_plain): what happened, what
+// continuing leads to, and the choices: the slower setting (the advice's apply and re-run), filming
+// again, or going on. An assisted run stops after SfM on it (pause_on) until you choose. The
+// technical message stays under "technical details", as Manual and the log show it.
+function nextStepsTime(fallback) {
+  const s = ['mvs', 'clean', 'texture'].reduce((t, k) => t + (lastDur[k] || 0), 0);
+  return lastDur.mvs ? `about ${dur(s)}, as long as last time` : `${fallback} (usually ${AS_INFO.mvs[2]} for the raw mesh alone)`;
+}
+function plainWarningHtml(a, i, diags, st, next, running) {
+  const p = a.plain, held = jobSnap?.paused?.stage === st ? jobSnap.paused.skipped : [];
+  const choice = (btn, text) => `<div class="as-choice">${btn}<span>${esc(text)}</span></div>`;
+  return `<div class="as-advice fix as-plain" id="asPlain"><b>⚠ ${esc(p.headline)}</b>
+      ${held.length ? `<p class="paused">I stopped after this step: ${held.map((s) => esc(pageLabel(s))).join(', ')} did not run yet. What do you want to do?</p>` : ''}
+      <p>${esc(p.what)}</p>
+      <p>${esc(p.impact.replace(p.time, nextStepsTime(p.time)))}</p>
+      <h5>What you can do</h5>
+      ${p.slower && Object.keys(a.apply).length ? choice(`<button class="btn primary" id="asSlower" data-asfix="${i}" ${running ? 'disabled' : ''}>${esc(p.slower.label)}</button>`, p.slower.text) : ''}
+      ${choice('<button class="btn" id="asFilm">Stop here and film again</button>', p.film)}
+      ${next ? choice(`<button class="btn" id="asAnyway" ${running ? 'disabled' : ''}>Continue anyway</button>`, held.length
+        ? `Runs what was held back (${held.map(pageLabel).join(' → ')}) on these camera positions, defects included.`
+        : `Goes on to the next step (${pageLabel(next)}) with these camera positions, defects included.`) : ''}
+      <div class="as-stopped" id="asStopped" hidden>Nothing more runs on this scan. When you have filmed again, make a new scan with the new video
+        (<b>New scan…</b> in the scan menu at the top), or replace this one's video (its <b>⋯</b> menu → <b>Replace the video…</b>).</div>
+      <details class="tech"><summary>technical details</summary>
+        <div>${esc(a.title)}: ${esc(a.detail)}</div>
+        ${diags.map((d) => `<div class="diag ${d.level}">${esc(d.code)}: ${esc(d.message)}${d.hint ? `<span class="h">→ ${esc(d.hint)}</span>` : ''}</div>`).join('')}
+        ${Object.keys(a.apply).length ? `<div class="muted">${esc(p.slower?.label || 'suggested')}: ${Object.entries(a.apply).map(([k, v]) => `<code>${k} = ${v}</code>`).join(', ')} · re-runs ${a.rerun.join(' → ')}</div>` : ''}
+      </details></div>`;
 }
 function renderLastSteps() {  // the finished run's sub-steps with their times, read from its log
   const el = $('lastSteps'), st = curPage(); if (!el || !lastLog[st]) return;
@@ -1774,7 +1825,7 @@ function asPlace(main) {
 function asDone(main) {
   const tips = AS.advice.filter((a) => a.level !== 'ok');
   main.innerHTML = `<div class="ph"><h3>Your model is ready</h3></div><p><b>Export…</b> takes out what you need (the textured model, the clean mesh, a 3D print, …), each file made when you ask for it.</p>
-    ${tips.map((a) => `<div class="as-advice ${a.level}"><b>${esc(a.title)}</b>${esc(a.detail)}</div>`).join('')}
+    ${tips.map((a) => `<div class="as-advice ${a.level}"><b>${esc(a.plain?.headline || a.title)}</b>${esc(a.plain?.what || a.detail)}</div>`).join('')}
     <div class="btns"><button class="btn primary" id="asExport">Export…</button><button class="btn" id="asPreview">Open the Preview</button>
       <a class="btn" href="${editorUrl()}">Touch it up in ${topPageLabel('edit')}</a><button class="btn" id="asManual">Switch to Manual</button></div>`;
   $('asExport').addEventListener('click', () => { showG('preview'); showPv('3d'); openExport(current); });
@@ -1789,15 +1840,21 @@ async function asRefresh() {  // from the poller when a step starts or ends
     if (!isShown('run')) {  // finished while you were looking at the Preview
       const st = ran.filter((s) => jobSnap?.stages?.[s]).pop() || ran[ran.length - 1];
       const fixes = AS.advice.filter((a) => ran.includes(a.stage) && a.level === 'fix').length;
-      const failed = jobSnap?.status && !['done', 'warning'].includes(jobSnap.status);
+      const failed = jobSnap?.status && !RUN_OK.includes(jobSnap.status);
       $('runPip').hidden = false; $('runPip').classList.toggle('bad', !!failed);
-      toast(`<b>${esc(AS_INFO[st]?.[0] || st)}</b> ${failed ? 'did not finish' : 'finished'}${fixes ? ` · ${fixes} suggestion${fixes > 1 ? 's' : ''}` : ''}`, () => { showG('run'); goPage(st); });
+      const paused = jobSnap?.paused;
+      toast(paused ? `<b>${esc(AS_INFO[paused.stage]?.[0] || paused.stage)}</b> stopped to ask you something before going on`
+        : `<b>${esc(AS_INFO[st]?.[0] || st)}</b> ${failed ? 'did not finish' : 'finished'}${fixes ? ` · ${fixes} suggestion${fixes > 1 ? 's' : ''}` : ''}`,
+      () => { showG('run'); goPage(paused ? paused.stage : st); });
+    } else if (runMode === 'assisted' && jobSnap?.paused && ran.includes(curPage())) {
+      AS.step = jobSnap.paused.stage;  // stopped there to ask: show its question (asked from the masks, say)
     } else if (runMode === 'assisted' && ran.includes(curPage())) { /* stay: the result shows here */ }
   }
   renderRun();
 }
 async function loadAdvice() {
   AS.advice = current ? await api(`/api/workspaces/${current}/advice?subject=${AS.subject || ''}`).catch(() => []) : [];
+  if (!asChoices) asChoices = await api('/api/assist').catch(() => null);
 }
 
 let runMode = 'assisted';
@@ -2314,7 +2371,7 @@ async function poll() {
       $('topStatus').textContent = j.status === 'running' ? `running ${j.current}…` : j.status ? `last run: ${j.status}` : '';
       const doneKey = Object.entries(j.stages || {}).filter(([, v]) => v.status !== 'running' && v.status !== 'queued').map(([k]) => k).join();
       if (j.status !== 'running' && lastJobStatus === 'running' && !isShown('run')) {
-        $('runPip').hidden = false; $('runPip').classList.toggle('bad', !['done', 'warning'].includes(j.status));
+        $('runPip').hidden = false; $('runPip').classList.toggle('bad', !RUN_OK.includes(j.status));
       }
       if (doneKey !== lastStageDone || j.status !== lastJobStatus) {
         lastStageDone = doneKey; lastJobStatus = j.status;

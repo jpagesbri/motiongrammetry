@@ -39,9 +39,109 @@ COVERAGE = {
 }
 
 
-def _item(stage, level, title, detail, apply=None, rerun=None):
-    return {"stage": stage, "level": level, "title": title, "detail": detail,
+def _item(stage, level, title, detail, apply=None, rerun=None, plain=None):
+    item = {"stage": stage, "level": level, "title": title, "detail": detail,
             "apply": apply or {}, "rerun": rerun or []}
+    if plain:
+        item["plain"] = plain
+    return item
+
+
+# The quality warnings of sfm's camera-path check. An assisted run stops after SfM on them (the
+# server's `pause_on`) and asks what to do, with the plain-language texts of camera_path_plain.
+CAMERA_PATH_CODES = ("camera-path-jump", "cameras-far-away", "cameras-collapsed")
+NEXT_STEPS_TIME = "several minutes"  # the page puts the last run's times in its place when it has them
+
+
+def _and(items: list[str]) -> str:
+    return items[0] if len(items) == 1 else ", ".join(items[:-1]) + " and " + items[-1]
+
+
+def _keyframes(ks: list[int], more: bool = False) -> str:
+    r = keyframe_ranges(sorted(set(ks)))
+    single = len(r) == 1 and "–" not in r[0]
+    return ("keyframe " if single else "keyframes ") + _and(r + (["others"] if more else []))
+
+
+def _count(n: int) -> str:
+    return ["no", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"][n] if n <= 10 else str(n)
+
+
+def camera_path_plain(p: dict, masked: bool = False, tried: bool = False) -> dict:
+    """The camera-path warning of an SfM run (its manifest's ``camera_path``) said plainly, for the
+    assisted run: what happened, what continuing leads to, and the choices. No jargon: the
+    technical message stays in the diagnostics (Manual mode, the CLI, the logs).
+
+    ``masked``: SfM used the masks (mask_sfm). ``tried``: it already ran with the slower setting
+    (incremental mapper, exhaustive matching), so that is not offered again.
+    """
+    next_steps = (f"If you continue, the next steps (the raw mesh, isolating the subject, the texture) run, "
+                  f"which takes {NEXT_STEPS_TIME}, ")
+    film = ("Film again: walk slowly through doorways and, while you turn, keep part of the room you are "
+            "leaving in view. No quick pans, nothing passing close to the lens. For an object, go round it at "
+            "a steady, even pace.")
+    if p.get("collapsed"):
+        n, total = p.get("collapsed_cameras", 0), p.get("cameras", 0)
+        what = (f"The program could not work out how the camera moved: {n} of {total} photos were placed at the "
+                "same spot, as if the camera had not moved between them. ")
+        what += ("This happens when the outline of the subject (the masks) is used to place the cameras while the "
+                 "camera itself moves: that setting is meant for a turntable, where the camera stays still and "
+                 "the object turns." if masked else
+                 "This is a calculation problem, not a filming one.")
+        impact = ("and the model will likely come out mostly empty or garbled: with the photos piled up at a few "
+                  "spots there is nothing to measure depth from, so you get scattered fragments, if anything.")
+        if masked:
+            slower = {"label": "Try without the masks",
+                      "text": "Place the cameras again without using the subject's outline, the usual way when the "
+                              "camera moves round the subject. If the camera really stayed still while the object "
+                              "turned, don't: keep the masks and try the slower setting (mapper incremental, "
+                              "matcher exhaustive) in Manual instead."}
+        elif not tried:
+            slower = {"label": "Try the slower setting",
+                      "text": "Place the cameras again with a slower, more thorough method that compares every "
+                              "photo with every other. This step then takes a few times longer; it usually "
+                              "recovers the movement."}
+        else:
+            slower = None
+        again = "film again, going round the subject at a steady, even pace, the camera moving and not only turning."
+        film = ("Filming is not the cause here, so try the other setting first. If that fails too, " + again
+                if slower else "Filming is not the cause here, but the slower setting did not help either: " + again)
+        return {"kind": "collapsed", "headline": "The camera's movement could not be worked out", "what": what,
+                "impact": next_steps + impact, "slower": slower, "film": film, "time": NEXT_STEPS_TIME}
+
+    jumps = p.get("jumps") or []
+    far = p.get("far") or []
+    what = ""
+    if jumps:
+        more = p.get("jump_count", len(jumps)) > len(jumps)
+        what = ("Some camera positions don't line up with the others (around "
+                + _keyframes([j["from"] for j in jumps], more) + ")")
+    if far:
+        n = p.get("far_count", len(far))
+        placed = (("one photo was" if n == 1 else f"{_count(n)} photos were") + " placed far away from all the others ("
+                  + _keyframes([f["keyframe"] for f in far], n > len(far)) + ")")
+        what = what + ", and " + placed if jumps else placed[0].upper() + placed[1:]
+    what += (". The views there didn't connect to the ones around them, usually because of a quick turn, a "
+             "doorway, or something passing close to the lens.")
+    impact = "and the model will likely show it: "
+    if jumps:
+        impact += ("parts of the scene end up in the wrong place, and a room or a surface can appear twice, shifted "
+                   "against itself. ")
+        if far:
+            impact += "The photos placed far away add stray pieces of surface, away from the rest. "
+    else:
+        impact += ("stray pieces of surface away from the rest, and what those photos saw is missing or in the wrong "
+                   "place. ")
+    impact += "Cleaning up and texturing can't repair that."
+    slower = None if tried else {
+        "label": "Try the slower setting",
+        "text": "Place the cameras again with a slower, more thorough method that compares every photo with every "
+                "other. This step then takes a few times longer. It can connect the views that didn't line up, "
+                "but not always: if it works, the next steps follow; if not, the run stops here again."}
+    if tried:
+        film = "The slower setting was already used for this run, so filming again is what's left. " + film
+    return {"kind": "jump" if jumps else "far", "headline": "Some camera positions don't line up", "what": what,
+            "impact": next_steps + impact, "slower": slower, "film": film, "time": NEXT_STEPS_TIME}
 
 
 def last_options(ws: Workspace, stage: str) -> dict:
@@ -108,15 +208,18 @@ def advise(ws: Workspace, subject: str | None = None) -> list[dict]:
         elif (s.get("camera_path") or {}).get("collapsed"):
             p = s["camera_path"]
             masked = s.get("masked_features")
-            apply = {"mask_sfm": False} if masked else {"mapper": "incremental", "matcher": "exhaustive"}
+            tried = s.get("mapper") == "incremental" and s.get("matcher") == "exhaustive"
+            apply = {"mask_sfm": False} if masked else {} if tried else {"mapper": "incremental", "matcher": "exhaustive"}
             add(_item("sfm", "fix", f"{p['collapsed_cameras']} of {p['cameras']} cameras sit on top of each other",
                       f"only {p['distinct_positions']} distinct camera positions: SfM did not recover how the camera "
                       "moved, however low the error. Not a filming problem: "
                       + ("the masks were used for camera poses (mask_sfm), which is for turntables (camera fixed, "
                          "object turning); run SfM without them. If the camera really stayed still, keep mask_sfm "
                          "and use the incremental mapper with exhaustive matching instead" if masked else
-                         "try the slower incremental mapper with exhaustive matching"),
-                      apply, ["sfm", "mvs", "clean", "texture"]))
+                         "the slower incremental mapper with exhaustive matching did not help either; film again"
+                         if tried else "try the slower incremental mapper with exhaustive matching"),
+                      apply, ["sfm", "mvs", "clean", "texture"] if apply else None,
+                      plain=camera_path_plain(p, masked=bool(masked), tried=tried)))
         elif not (s.get("camera_path") or {}).get("ok", True):
             p = s["camera_path"]
             where = sorted({j["from"] for j in p.get("jumps", [])} | {f["keyframe"] for f in p.get("far", [])})
@@ -131,7 +234,8 @@ def advise(ws: Workspace, subject: str | None = None) -> list[dict]:
                       "or built twice. " + (film if tried else
                       "First try the slower incremental mapper with exhaustive matching, which can connect views the "
                       "defaults missed. If it still breaks: " + film[0].lower() + film[1:]),
-                      apply, ["sfm", "mvs", "clean", "texture"] if apply else None))
+                      apply, ["sfm", "mvs", "clean", "texture"] if apply else None,
+                      plain=camera_path_plain(p, tried=tried)))
         elif s.get("mean_reproj_error_px", 0) > 2.0:
             add(_item("sfm", "tip", f"camera positions are approximate ({s['mean_reproj_error_px']:.1f} px error)",
                       "the subject may have moved, or the video is soft; the result can look smeared"))

@@ -12,7 +12,9 @@ Preview data is served in the raw SfM frame together with one 4x4 "scene" transf
   POST /api/workspaces                      {"name", "video_path"} -> create
   PUT  /api/workspaces/<ws>/video?name=f    raw upload body -> video file
   GET  /api/workspaces/<ws>/state           stages, manifest, frames, layers
-  POST /api/workspaces/<ws>/run             {"stages": [...], "options": {...}}
+  POST /api/workspaces/<ws>/run             {"stages": [...], "options": {...}, "pause_on": [codes]}
+                                            (pause_on: stop after a stage that ends with one of these
+                                            warnings, the next stages skipped: status "paused")
   POST /api/workspaces/<ws>/cancel
   GET  /api/workspaces/<ws>/job?since=N     status + new log lines
   GET  /api/workspaces/<ws>/scene           transform, extent, cameras
@@ -42,7 +44,8 @@ Preview data is served in the raw SfM frame together with one 4x4 "scene" transf
   GET  /api/workspaces/<ws>/exports/<file>  download it
   GET  /api/workspaces/<ws>/preview.jpg     scan thumbnail (3D snapshot, else a keyframe)
   GET  /api/workspaces/<ws>/advice?subject= what to change next (advice.py), for assisted mode
-  GET  /api/assist                          assisted mode's subject / coverage choices
+  GET  /api/assist                          assisted mode's subject / coverage choices, and the
+                                            warnings its runs pause on
   GET  /<name>.js, /<name>.css             shared page modules and styles (static/viewcube.js, topbar.js, scanchooser.js,
                                             scrollbar.js, modes.js, export.js, projection.js, pagehelp.js,
                                             icons.js, topbar.css, scrollbar.css, modes.css, export.css, pagehelp.css)
@@ -103,8 +106,13 @@ PROGRESS = [
 class Job:
     """One pipeline run on one workspace: stages executed in order as subprocesses."""
 
-    def __init__(self, ws: Workspace, stages: list[str], options: dict, video: str | None):
+    def __init__(self, ws: Workspace, stages: list[str], options: dict, video: str | None,
+                 pause_on: list[str] | None = None):
         self.ws = ws
+        # Warning codes that stop the run after their stage, so the user can choose what to do
+        # (the assisted run passes sfm's camera-path warnings): status "paused", the rest skipped.
+        self.pause_on = set(pause_on or [])
+        self.paused: dict | None = None
         self.stages = stages
         self.options = options
         self.video = video
@@ -192,6 +200,16 @@ class Job:
                 self.current = None
                 return
             st["progress"] = 1.0
+            codes = [d["code"] for d in st["diagnostics"] if d["level"] == "warning" and d.get("code") in self.pause_on]
+            if status == "warning" and codes and i + 1 < len(self.stages) and not self.cancelled:
+                rest = self.stages[i + 1:]
+                for r in rest:
+                    self.info[r]["status"] = "skipped"
+                self.paused = {"stage": stage, "codes": codes, "skipped": rest}
+                self._emit(f"=== paused after {stage} ({', '.join(codes)}): {', '.join(rest)} not run, waiting for your choice")
+                self.status = "paused"
+                self.current = None
+                return
         self.current = None
         self.status = "cancelled" if self.cancelled else "done"
 
@@ -230,7 +248,7 @@ class Job:
     def snapshot(self, since: int) -> dict:
         with self.lock:
             return {"status": self.status, "current": self.current, "stages": self.info,
-                    "failure": self.failure, "log": self.lines[since:], "next": len(self.lines)}
+                    "failure": self.failure, "paused": self.paused, "log": self.lines[since:], "next": len(self.lines)}
 
 
 def _clock() -> float:
@@ -495,7 +513,7 @@ class App:
     def _raw_mesh(ws: Workspace) -> Path | None:
         return ws.raw_mesh()  # the one clean uses, so the raw and clean layers match
 
-    def run(self, ws: Workspace, stages: list[str], options: dict) -> Job:
+    def run(self, ws: Workspace, stages: list[str], options: dict, pause_on: list[str] | None = None) -> Job:
         name = ws.root.name
         if name in self.jobs and self.jobs[name].status == "running":
             raise RuntimeError("a run is already in progress for this scan")
@@ -509,7 +527,9 @@ class App:
         from ..options import resolve
 
         resolve({k: v for k, v in options.items() if k != "preset"}, options.get("preset"))  # raises on bad input
-        job = Job(ws, stages, options, video)
+        if not isinstance(pause_on or [], list) or not all(isinstance(c, str) for c in pause_on or []):
+            raise ValueError("pause_on must be a list of warning codes")
+        job = Job(ws, stages, options, video, pause_on)
         self.jobs[name] = job
         return job
 
@@ -1188,9 +1208,10 @@ def make_handler(app: App):
                     raise FileNotFoundError(parts[1])
                 return self._file(p, {"png": "image/png", "jpg": "image/jpeg", "svg": "image/svg+xml"}[p.suffix[1:]], cache=True)
             if parts == ["api", "assist"]:
-                from ..advice import COVERAGE, SUBJECTS
+                from ..advice import CAMERA_PATH_CODES, COVERAGE, SUBJECTS
 
-                return self._json({"subjects": SUBJECTS, "coverage": COVERAGE})
+                # pause_on: the warnings an assisted run stops on, to ask what to do (Job.pause_on)
+                return self._json({"subjects": SUBJECTS, "coverage": COVERAGE, "pause_on": list(CAMERA_PATH_CODES)})
             if parts[:2] == ["api", "workspaces"] and len(parts) == 2:
                 return self._json(app.list())
             if parts == ["api", "options"]:
@@ -1300,7 +1321,7 @@ def make_handler(app: App):
                     return self._json(app.set_orientation(ws, self._body().get("transform")))
                 if parts[3] == "run":
                     body = self._body()
-                    job = app.run(ws, body.get("stages", []), body.get("options", {}))
+                    job = app.run(ws, body.get("stages", []), body.get("options", {}), body.get("pause_on"))
                     return self._json(job.snapshot(0))
                 if parts[3] == "check":
                     body = self._body()
