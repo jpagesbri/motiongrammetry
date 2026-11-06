@@ -155,7 +155,7 @@ mg ui --root ~/scans --port 9000
   `advice.py` reads the results (keyframes, mask coverage, registered cameras, how much clean carved
   and how sure the masks were, ...) and offers fixes with "apply & re-run". Every warning,
   suggestion and result on the Scan page is one component (`notes.js`, `notes.css`): an icon, a short
-  title (≤ 5 words), one line (≤ 12), an optional figure, buttons (1-3 words) and one closed
+  title (≤ 5 words), one line (≤ 12), buttons (1-3 words) and one closed
   **Details** with the full text. Diagnostics carry their short form (`diagnostics.SHORT`, plus a
   `line` with the case's numbers; `/api/options` serves the table for older stored ones), advice
   items `short`, `line`, `action`, `changes` and the `codes` they explain (folded into their
@@ -163,9 +163,14 @@ mg ui --root ~/scans --port 9000
   opens an in-page confirmation (changes from → to, steps re-run, time) before it sets the options
   and re-runs. Manual's stage cards, step pages, the failure banner and Check use the same notes.
   SfM's camera-path warning (`camera-path-jump`, `cameras-far-away`, `cameras-collapsed`) is a note
-  with a figure drawn by `camerapath.js` from the scene's cameras (the same `/scene` data as the 3D
-  view) and the manifest's `camera_path`, and **Continue** / **Stop** buttons (Continue confirms
-  first; Stop runs nothing, remembered per scan). Assisted runs send these codes as `pause_on`
+  with **Continue** / **Stop** (Continue confirms first; Stop runs nothing, remembered per scan) and
+  **View path** (also on Manual's step page and stage card). View path opens `camerapath.js`'s view
+  in the page, like the Export window (✕, Escape or a click outside closes it; the page gets no keys
+  meanwhile and its focus back after): the cameras from above (the scene's `/scene` cameras, as the
+  3D view) and the keyframes as a strip, from the manifest's `camera_path`. Hovering a camera shows
+  its keyframe, thumbnail (`/thumb/frames/`) and status; hovering a break marks both its keyframes
+  on the map and the strip; ← → step through the keyframes; wheel zooms, drag pans, Reset view;
+  clicking a camera opens its keyframe in the Frames viewer. Assisted runs send these codes as `pause_on`
   (`GET /api/assist` lists them), so a run that includes later steps stops after SfM (job status
   `paused`, the rest `skipped`) and Continue runs what was held back. While a step runs it
   shows the sub-steps, the latest result, the log on request and Stop (switching to Manual, the

@@ -12,8 +12,6 @@
 .note-body { margin-top: 4px; line-height: 1.45; }
 .note-body ul { margin: 4px 0; padding-left: 0; list-style: none; }
 .note-body li { display: flex; align-items: center; gap: 6px; padding: 1px 0; }
-.note .cp-fig { margin: 8px 0 0 calc(1em + 7px); }
-.note .cp-figure { display: block; width: 100%; max-width: 620px; height: auto; }
 .note-confirm, .note-said { margin: 8px 0 0 calc(1em + 7px); padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel2); font-size: 13px; }
 .note-confirm .btns { margin-left: 0; }
 .nc-title { display: block; margin-bottom: 4px; }

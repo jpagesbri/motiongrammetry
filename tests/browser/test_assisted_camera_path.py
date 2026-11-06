@@ -1,8 +1,8 @@
 """One style for warnings on the Scan page (owner, PR #65): a note with an icon, a short title, one short
 line, an optional figure, buttons of 1-3 words, and one Details toggle, closed. The same at every step
-of Assisted and in Manual (stage cards, step pages). SfM's camera-path warning is such a note with a
-figure of the scan's cameras and Continue / Stop; Assisted runs stop after SfM on it (pause_on). Every
-fix first shows a compact confirmation in the page.
+of Assisted and in Manual (stage cards, step pages). SfM's camera-path warning is such a note with
+Continue / Stop and "View path", which opens the path large and interactive in the page; Assisted runs
+stop after SfM on it (pause_on). Every fix first shows a compact confirmation in the page.
 
 No reconstruction runs: the run requests are caught in the browser and checked for what they ask."""
 
@@ -107,7 +107,7 @@ def _details(note):
     return d
 
 
-def test_the_camera_card_is_a_note_with_a_figure(page, app):
+def test_the_camera_card_is_a_note_without_a_figure(page, app):
     _broken_sfm(app)
     runs = _catch_runs(page)
     _open_sfm_step(page)
@@ -115,10 +115,8 @@ def test_the_camera_card_is_a_note_with_a_figure(page, app):
     expect(card).to_have_class("note warn")
     expect(card.locator(".note-title")).to_have_text("Camera path broken")
     expect(card.locator(".note-line")).to_have_text("Views don't connect at 2 places.")
-    fig = card.locator("svg.cp-figure")  # from the scan's cameras: one broken-link marker per break
-    expect(fig.locator(".cp-break")).to_have_count(2)
-    expect(fig.locator(".cp-jump")).to_have_count(2)
-    expect(card.locator(":scope > .btns button")).to_have_text(["Thorough solver", "Continue", "Stop"])
+    expect(card.locator("svg:not(.cp-icon)")).to_have_count(0)  # no picture in the note: "View path" shows it, large
+    expect(card.locator(":scope > .btns button")).to_have_text(["Thorough solver", "Continue", "Stop", "View path"])
     _buttons_are_short(page)
     # the warning is said once: the gate's diagnostic is in this card's Details, not a note of its own
     expect(page.locator("#asResult .note")).to_have_count(1)
@@ -131,15 +129,93 @@ def test_the_camera_card_is_a_note_with_a_figure(page, app):
     assert runs == []
 
 
-def test_far_photos_are_drawn_lifted_off_the_strip(page, app):
+def _open_path(page, where="#asPlain"):
+    page.locator(f"{where} [data-viewpath]").first.click()
+    view = page.locator("#pathView")
+    expect(view).to_be_visible()
+    expect(view.locator("#cpvMap circle.cpv-cam")).to_have_count(KEYFRAMES)
+    return view
+
+
+def test_view_path_opens_a_large_interactive_view(page, app):
+    _broken_sfm(app)
+    _open_sfm_step(page)
+    view = _open_path(page)
+    box = view.locator(".cpv-win").bounding_box()
+    assert box["width"] > 0.9 * 1440 and box["height"] > 0.85 * 900  # most of the window
+    expect(view.locator("#cpvStrip .cp-break")).to_have_count(2)  # one marker per break
+    expect(view.locator("#cpvMap .cp-jump")).to_have_count(2)
+    expect(view.locator("#cpvLegend")).to_contain_text("views don't connect")
+    # a camera at a break: its keyframe, thumbnail and what is wrong, marked on the map and the strip
+    view.locator("#cpvMap circle[data-k='3']").hover()
+    tip = view.locator("#cpvTip")
+    expect(tip).to_be_visible()
+    expect(tip.locator("b")).to_have_text("Keyframe 3")
+    expect(tip.locator(".st")).to_have_text("views don't connect here: 3 → 4")
+    expect(tip.locator("img")).to_have_attribute("src", "/api/workspaces/box/thumb/frames/f03.jpg")
+    expect(view.locator(".cpv-ring")).to_have_count(1)
+    expect(view.locator(".cpv-sring")).to_have_count(1)
+    view.locator("#cpvMap circle[data-k='6']").hover()
+    expect(tip.locator(".st")).to_have_text("OK")
+    # a break line: both ends marked, and said
+    view.locator("#cpvMap [data-jump='1']").hover()
+    expect(view.locator("#cpvSay")).to_have_text("Keyframes 8 → 9 don't connect")
+    expect(view.locator(".cpv-ring")).to_have_count(2)
+    expect(view.locator(".cpv-sring")).to_have_count(2)
+    # the strip's marker does the same
+    view.locator("#cpvStrip .cp-break").first.hover()
+    expect(view.locator("#cpvSay")).to_have_text("Keyframes 3 → 4 don't connect")
+    # keys: ← → step through the keyframes; the page gets none of them while it is open
+    page.keyboard.press("Home")
+    expect(tip.locator("b")).to_have_text("Keyframe 0")
+    page.keyboard.press("ArrowRight")
+    expect(tip.locator("b")).to_have_text("Keyframe 1")
+    expect(view.locator("#cpvSay")).to_have_text("Keyframe 1: OK")
+    # Escape closes it and gives the focus back to the button that opened it
+    page.keyboard.press("Escape")
+    expect(view).to_be_hidden()
+    assert page.evaluate("document.activeElement.hasAttribute('data-viewpath')")
+
+
+def test_the_view_closes_with_its_button_or_a_click_outside_and_zooms(page, app):
+    _broken_sfm(app)
+    _open_sfm_step(page)
+    view = _open_path(page)
+    cam = view.locator("#cpvMap circle[data-k='0']")
+    before = cam.get_attribute("cx")
+    view.locator("#cpvMap").hover()
+    page.mouse.wheel(0, -400)  # zoom in where the cursor is
+    expect(cam).not_to_have_attribute("cx", before)
+    view.locator("#cpvReset").click()
+    expect(cam).to_have_attribute("cx", before)
+    view.locator("#cpvClose").click()
+    expect(view).to_be_hidden()
+    _open_path(page)
+    page.mouse.click(5, 5)  # outside the window
+    expect(view).to_be_hidden()
+
+
+def test_clicking_a_camera_opens_its_keyframe(page, app):
+    _broken_sfm(app)
+    _open_sfm_step(page)
+    view = _open_path(page)
+    view.locator("#cpvMap circle[data-k='5']").click()
+    expect(view).to_be_hidden()
+    expect(page.locator("#panePreview")).to_be_visible()
+
+
+def test_far_photos_in_the_view(page, app):
     _broken_sfm(app, path=FAR)
     _open_sfm_step(page)
     card = page.locator("#asPlain")
     expect(card.locator(".note-title")).to_have_text("Photos placed far away")
     expect(card.locator(".note-line")).to_have_text("2 photos far from the others.")
-    expect(card.locator(".cp-figure .cp-far")).to_have_count(1)
-    expect(card.locator(".cp-figure .cp-far-cam")).to_have_count(2)
-    expect(card.locator(".cp-figure .cp-break")).to_have_count(0)
+    view = _open_path(page)
+    expect(view.locator("#cpvStrip .cp-far")).to_have_count(1)
+    expect(view.locator("#cpvMap .cp-far-cam")).to_have_count(2)
+    expect(view.locator("#cpvStrip .cp-break")).to_have_count(0)
+    view.locator("#cpvMap circle[data-k='1']").hover()
+    expect(view.locator("#cpvTip .st")).to_have_text("placed far away")
 
 
 @pytest.mark.parametrize("sfm, values, label, change, sent, field", [
@@ -193,15 +269,14 @@ def test_the_collapse_card(page, app):
     card = page.locator("#asPlain")
     expect(card.locator(".note-title")).to_have_text("Camera movement not found")
     expect(card.locator(".note-line")).to_have_text("The camera's movement couldn't be worked out.")
-    expect(card.locator("svg.cp-figure")).to_have_attribute("aria-label", "cameras stacked on the same spots")
-    expect(card.locator(":scope > .btns button")).to_have_text(["Retry without masks", "Continue", "Stop"])
+    expect(card.locator(":scope > .btns button")).to_have_text(["Retry without masks", "Continue", "Stop", "View path"])
     expect(_details(card)).to_contain_text("9 of 12 photos placed on top of each other")
 
 
 def test_no_fix_once_it_was_tried(page, app):
     _broken_sfm(app, mapper="incremental", matcher="exhaustive")
     _open_sfm_step(page)
-    expect(page.locator("#asPlain > .btns button")).to_have_text(["Continue", "Stop"])
+    expect(page.locator("#asPlain > .btns button")).to_have_text(["Continue", "Stop", "View path"])
 
 
 def test_continue_warns_first_then_runs_the_next_steps(page, app):
@@ -241,7 +316,7 @@ def test_stop_runs_nothing_and_the_card_stays(page, app):
     _open_sfm_step(page)
     page.locator("#cpStop").click()
     expect(page.locator("#cpStopped")).to_have_text("Stopped. Nothing else runs; come back any time.")
-    expect(page.locator("#asPlain > .btns button")).to_have_count(3)
+    expect(page.locator("#asPlain > .btns button")).to_have_count(4)
     page.reload()
     expect(page.locator("#cpStopped")).to_be_visible()  # remembered for this scan
     expect(page.locator("#cpContinue")).to_be_enabled()
@@ -306,12 +381,16 @@ def test_manual_shows_the_same_notes_short_with_details_on_request(page, app):
     expect(note.locator(".note-line")).to_have_text("Views don't connect at 2 places.")
     assert "×" not in note.locator(".note-head").inner_text() + note.locator(".note-line").inner_text()
     expect(_details(note)).to_contain_text("keyframes 3→4 ×711.8")
+    expect(note.locator(".btns button")).to_have_text(["View path"])
+    view = _open_path(page, "#stages")
+    page.keyboard.press("Escape")
+    expect(view).to_be_hidden()
     # the step page: the same note as Assisted, without the figure and Continue / Stop; no pause
     page.locator("#rail [data-page=sfm]").click()
     n = page.locator("#asResult .note")
     expect(n).to_have_count(1)
     expect(n.locator(".note-title")).to_have_text("Camera path broken")
-    expect(n.locator(".btns button")).to_have_text(["Thorough solver", "Show keyframes"])
-    expect(page.locator("#asPlain, .cp-figure")).to_have_count(0)
+    expect(n.locator(".btns button")).to_have_text(["Thorough solver", "View path"])
+    expect(page.locator("#asPlain")).to_have_count(0)
     run = _run_sent_by(page, page.locator("#asGo").click)  # Re-run this step
     assert run["stages"] == ["sfm"] and run["pause_on"] == []
