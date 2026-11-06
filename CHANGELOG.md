@@ -10,6 +10,16 @@ the image with that version, and the About page and `mg --version` show it.
 
 ## Unreleased
 
+- **sfm says plainly when the cameras collapse onto each other** (part of #49): an SfM run can put
+  many cameras on top of each other (seen with `--mask-sfm` on an orbit video: 60 cameras at 23
+  positions, at a normal 0.57 px error). The camera-path check reported it as dozens of path breaks
+  with absurd multiples (×538416…) and doorway advice. Now, when at least a quarter of the steps
+  between keyframes are ~0 (under 1/2000 of the usual distance of the cameras from their centre),
+  it gives one warning, `cameras-collapsed`: "N of M cameras sit on top of each other (only K
+  distinct positions): SfM did not recover the motion", with advice that fits: not a filming
+  problem; `mask_sfm` is for turntables (camera fixed); run SfM without it, or with the incremental
+  mapper and exhaustive matching. The assisted advice offers that re-run, `mg check-cameras`
+  says the same (exit 2), `--strict` stops the pipeline.
 - **A check on the camera path in sfm** (part of #49): an SfM can place every keyframe at
   sub-pixel error and still be wrong as a whole, with part of a walk placed far away or a room
   built twice, where neighbouring views shared too little. `mg sfm` now follows the cameras in

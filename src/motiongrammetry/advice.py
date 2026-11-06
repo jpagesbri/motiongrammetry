@@ -105,6 +105,18 @@ def advise(ws: Workspace, subject: str | None = None) -> list[dict]:
                       "the views did not connect well (plain or shiny surfaces, gaps in the video): try the slower "
                       "incremental mapper" + (" with exhaustive matching" if n <= 200 else "") +
                       ", or the low-texture preset", apply, ["sfm", "mvs", "clean", "texture"]))
+        elif (s.get("camera_path") or {}).get("collapsed"):
+            p = s["camera_path"]
+            masked = s.get("masked_features")
+            apply = {"mask_sfm": False} if masked else {"mapper": "incremental", "matcher": "exhaustive"}
+            add(_item("sfm", "fix", f"{p['collapsed_cameras']} of {p['cameras']} cameras sit on top of each other",
+                      f"only {p['distinct_positions']} distinct camera positions: SfM did not recover how the camera "
+                      "moved, however low the error. Not a filming problem: "
+                      + ("the masks were used for camera poses (mask_sfm), which is for turntables (camera fixed, "
+                         "object turning); run SfM without them. If the camera really stayed still, keep mask_sfm "
+                         "and use the incremental mapper with exhaustive matching instead" if masked else
+                         "try the slower incremental mapper with exhaustive matching"),
+                      apply, ["sfm", "mvs", "clean", "texture"]))
         elif not (s.get("camera_path") or {}).get("ok", True):
             p = s["camera_path"]
             where = sorted({j["from"] for j in p.get("jumps", [])} | {f["keyframe"] for f in p.get("far", [])})

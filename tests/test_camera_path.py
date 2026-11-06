@@ -158,3 +158,56 @@ def test_a_broken_path_warns_and_strict_stops(tmp_path, monkeypatch):
 
     assert pipeline.run_stage(ws, "sfm", resolve({"strict": True}), capture=False) == EXIT_GATE
     assert ws.history()[-1]["status"] == "gate-failed"
+
+
+def _collapsed(n=60, positions=23, seed=1):
+    """The mask_sfm orbit of the verification: 60 cameras put at 23 positions on an orbit,
+    ~1e-5 of the scene apart within one (like the real one: 1e-6 to 1.3e-4)."""
+    rng = np.random.default_rng(seed)
+    spots = _orbit(n=positions, seed=seed)
+    at = np.sort(np.concatenate([np.arange(positions), rng.integers(0, positions, n - positions)]))
+    return [spots[k] + rng.normal(0, 3e-5, 3) for k in at]
+
+
+def test_a_collapsed_path_is_reported_as_such():
+    p = camera_path_check(_collapsed())
+    assert p["checked"] and not p["ok"] and p["collapsed"]
+    assert p["distinct_positions"] == 23 and 38 <= p["collapsed_cameras"] < 60 and p["still_steps"] == 37
+    assert p["jumps"] == [] and p["far"] == [] and p["max_step_ratio"] is None  # no ratios against a ~0 median
+    d = checks.camera_path_diags(p)
+    assert [x.code for x in d] == ["cameras-collapsed"]
+    assert "23 distinct positions" in d[0].message and "37 of 59 steps" in d[0].message
+    assert "×" not in d[0].message and "doorway" not in d[0].message.lower()
+    assert "mask_sfm" in d[0].hint and "turntable" in d[0].hint and "mapper incremental" in d[0].hint
+    assert not camera_path_check(_orbit())["collapsed"]
+
+
+def test_a_few_repeated_cameras_or_most_at_one_point():
+    centres = _orbit()
+    for i in range(10, 20, 2):  # five cameras on top of their neighbour: not a collapse, nor a jump
+        centres[i + 1] = centres[i]
+    p = camera_path_check(centres)
+    assert not p["collapsed"] and p["ok"]
+    most = [np.zeros(3)] * 40 + _orbit(n=10)  # over three quarters at one point: the usual distance is 0
+    p = camera_path_check(most)
+    assert p["collapsed"] and p["distinct_positions"] == 11 and p["collapsed_cameras"] == 40
+
+
+def test_collapse_in_the_gate_advice_and_mg_check_cameras(tmp_path, monkeypatch, capsys):
+    r = {"frames": 60, "registered": 60, "points3D": 3700, "mean_reproj_error_px": 0.57, "masked_features": True,
+         "camera_path": camera_path_check(_collapsed())}
+    assert [x.code for x in checks.gate("sfm", None, r, {})] == ["cameras-collapsed"]
+
+    ws = Workspace(tmp_path / "w")
+    ws.record("sfm", r)
+    sfm = [a for a in advise(ws) if a["stage"] == "sfm"]
+    assert len(sfm) == 1 and sfm[0]["level"] == "fix" and sfm[0]["apply"] == {"mask_sfm": False}
+    assert sfm[0]["title"].endswith("of 60 cameras sit on top of each other") and "turntable" in sfm[0]["detail"]
+    ws.record("sfm", {**r, "masked_features": False})
+    sfm = [a for a in advise(ws) if a["stage"] == "sfm"]
+    assert sfm[0]["apply"] == {"mapper": "incremental", "matcher": "exhaustive"}
+
+    monkeypatch.setattr("motiongrammetry.sfm.load_reconstruction", lambda ws: _fake_model(_collapsed()))
+    assert cli.main(["check-cameras", str(tmp_path / "w2")]) == 2
+    out = capsys.readouterr().out
+    assert "37 of 59 steps are ~0" in out and "cameras-collapsed" not in out and "sit on top of each other" in out
