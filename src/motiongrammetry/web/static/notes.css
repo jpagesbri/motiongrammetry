@@ -1,0 +1,26 @@
+/* The one look of warnings, suggestions and results on the Scan page (notes.js). */
+.note { --nc: var(--accent); border: 1px solid var(--line); border-left: 3px solid var(--nc); border-radius: 8px;
+  padding: 8px 10px; margin: 8px 0; background: var(--panel); }
+.note.warn { --nc: var(--warn); } .note.bad { --nc: var(--bad); } .note.info { --nc: var(--accent); } .note.ok { --nc: var(--ok); }
+.note-head { display: flex; align-items: baseline; gap: 7px; }
+.note-ico { color: var(--nc); flex: none; width: 1em; text-align: center; }
+.note-title { font-weight: 600; }
+.note-line { margin: 2px 0 0 calc(1em + 7px); font-size: 13px; }
+.note .btns { margin: 8px 0 0 calc(1em + 7px); display: flex; flex-wrap: wrap; gap: 6px; }
+.note-more { margin: 6px 0 0 calc(1em + 7px); font-size: 12px; color: var(--muted); }
+.note-more summary { cursor: pointer; width: fit-content; }
+.note-body { margin-top: 4px; line-height: 1.45; }
+.note-body ul { margin: 4px 0; padding-left: 0; list-style: none; }
+.note-body li { display: flex; align-items: center; gap: 6px; padding: 1px 0; }
+.note .cp-fig { margin: 8px 0 0 calc(1em + 7px); }
+.note .cp-figure { display: block; width: 100%; max-width: 620px; height: auto; }
+.note-confirm, .note-said { margin: 8px 0 0 calc(1em + 7px); padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel2); font-size: 13px; }
+.note-confirm .btns { margin-left: 0; }
+.nc-title { display: block; margin-bottom: 4px; }
+.nc-row { display: grid; grid-template-columns: 70px 1fr; gap: 8px; padding: 1px 0; }
+.nc-row > span:first-child { color: var(--muted); }
+.nc-row s { color: var(--muted); } .nc-row b { color: var(--accent); }
+.nc-warn { color: var(--warn); margin-top: 3px; }
+.note.compact { padding: 5px 8px; margin: 5px 0; font-size: 12px; }
+.note.compact .note-line { font-size: 12px; }
+.note-result { font-size: 12px; color: var(--muted); margin: 6px 0 2px; }

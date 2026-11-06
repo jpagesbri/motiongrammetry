@@ -186,21 +186,6 @@
   .as-advice.fix { border-color: var(--warn); background: rgba(240,180,41,.07); }
   .as-advice.ok { border-color: rgba(76,195,138,.5); }
   .as-advice b { display: block; }
-  .as-plain .cp-head { font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
-  .as-plain .cp-paused { color: var(--muted); font-size: 12px; margin-top: 2px; }
-  .cp-fig { margin: 8px 0 4px; } .cp-figure { display: block; width: 100%; max-width: 640px; height: auto; }
-  .as-plain .cp-sum { margin: 4px 0 6px; }
-  .cp-flags { list-style: none; margin: 0 0 4px; padding: 0; font-size: 13px; }
-  .cp-flags li { display: flex; align-items: center; gap: 7px; padding: 2px 0; }
-  .cp-flags .cp-icon { flex: none; color: var(--bad); font-size: 15px; } .cp-flags .cp-icon-far, .cp-flags .cp-icon-stack, .cp-flags .cp-icon-mask { color: var(--warn); }
-  .as-plain .cp-tip { color: var(--muted); font-size: 12px; margin: 2px 0 8px; }
-  .cp-confirm, .cp-stopped { margin: 8px 0 2px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel2); font-size: 13px; }
-  .cp-confirm > b { display: block; margin-bottom: 6px; font-size: 14px; }
-  .cp-confirm .row { display: grid; grid-template-columns: 120px 1fr; gap: 8px; padding: 2px 0; }
-  .cp-confirm .row > span:first-child { color: var(--muted); }
-  .cp-confirm .chg s { color: var(--muted); } .cp-confirm .chg b { display: inline; color: var(--accent); }
-  .cp-confirm .impact { color: var(--warn); margin-top: 4px; }
-  .as-plain .tech, .as-advice .tech { margin-top: 6px; font-size: 12px; color: var(--muted); }
   label.row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 6px 0; }
   input[type=text], input[type=number], select { background: var(--bg); border: 1px solid var(--line);
     border-radius: 5px; padding: 5px 7px; min-width: 0; }
@@ -319,13 +304,13 @@
     .view { min-height: 60vh; }
     .as-place { grid-template-columns: 1fr; height: auto; }
     .as-place .slot { height: 50vh; }
-    .cp-confirm .row { grid-template-columns: 1fr; gap: 0; }
   }
 </style>
 <link rel="stylesheet" href="/topbar.css">
 <link rel="stylesheet" href="/modes.css">
 <link rel="stylesheet" href="/scrollbar.css">
 <link rel="stylesheet" href="/export.css">
+<link rel="stylesheet" href="/notes.css">
 <link rel="stylesheet" href="/pagehelp.css">
 <script type="importmap">
 { "imports": {
@@ -471,6 +456,7 @@ import { modeControl } from '/modes.js';
 import { openExport, exportHooks } from '/export.js';
 import { pageHelp, hint } from '/pagehelp.js';
 import { cameraPathFigure, flagIcon } from '/camerapath.js';
+import { noteHtml, diagNote, diagShort, diagDetails, confirmHtml, setShortForms } from '/notes.js';
 // The scan chooser in the top bar: picking a scan selects it here; a new or copied scan opens
 // here; a deleted one is left for the next; a scan's ⋯ menu also uploads or replaces its video.
 mountTopbar('scan', {
@@ -704,7 +690,7 @@ async function reloadScene() {
     // Rough scale for the ground grid: transformed extent.
     grid.scale.setScalar(extent * 1.5); grid.visible = true;
     setLayer('cameras', buildCameras(camData), `${camData.length}`);
-    renderCpFigure();  // the assisted card's figure uses the same camera positions
+    renderCpFigure();  // the camera-path card's figure uses the same camera positions
     for (const k of ['sparse', 'dense']) {
       if (s.layers[k] && (layerOn[k] || k === 'sparse')) { status(`loading ${k}…`); setLayer(k, ...(await loadPoints(k))); }
       else if (!s.layers[k]) setLayer(k, null);
@@ -1412,7 +1398,7 @@ function bindOpts(root) {
 }
 async function loadOptions() {
   const r = await api('/api/options');
-  optSpec = r.options; presets = r.presets; upstream = r.upstream;
+  optSpec = r.options; presets = r.presets; upstream = r.upstream; setShortForms(r.short);
   $('preset').innerHTML = '<option value="">none</option>' + Object.keys(presets).map((p) => `<option title="${esc(presets[p].description)}">${p}</option>`).join('');
   $('preset').addEventListener('change', () => { applyPreset($('preset').value); renderRun(); });
 }
@@ -1713,8 +1699,7 @@ function stagePage(main, st) {
   const tips = AS.advice.filter((a) => a.stage === st);
   const j = jobSnap?.stages?.[st];
   const allDiags = ((j?.diagnostics?.length ? j.diagnostics : (wsState?.manifest?.diagnostics || {})[st]) || []).filter((d) => d.level !== 'info' || !mine);
-  const plain = assisted && done ? tips.find((a) => a.plain) : null;  // said plainly, with the choices (below)
-  const diags = allDiags;
+  const plain = assisted && done ? tips.find((a) => a.plain) : null;  // the camera-path card, with its choices
   const f = jobSnap?.failure || lastFailure;
   const opts = optSpec.filter((o) => o.stages.includes(st) && !o.stages.includes('*'));
   const shown = assisted ? opts.filter((o) => o.group === 'basic' || o.name in RO.values) : opts.filter((o) => o.group === 'basic');
@@ -1739,25 +1724,17 @@ function stagePage(main, st) {
       ${assisted && prev ? '<button class="btn" id="asBack">Back</button>' : ''}
       ${!mine ? `<button class="btn" id="asLogBtn">${drawerOpen ? 'Hide log' : 'Show log'}</button>` : ''}</div>`;
   if (f && f.stage === st && !mine && state !== 'done') {
-    const what2 = { 'preflight-failed': 'did not start', 'gate-failed': 'failed a quality check', cancelled: 'was stopped', failed: 'failed' }[f.status] || f.status;
-    $('asResult').innerHTML = `<div class="as-advice fix"><b>${esc(title)} ${what2}</b>
-      ${(f.diagnostics || []).map((d) => `${esc(d.message)}${d.hint ? ` → ${esc(d.hint)}` : ''}`).join('<br>') || 'the log says what happened'}
-      ${f.log ? `<div class="btns"><button class="btn" data-log="${f.log}">Open the log</button></div>` : ''}</div>`;
+    const errs = f.diagnostics?.length ? f.diagnostics : [{ level: 'error', code: f.status === 'cancelled' ? 'cancelled' : 'stage-failed', message: 'the log says what happened' }];
+    const d = diagShort(errs[0]);
+    $('asResult').innerHTML = noteHtml({ level: f.status === 'cancelled' ? 'info' : 'error', title: d.title, line: d.line,
+      buttons: f.log ? `<button class="btn" data-log="${f.log}">Open log</button>` : '', details: diagDetails(errs) });
   } else if (done) {
-    const m = wsState.manifest || {};
-    $('asResult').innerHTML = `<div class="as-advice ${tips.some((a) => a.level === 'fix') || state === 'stale' ? '' : 'ok'}"><b>Result</b>${esc(stageDetail(st, m) || 'done')}
-        ${assisted ? shortDiagsHtml(diags, plain?.plain.summaries) : diags.map((d) => `<div class="diag ${d.level}">${esc(d.message)}${d.hint ? `<span class="h">→ ${esc(d.hint)}</span>` : ''}</div>`).join('')}</div>` +
-      (plain ? plainWarningHtml(plain, st, running) : '') +
-      tips.filter((a) => (a.level !== 'ok' || assisted) && a !== plain).map((a) => `<div class="as-advice ${a.level}"><b>${a.level === 'ok' ? '✓ ' : a.level === 'fix' ? '⚠ ' : 'ℹ '}${esc(a.title)}</b>${esc(a.detail)}
-        ${Object.keys(a.apply).length ? `<div class="muted" style="margin-top:4px">suggested: ${Object.entries(a.apply).map(([k, v]) => `<code>${k} = ${v}</code>`).join(', ')}${a.rerun.length ? ` · re-runs ${a.rerun.join(' → ')}` : ''}</div>` : ''}
-        <div class="btns">${Object.keys(a.apply).length ? `<button class="btn primary" data-asfix="${tips.indexOf(a)}">Apply &amp; re-run</button>` : ''}
-          ${a.level !== 'ok' && FRAME_STAGES.has(st) ? '<button class="btn" data-asframes>Show the flagged keyframes</button>' : ''}</div></div>`).join('') +
-      (FRAME_STAGES.has(st) ? '<p class="muted" style="font-size:12px">Every keyframe and its mask, big: <a data-asframes style="color:var(--accent);cursor:pointer">Preview → Frames &amp; masks</a></p>' : '');
+    $('asResult').innerHTML = resultNotesHtml(st, tips, allDiags, { assisted, stale: state === 'stale', plain, running });
   }
   if ($('cleanFrom')) { $('cleanFrom').value = RO.from; $('cleanFrom').addEventListener('change', () => { RO.from = $('cleanFrom').value; roSave(); }); }
   bindOpts(main); renderDisk();
   if ($('lastRun')) $('lastRun').addEventListener('toggle', renderLastSteps);
-  if (assisted) main.querySelector('.as-advice.fix')?.scrollIntoView({ block: 'nearest' });
+  if (assisted) main.querySelector('#asResult .note.warn, #asResult .note.bad')?.scrollIntoView({ block: 'nearest' });
   $('asGo').addEventListener('click', () => runStages([st]).catch((e) => { $('asResult').innerHTML = `<div class="err">${esc(e.message)}</div>`; }));
   $('asNext')?.addEventListener('click', () => goPage(next));
   $('asBack')?.addEventListener('click', () => goPage(prev));
@@ -1767,103 +1744,102 @@ function stagePage(main, st) {
   main.querySelectorAll('[data-log]').forEach((a) => a.addEventListener('click', (e) => { e.preventDefault(); openLog(a.dataset.log); }));
   main.querySelectorAll('[data-rerun]').forEach((a) => a.addEventListener('click', () => rerunFrom(a.dataset.rerun)));
   main.querySelectorAll('[data-asframes]').forEach((b) => b.addEventListener('click', () => openFrames(b.tagName === 'BUTTON' ? 'flagged' : 'all')));
-  if (plain) bindPlainWarning(plain, st);
-  main.querySelectorAll('[data-asfix]').forEach((b) => b.addEventListener('click', () => {
-    const a = tips[+b.dataset.asfix];
-    Object.entries(a.apply).forEach(([k, v]) => setOpt(k, v, a.title));
-    runStages(a.rerun.length ? a.rerun : [st]).catch((e) => { $('asResult').innerHTML = `<div class="err">${esc(e.message)}</div>`; });
-  }));
+  bindNotes($('asResult'), st, tips);
 }
-// Assisted's Result box: one short line per warning; the full messages and hints folded underneath
-// (Manual shows them in full, as the CLI and the log do).
-function shortDiagsHtml(diags, summaries = {}) {
-  if (!diags.length) return '';
-  const full = diags.filter((d) => d.hint || summaries?.[d.code]);
-  return diags.map((d) => `<div class="diag ${d.level}">${esc(summaries?.[d.code] || d.message)}</div>`).join('') +
-    (full.length ? `<details class="tech"><summary>technical details</summary>${diags.map((d) => `<div class="diag ${d.level}">${esc(d.code)}: ${esc(d.message)}${d.hint ? `<span class="h">→ ${esc(d.hint)}</span>` : ''}</div>`).join('')}</details>` : '');
-}
-// SfM's camera-path warning in Assisted (advice.camera_path_plain): a headline, a figure drawn from the
-// scan (camerapath.js), two sentences, one line per problem, and three buttons. The fix and Continue
-// each say first, in the page, exactly what they will do; Stop runs nothing. An assisted run stops
-// after SfM on these warnings (pause_on) until you choose.
+// A step's result, at every step of Assisted and on Manual's step pages: one line with its numbers,
+// then a note (notes.js) per advice item and per diagnostic that no advice item explains (an item's
+// `codes`: those go in its Details instead). Nothing to say: one "done" note. In Assisted the
+// camera-path item is the card with a figure and Continue / Stop (an assisted run stops after SfM on
+// it: pause_on). Every fix button first shows what it will do (confirmHtml), then sets the step's
+// options and re-runs.
 const NEXT_AFTER = (st) => AS_STAGES.slice(AS_STAGES.indexOf(st) + 1);
-let cpShown = null;  // {plain, path} of the card on the page, for its figure
+const STEP_SHORT = { frames: 'Keyframes', mask: 'Masks', sfm: 'Cameras', mvs: 'Mesh', vggt: 'VGGT', clean: 'Clean', texture: 'Texture' };
+const STEP_MIN = { frames: [0.5, 1], mask: [1, 3], sfm: [1, 3], mvs: [5, 30], vggt: [1, 2], clean: [1, 1], texture: [1, 5] };
+let cpShown = null;  // {plain, path} of the camera-path card on the page, for its figure
 function heldBack(st) {
   return jobSnap?.paused?.stage === st ? jobSnap.paused.skipped : NEXT_AFTER(st);
 }
-const roughly = (s) => (s < 90 ? 'about a minute' : `about ${Math.round(s / 60)} minutes`);
-function nextStepsTime(stages) {
-  const known = stages.filter((k) => lastDur[k]);
-  if (lastDur.mvs && stages.includes('mvs')) return `${roughly(known.reduce((t, k) => t + lastDur[k], 0))}, as long as last time`;
-  return `usually ${AS_INFO.mvs[2]} for the raw mesh, plus a few minutes for the rest`;
+function timeFor(stages, slower = false) {  // "~12 min" from this scan's last runs, else "~8–39 min"
+  let lo = 0, hi = 0;
+  stages.forEach((k) => {
+    const f = slower && k === 'sfm' ? 4 : 1;
+    if (lastDur[k]) { lo += f * lastDur[k] / 60; hi += f * lastDur[k] / 60; } else { lo += f * STEP_MIN[k][0]; hi += f * STEP_MIN[k][1]; }
+  });
+  const r = (x) => Math.max(1, Math.round(x));
+  return r(lo) === r(hi) ? `~${r(lo)} min` : `~${r(lo)}–${r(hi)} min`;
+}
+const steps = (list) => list.map((k) => STEP_SHORT[k] || k).join(' → ');
+function adviceDetails(a, diags) {
+  const covered = diags.filter((d) => a.codes?.includes(d.code));
+  return (a.plain ? `<ul>${a.plain.flags.map((f) => `<li>${flagIcon(f.icon)}<span>${esc(f.text)}</span></li>`).join('')}</ul><div>Tip: ${esc(a.plain.tip)}</div>` : '')
+    + `<div>${esc(a.title)}: ${esc(a.detail)}</div>` + diagDetails(covered)
+    + (Object.keys(a.apply).length ? `<div>Sets ${Object.entries(a.apply).map(([k, v]) => `<code>${k} = ${v}</code>`).join(', ')}; re-runs ${a.rerun.join(' → ')}</div>` : '');
+}
+function resultNotesHtml(st, tips, diags, { assisted, stale, plain, running }) {
+  const m = wsState.manifest || {}, dis = running ? 'disabled' : '';
+  const covered = new Set(tips.flatMap((a) => a.codes || []));
+  const loose = diags.filter((d) => !covered.has(d.code) && (d.level !== 'info' || assisted));
+  const says = tips.filter((a) => a.level !== 'ok');
+  const ok = tips.find((a) => a.level === 'ok');
+  const frames = FRAME_STAGES.has(st) ? '<button class="btn" data-asframes>Show keyframes</button>' : '';
+  let html = `<div class="note-result">${stale ? 'Out of date · ' : ''}${esc(stageDetail(st, m) || 'done')}</div>`;
+  if (!says.length && !loose.length) html += noteHtml({ level: stale ? 'info' : 'ok', title: stale ? 'Out of date' : ok?.short || 'Done',
+    line: stale ? 'An earlier step was re-run: run this again.' : ok?.line || '' });
+  says.forEach((a) => {
+    const i = tips.indexOf(a), card = a === plain;
+    const fix = a.action ? `<button class="btn primary" data-fix="${i}" ${dis}>${esc(a.action)}</button>` : '';
+    if (card) cpShown = { plain: a.plain, path: m[st]?.camera_path || {} };
+    const paused = card && jobSnap?.paused?.stage === st, stopped = card && AS.cpStopped === st;
+    html += noteHtml({ level: a.level, title: a.short, line: paused ? `${a.line} The run stopped here.` : a.line,
+      figure: card ? '<div class="cp-fig" id="cpFigure"></div>' : '',
+      buttons: fix + (card ? `<button class="btn" id="cpContinue" ${dis}>Continue</button><button class="btn" id="cpStop" ${dis}>Stop</button>` : a.level === 'fix' ? frames : ''),
+      extra: `<div class="note-confirm" data-confirm="${i}" hidden></div>`
+        + (card ? `<div class="note-said" id="cpStopped" ${stopped ? '' : 'hidden'}>Stopped. Nothing else runs; come back any time.</div>` : ''),
+      details: adviceDetails(a, diags), id: card ? 'asPlain' : '', attrs: `data-item="${i}"` });
+  });
+  loose.forEach((d) => { html += diagNote(d); });
+  return html;
 }
 function renderCpFigure() {
   const el = $('cpFigure'); if (!el || !cpShown) return;
   const toScene = (c) => { if (!sceneT) return c; const v = new THREE.Vector3(...c).applyMatrix4(sceneT); return [v.x, v.y, v.z]; };
   el.innerHTML = cameraPathFigure({ plain: cpShown.plain, path: cpShown.path, frames: wsState?.frames || [], cams: camData || [], toScene });
 }
-function plainWarningHtml(a, st, running) {
-  const p = a.plain, paused = jobSnap?.paused?.stage === st, stopped = AS.cpStopped === st;
-  cpShown = { plain: p, path: wsState?.manifest?.[st]?.camera_path || {} };
-  const dis = running ? 'disabled' : '';
-  return `<div class="as-advice fix as-plain" id="asPlain">
-      <div class="cp-head">⚠ ${esc(p.headline)}</div>
-      ${paused ? '<div class="cp-paused">The run stopped here to ask you before going on.</div>' : ''}
-      <div class="cp-fig" id="cpFigure"></div>
-      <p class="cp-sum">${esc(p.summary)}</p>
-      <ul class="cp-flags">${p.flags.map((f) => `<li>${flagIcon(f.icon)}<span>${esc(f.text)}</span></li>`).join('')}</ul>
-      <p class="cp-tip">Tip: ${esc(p.tip)}</p>
-      <div class="btns">
-        ${p.fix ? `<button class="btn primary" id="cpFix" ${dis}>${esc(p.fix.label)}…</button>` : ''}
-        <button class="btn" id="cpContinue" ${dis}>Continue…</button>
-        <button class="btn" id="cpStop" ${dis}>Stop</button></div>
-      <div class="cp-confirm" id="cpConfirm" hidden></div>
-      <div class="cp-stopped" id="cpStopped" ${stopped ? '' : 'hidden'}>Stopped. Nothing else runs: the scan stays as it is after ${esc(pageLabel(st))}. You can come back here to re-run or continue.</div>
-      <details class="tech"><summary>technical details</summary>${esc(a.title)}: ${esc(a.detail)}
-        ${Object.keys(a.apply).length ? `<div>${Object.entries(a.apply).map(([k, v]) => `<code>${k} = ${v}</code>`).join(', ')} · re-runs ${a.rerun.join(' → ')}</div>` : ''}</details></div>`;
-}
-function bindPlainWarning(a, st) {
-  const p = a.plain, box = $('cpConfirm');
+function bindNotes(box, st, tips) {
+  if (!box) return;
   renderCpFigure();
-  const ask = (html, go) => {  // the in-page confirmation: what will happen, then Do it / Cancel
-    $('cpStopped').hidden = true;
-    box.innerHTML = html + '<div class="btns"><button class="btn primary" id="cpYes"></button><button class="btn" id="cpNo">Cancel</button></div>';
-    box.hidden = false;
-    $('cpYes').textContent = go.label;
-    $('cpYes').addEventListener('click', go.run);
-    $('cpNo').addEventListener('click', () => { box.hidden = true; box.innerHTML = ''; });
-    box.scrollIntoView({ block: 'nearest' });
-  };
-  const row = (k, v) => `<div class="row"><span>${k}</span><span>${v}</span></div>`;
   const fail = (e) => { $('asResult').innerHTML = `<div class="err">${esc(e.message)}</div>`; };
-  $('cpFix')?.addEventListener('click', () => {
-    const f = p.fix, rerun = a.rerun, later = rerun.filter((s) => s !== st);
-    const made = later.filter((s) => wsState?.done?.[s]);
-    const sfmTime = lastDur[st] ? (f.slower ? `${roughly(lastDur[st] * 4)} for the cameras (a few times longer than last time)` : `${roughly(lastDur[st])} for the cameras`)
-      : `${AS_INFO[st][2]}${f.slower ? ' or a few times more' : ''} for the cameras`;
-    ask(`<b>${f.slower ? 'Re-run with the thorough camera solver?' : 'Re-run the cameras without the masks?'}</b>
-      ${f.changes.map((c) => row(esc(c.label), `<span class="chg"><s>${esc(c.from)}</s> → <b>${esc(c.to)}</b></span>`)).join('')}
-      ${row('Re-runs', rerun.map((s) => esc(pageLabel(s))).join(' → '))}
-      ${row('Time', `${sfmTime}, then ${nextStepsTime(later)}`)}
-      ${row('Replaces', `the current camera positions${made.length ? ' and what was made from them' : ''}`)}
-      <div class="muted">If the path still breaks, the run stops after the cameras and asks again.</div>`,
-    { label: 'Re-run now', run: () => {
-      Object.entries(a.apply).forEach(([k, v]) => setOpt(k, v, `camera path: ${f.label.toLowerCase()}`));
+  const ask = (i, spec, run) => {  // the in-page confirmation under the note's buttons
+    box.querySelectorAll('.note-confirm').forEach((c) => { c.hidden = true; c.innerHTML = ''; });
+    const c = box.querySelector(`[data-confirm="${i}"]`); if (!c) return;
+    if ($('cpStopped')) $('cpStopped').hidden = true;
+    c.innerHTML = confirmHtml(spec); c.hidden = false;
+    c.querySelector('[data-nc=yes]').addEventListener('click', run);
+    c.querySelector('[data-nc=no]').addEventListener('click', () => { c.hidden = true; c.innerHTML = ''; });
+    c.scrollIntoView({ block: 'nearest' });
+  };
+  box.querySelectorAll('[data-fix]').forEach((b) => b.addEventListener('click', () => {
+    const i = +b.dataset.fix, a = tips[i], rerun = a.rerun.length ? a.rerun : [st];
+    const slower = a.apply.mapper === 'incremental' && a.stage === 'sfm';
+    ask(i, { title: 'Re-run with these changes?', yes: 'Re-run',
+      rows: [['Changes', a.changes.map((c) => `${esc(c.label)} <s>${esc(c.from)}</s> → <b>${esc(c.to)}</b>`).join(', ') || 'none'],
+             ['Re-runs', esc(steps(rerun))], ['Time', esc(timeFor(rerun, slower))]],
+      warning: a.plain ? 'Replaces the cameras; stops again if still broken.' : 'Replaces these steps\' current results.' },
+    () => {
+      Object.entries(a.apply).forEach(([k, v]) => setOpt(k, v, a.short.toLowerCase()));
       renderRun();  // the step's options show the new values
-      runStages(rerun.length ? rerun : [st]).catch(fail);
-    } });
-  });
+      runStages(rerun).catch(fail);
+    });
+  }));
+  const card = tips.findIndex((a) => a.plain);
   $('cpContinue')?.addEventListener('click', () => {
-    const next = heldBack(st);
-    if (!next.length) return;
-    ask(`<b>Continue with these camera positions?</b>
-      ${row('Runs next', next.map((s) => esc(pageLabel(s))).join(' → '))}
-      ${row('Time', nextStepsTime(next))}
-      <div class="impact">⚠ ${esc(p.impact[0].toUpperCase() + p.impact.slice(1))}.</div>`,
-    { label: 'Continue', run: () => { runStages(next).then(() => goPage(next[0])).catch(fail); } });
+    const next = heldBack(st); if (!next.length) return;
+    ask(card, { title: 'Continue with these cameras?', yes: 'Continue',
+      rows: [['Runs', esc(steps(next))], ['Time', esc(timeFor(next))]], warning: tips[card].plain.impact },
+    () => { runStages(next).then(() => goPage(next[0])).catch(fail); });
   });
   $('cpStop')?.addEventListener('click', () => {
-    box.hidden = true; box.innerHTML = '';
+    box.querySelectorAll('.note-confirm').forEach((c) => { c.hidden = true; c.innerHTML = ''; });
     AS.cpStopped = st; asSave();
     $('cpStopped').hidden = false;
   });
@@ -1879,7 +1855,8 @@ function asPlace(main) {
   const guessed = wsState?.manifest?.clean && !wsState.manifest.clean.support_plane;
   main.innerHTML = `<div class="ph"><h3>${stepNo('place')}. Place your model</h3></div>
     <p>Does it stand the right way up, with its front towards you? Every export uses this: the 3D print stands on the grid's floor.</p>
-    ${guessed ? '<div class="as-advice"><b>I had to guess which way is up</b>no table or floor was found under the subject, so "up" comes from how the camera moved: check it.</div>' : ''}
+    ${guessed ? noteHtml({ level: 'info', title: 'Up direction guessed', line: 'No table or floor found: check which way is up.',
+      details: 'No table or floor was found under the subject, so "up" comes from how the camera moved.' }) : ''}
     ${has ? '<div class="as-place"><div class="slot" id="asViewSlot"></div><div class="tools" id="asToolSlot"></div></div>'
       : '<p class="muted">There is no mesh yet: run the steps before this one.</p>'}
     <div class="btns"><button class="btn primary" id="asLooks">${OR.dirty ? 'Save and continue' : 'Looks right'}</button>
@@ -1895,7 +1872,7 @@ function asPlace(main) {
 function asDone(main) {
   const tips = AS.advice.filter((a) => a.level !== 'ok');
   main.innerHTML = `<div class="ph"><h3>Your model is ready</h3></div><p><b>Export…</b> takes out what you need (the textured model, the clean mesh, a 3D print, …), each file made when you ask for it.</p>
-    ${tips.map((a) => `<div class="as-advice ${a.level}"><b>${esc(a.plain?.headline || a.title)}</b>${esc(a.plain?.what || a.detail)}</div>`).join('')}
+    ${tips.map((a) => noteHtml({ level: a.level, title: a.short, line: a.line, details: `${esc(a.title)}: ${esc(a.detail)}` })).join('')}
     <div class="btns"><button class="btn primary" id="asExport">Export…</button><button class="btn" id="asPreview">Open the Preview</button>
       <a class="btn" href="${editorUrl()}">Touch it up in ${topPageLabel('edit')}</a><button class="btn" id="asManual">Switch to Manual</button></div>`;
   $('asExport').addEventListener('click', () => { showG('preview'); showPv('3d'); openExport(current); });
@@ -2290,8 +2267,7 @@ function renderStages() {
       if (st === 'running' && lastLog[s] && lastLog[s] !== logPath) prev = cached(lastLog[s]);
     }
     const canSteps = !!STEPS[s] && (inJob || logPath);
-    const diagHtml = diags.filter((d) => d.level !== 'info' || st !== 'running').map((d) =>
-      `<div class="diag ${d.level}">${esc(d.message)}${d.hint ? `<span class="h">→ ${esc(d.hint)}</span>` : ''}</div>`).join('');
+    const diagHtml = diags.filter((d) => d.level !== 'info' || st !== 'running').map((d) => diagNote(d, { compact: true })).join('');
     return `<div class="stage ${st}"><div class="top"><span class="badge"></span><span class="name">${s}</span>
       <span class="links">${canSteps ? `<a data-steps="${s}">${showSteps ? 'hide steps' : 'steps'}</a> · ` : ''}${logPath ? `<a data-log="${logPath}">log</a> · ` : ''}<a data-rerun="${s}" title="tick this stage and the ones that depend on it">re-run from here</a></span>
       <span class="time">${st === 'running' && tr ? stepCounter(tr) : st === 'running' && prog != null ? Math.round(prog * 100) + '% · ' : ''}${t}</span></div>
@@ -2338,9 +2314,10 @@ function renderBanner() {
   const what = { 'preflight-failed': 'did not start', 'gate-failed': 'failed a quality check',
                  cancelled: 'was cancelled', failed: 'failed' }[f.status] || f.status;
   b.className = 'banner' + (f.status === 'cancelled' ? ' cancel' : '');
-  b.innerHTML = `<b>${f.stage} ${what}</b>${f.exit_code != null ? ` <span class="muted">(exit ${f.exit_code})</span>` : ''}
-    ${(f.diagnostics || []).map((d) => `<div class="diag error">${esc(d.message)}${d.hint ? `<span class="h">→ ${esc(d.hint)}</span>` : ''}</div>`).join('')}
-    ${f.log ? `<div style="margin-top:6px"><a data-log="${f.log}">open the ${f.stage} log</a></div>` : ''}`;
+  const errs = f.diagnostics || [];
+  b.innerHTML = noteHtml({ level: f.status === 'cancelled' ? 'info' : 'error', title: `${STEP_SHORT[f.stage] || f.stage} ${what}`,
+    line: errs.length ? diagShort(errs[0]).line : '', buttons: f.log ? `<button class="btn" data-log="${f.log}">Open log</button>` : '',
+    details: diagDetails(errs) + (f.exit_code != null ? `<div>exit ${f.exit_code}</div>` : '') });
   b.hidden = false;
   b.querySelectorAll('[data-log]').forEach((a) => a.addEventListener('click', () => openLog(a.dataset.log)));
 }
@@ -2540,8 +2517,7 @@ $('checkBtn').addEventListener('click', async () => {
     const r = await api(`/api/workspaces/${current}/check`, { method: 'POST', body: JSON.stringify({ stages: RO.sel, options: runOptions() }) });
     $('checkOut').innerHTML = '<div class="checkres">' + Object.entries(r.checks).map(([s, ds]) => {
       const bad = ds.some((d) => d.level === 'error'), cls = bad ? 'st-failed' : ds.length ? 'st-warning' : 'st-ok';
-      return `<div><b class="${cls}">${bad ? '✖' : ds.length ? '!' : '✓'} ${s}</b>` +
-        ds.map((d) => `<div class="diag ${d.level}">${esc(d.message)}${d.hint ? `<span class="h">→ ${esc(d.hint)}</span>` : ''}</div>`).join('') + '</div>';
+      return `<div><b class="${cls}">${bad ? '✖' : ds.length ? '!' : '✓'} ${s}</b>` + ds.map((d) => diagNote(d, { compact: true })).join('') + '</div>';
     }).join('') + '</div>';
   } catch (e) { $('checkOut').innerHTML = ''; $('runErr').textContent = e.message; }
 });

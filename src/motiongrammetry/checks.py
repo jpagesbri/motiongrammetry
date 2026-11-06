@@ -179,7 +179,7 @@ def _stale_input(ws: Workspace, stage: str, inputs: list[str]) -> list[Diag]:
             if up == "sfm" and _masks_changed_since_sfm(ws):
                 why = "the masks changed after sfm ran with them (mask_sfm)"
             out.append(error("stale-input", f"{why}, so {stage} would mix results from different runs",
-                             f"re-run {up} first (or pass --force to use it anyway)"))
+                             f"re-run {up} first (or pass --force to use it anyway)", line=f"Re-run {up} first."))
     return out
 
 
@@ -216,15 +216,18 @@ def _pre_frames(ws, o, video):
     duration = n / fps if fps else 0
     if 0 < duration < 5:
         d.append(warn("short-video", f"video is only {duration:.1f} s long",
-                      "a full orbit usually needs 20-60 s; raise sample_fps if you keep it"))
+                      "a full orbit usually needs 20-60 s; raise sample_fps if you keep it",
+                      line=f"Only {duration:.0f} s; 20 to 60 s works best."))
     if min(w, h) < 720:
-        d.append(warn("low-resolution", f"video is {int(w)}x{int(h)}", "record at 1080p or 4K"))
+        d.append(warn("low-resolution", f"video is {int(w)}x{int(h)}", "record at 1080p or 4K",
+                      line=f"{int(w)}x{int(h)}; film at 1080p or more."))
     if n and o["num"] > n:
         d.append(warn("num-exceeds-frames", f"asked for {o['num']} keyframes from a {int(n)}-frame video"))
     need = o["num"] * 0.8e6
     if disk_free(ws.root) < 2 * need:
         d.append(error("disk-low", f"{disk_free(ws.root) / GB:.1f} GB free; keyframes alone need "
-                       f"~{need / GB:.1f} GB and later stages much more", "free space or use another workspace root"))
+                       f"~{need / GB:.1f} GB and later stages much more", "free space or use another workspace root",
+                       line=f"{disk_free(ws.root) / GB:.1f} GB free; much more is needed."))
     return d
 
 
@@ -251,10 +254,12 @@ def _pre_sfm(ws, o, video):
         return [error("no-frames", f"{n} keyframes; SfM needs at least 3 (realistically 30+)", "run frames first")]
     d = []
     if n < 20:
-        d.append(warn("few-frames", f"only {n} keyframes", "raise num; 80-200 is typical for an orbit"))
+        d.append(warn("few-frames", f"only {n} keyframes", "raise num; 80-200 is typical for an orbit",
+                      line=f"Only {n}; 80 to 200 is typical."))
     if o["mask_sfm"]:
         if not ws.has_masks():
-            d.append(error("no-masks", "mask_sfm needs masks", "run mask first"))
+            d.append(error("no-masks", "mask_sfm needs masks", "run mask first",
+                           line="Placing cameras from the masks needs masks."))
         d += _stale_input(ws, "sfm", ["mask"])
     return d
 
@@ -336,14 +341,16 @@ def _pre_clean(ws, o, video):
     if not o["no_masks"]:
         if not ws.has_masks():
             d.append(warn("no-masks", "no masks: only the main piece (the one with the most faces) will be kept",
-                          "run mask for proper background removal"))
+                          "run mask for proper background removal",
+                          line="Only the main piece is kept, background included."))
         elif "mask" in ws.stale_stages():
             d.append(error("stale-masks", "masks are older than the keyframes; carving with them would cut "
                            "the subject at the wrong places", "re-run mask, or set no_masks"))
         else:
             missing = [f.name for f in ws.frame_paths() if not ws.mask_for(f.name).exists()]
             if missing:
-                d.append(warn("masks-incomplete", f"{len(missing)} keyframes have no mask", "re-run mask"))
+                d.append(warn("masks-incomplete", f"{len(missing)} keyframes have no mask", "re-run mask",
+                              line=f"{len(missing)} keyframes have no mask."))
     return d
 
 
@@ -397,13 +404,15 @@ def _gate_frames(ws, r, o):
     d = []
     k = r["keyframes"]
     if k < 8:
-        d.append(error("too-few-frames", f"only {k} usable keyframes", "longer video, higher num or sample_fps"))
+        d.append(error("too-few-frames", f"only {k} usable keyframes", "longer video, higher num or sample_fps",
+                       line=f"Only {k} usable; film for longer."))
     elif k < 30:
-        d.append(warn("few-frames", f"only {k} keyframes", "raise num or sample_fps"))
+        d.append(warn("few-frames", f"only {k} keyframes", "raise num or sample_fps", line=f"Only {k}; 80 to 200 is typical."))
     segs = r.get("segments") or 0
     if segs and r.get("blur_rejected", 0) / segs > 0.25:
         d.append(warn("blurry-video", f"{r['blur_rejected']}/{segs} viewpoints had only blurry frames",
-                      "more light / faster shutter, move slower, or the blurry preset"))
+                      "more light / faster shutter, move slower, or the blurry preset",
+                      line=f"{r['blur_rejected']} of {segs} viewpoints had only blurry frames."))
     if r.get("total_motion_widths", 99) < 1.0:
         d.append(warn("little-motion", "the view changes little across the video",
                       "fine for a distant subject (a drone orbit of a building: the cameras step will tell); close up, "
@@ -418,10 +427,12 @@ def _gate_mask(ws, r, o):
         d.append(error("subject-not-found", "the masks are (almost) empty",
                        "try mask_model object-hq / person, or skip masks (no_masks)"))
     elif r["empty_masks"] / n > 0.2:
-        d.append(warn("masks-empty", f"{r['empty_masks']}/{n} masks are empty", "keep the subject in frame"))
+        d.append(warn("masks-empty", f"{r['empty_masks']}/{n} masks are empty", "keep the subject in frame",
+                      line=f"{r['empty_masks']} of {n} masks are empty."))
     if r["mean_coverage"] > 0.6:
         d.append(warn("mask-too-large", f"masks cover {r['mean_coverage']:.0%} of the frame on average: the "
-                      "model probably took background as subject", "try object-hq, or no_masks for clean"))
+                      "model probably took background as subject", "try object-hq, or no_masks for clean",
+                      line=f"They cover {r['mean_coverage']:.0%} of the frame on average."))
     if r.get("coverage_cv", 0) > 0.6:
         d.append(warn("masks-unstable", "mask size varies a lot between frames (subject picked inconsistently)",
                       "carving votes across views, but consider a different mask_model or higher bg_tolerance"))
@@ -433,15 +444,19 @@ def _gate_sfm(ws, r, o):
     ratio = r["registered"] / max(r["frames"], 1)
     hints = "try the low-texture preset, matcher exhaustive, mapper incremental, or more keyframes"
     if ratio < 0.5:
-        d.append(error("poor-registration", f"only {r['registered']}/{r['frames']} frames got a camera pose", hints))
+        d.append(error("poor-registration", f"only {r['registered']}/{r['frames']} frames got a camera pose", hints,
+                       line=f"Only {r['registered']} of {r['frames']} keyframes got a position."))
     elif ratio < 0.9:
         d.append(warn("partial-registration", f"{r['frames'] - r['registered']} of {r['frames']} frames have no pose "
-                      "(those views won't contribute)", hints))
+                      "(those views won't contribute)", hints,
+                      line=f"{r['frames'] - r['registered']} of {r['frames']} keyframes got no position."))
     if r["mean_reproj_error_px"] > 2.0:
         d.append(warn("high-reprojection", f"mean reprojection error {r['mean_reproj_error_px']:.2f} px",
-                      "check for rolling-shutter / motion blur; try camera_model OPENCV only if lenses are wide"))
+                      "check for rolling-shutter / motion blur; try camera_model OPENCV only if lenses are wide",
+                      line=f"Error {r['mean_reproj_error_px']:.1f} px: motion blur or a moving subject?"))
     if r["points3D"] < 300:
-        d.append(warn("sparse-model", f"only {r['points3D']} 3D points", "low-texture preset"))
+        d.append(warn("sparse-model", f"only {r['points3D']} 3D points", "low-texture preset",
+                      line=f"Only {r['points3D']}: plain or shiny surfaces?"))
     cam = r.get("camera") or {}
     params = cam.get("params") or []
     if params and r.get("image_width"):
@@ -455,7 +470,8 @@ def _gate_sfm(ws, r, o):
                       "use camera_model RADIAL (single focal)"))
     if r.get("models", 1) > 1:
         d.append(warn("disconnected", f"SfM split into {r['models']} pieces; only the largest is used",
-                      "move more slowly through difficult parts; loop_stride 3"))
+                      "move more slowly through difficult parts; loop_stride 3",
+                      line=f"{r['models']} groups; only the largest is used."))
     d += camera_path_diags(r.get("camera_path") or {})
     return d
 
@@ -493,6 +509,15 @@ def keyframe_ranges(keyframes: list[int]) -> list[str]:
     return out
 
 
+def _breaks_line(jumps: list[dict]) -> str:
+    """"Views don't connect at 4 places": jumps that follow each other (0→1, 1→2) count as one."""
+    k, end = 0, None
+    for j in sorted(jumps, key=lambda j: j["from"]):
+        k += j["from"] != end
+        end = j["to"]
+    return f"Views don't connect at {'one place' if k == 1 else f'{k} places'}."
+
+
 def camera_path_diags(p: dict) -> list[Diag]:
     """Warnings for the camera-path check of sfm.camera_path_check (the sfm gate, and mg check-cameras)."""
     d = []
@@ -500,20 +525,22 @@ def camera_path_diags(p: dict) -> list[Diag]:
         n, k = p["collapsed_cameras"], p["distinct_positions"]
         return [warn("cameras-collapsed", f"{n} of {p['cameras']} cameras sit on top of each other (only {k} distinct "
                      f"position{'s' if k != 1 else ''}; {p['still_steps']} of {p['steps']} steps between keyframes are "
-                     "~0): SfM did not recover the motion", CAMERAS_COLLAPSED_HINT)]
+                     "~0): SfM did not recover the motion", CAMERAS_COLLAPSED_HINT,
+                 line=f"{n} of {p['cameras']} photos sit on top of each other.")]
     jumps = sorted(p.get("jumps") or [], key=lambda j: j["from"])
     if jumps:
         n = p.get("jump_count", len(jumps))
         d.append(warn("camera-path-jump", f"the camera path breaks {'once' if n == 1 else f'{n} times'}, where it moved "
                       "many times the median step from one keyframe to the next: keyframes "
-                      + _listing([f"{j['from']}→{j['to']} ×{j['ratio']:g}" for j in jumps], n), CAMERA_PATH_HINT))
+                      + _listing([f"{j['from']}→{j['to']} ×{j['ratio']:g}" for j in jumps], n), CAMERA_PATH_HINT,
+                      line=_breaks_line(jumps)))
     far = p.get("far") or []
     if far:
         n = p.get("far_count", len(far))
         d.append(warn("cameras-far-away", f"{n} camera{'s' if n > 1 else ''} far from all the others (keyframes "
                       + ", ".join(keyframe_ranges([f["keyframe"] for f in far])) + ("…" if n > len(far) else "") +
                       f", up to ×{max(f['ratio'] for f in far):g} the usual distance from the centre)",
-                      CAMERA_PATH_HINT))
+                      CAMERA_PATH_HINT, line=f"{n} photo{'s' if n > 1 else ''} far from the others."))
     return d
 
 
@@ -521,11 +548,13 @@ def _gate_mesh(ws, r, o):
     d = []
     faces = r.get("mesh_faces")
     if faces is not None and faces < 1000:
-        d.append(error("mesh-empty", f"raw mesh has only {faces} faces", "check SfM quality; try resolution_level 0"))
+        d.append(error("mesh-empty", f"raw mesh has only {faces} faces", "check SfM quality; try resolution_level 0",
+                       line=f"Only {faces} faces were built."))
     pts = r.get("dense_points")
     if pts is not None and pts < 20000:
         d.append(warn("dense-sparse", f"dense cloud has only {pts} points",
-                      "low texture or too low resolution; try resolution_level 0 or the vggt path"))
+                      "low texture or too low resolution; try resolution_level 0 or the vggt path",
+                      line=f"Only {pts:,} points: plain surfaces, or low resolution?"))
     return d
 
 
