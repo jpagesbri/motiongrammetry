@@ -120,12 +120,18 @@ def advise(ws: Workspace, subject: str | None = None) -> list[dict]:
         elif not (s.get("camera_path") or {}).get("ok", True):
             p = s["camera_path"]
             where = sorted({j["from"] for j in p.get("jumps", [])} | {f["keyframe"] for f in p.get("far", [])})
+            film = ("Film again: walk slowly through doorways and keep part of the room you are leaving in view "
+                    "while you turn; no quick pans or close-ups in passing; for an object, a steady orbit at an "
+                    "even pace")
+            tried = s.get("mapper") == "incremental" and s.get("matcher") == "exhaustive"
+            apply = {} if tried else {"mapper": "incremental", "matcher": "exhaustive"}
             add(_item("sfm", "fix", f"the camera path breaks near keyframe{'s' if len(where) > 1 else ''} "
                       + ", ".join(keyframe_ranges(where)),
                       "the keyframes got a position, but some views did not connect, so part of the scene is misplaced "
-                      "or built twice. Film again: walk slowly through doorways and keep part of the room you are "
-                      "leaving in view while you turn; no quick pans or close-ups in passing; for an object, "
-                      "a steady orbit at an even pace"))
+                      "or built twice. " + (film if tried else
+                      "First try the slower incremental mapper with exhaustive matching, which can connect views the "
+                      "defaults missed. If it still breaks: " + film[0].lower() + film[1:]),
+                      apply, ["sfm", "mvs", "clean", "texture"] if apply else None))
         elif s.get("mean_reproj_error_px", 0) > 2.0:
             add(_item("sfm", "tip", f"camera positions are approximate ({s['mean_reproj_error_px']:.1f} px error)",
                       "the subject may have moved, or the video is soft; the result can look smeared"))
