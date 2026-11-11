@@ -218,6 +218,7 @@
   .loading { position: absolute; right: 10px; top: 10px; color: var(--muted); font-size: 12px; background: rgba(22,26,33,.85);
     padding: 4px 8px; border-radius: 6px; display: none; }
   .film { grid-area: film; border-top: 1px solid var(--line); background: var(--panel); display: flex; flex-direction: column; min-width: 0; }
+  .film:focus { outline: none; }  /* takes the focus on a click, so ← → Home End reach the player */
   .film-head { display: flex; align-items: center; gap: 12px; padding: 6px 12px 0; }
   .player { display: inline-flex; align-items: center; gap: 1px; }
   .player button { display: inline-grid; place-items: center; width: 24px; height: 22px; padding: 0; font-size: 14px;
@@ -414,7 +415,7 @@
           <div class="pvside" id="pvSide" hidden>  <!-- only while orienting -->
             <section id="orientHome" hidden></section>
           </div>
-          <div class="film" id="film">
+          <div class="film" id="film" tabindex="-1">
             <div class="film-head">
               <h2 style="margin:0">Keyframes <span class="muted" id="frameCount"></span></h2>
               <span class="player" id="player" role="group" aria-label="keyframe player">
@@ -427,7 +428,6 @@
               </span>
               <span class="film-note" id="filmNote" hidden>no camera for this frame (SfM didn't place it)</span>
               <label class="muted"><input type="checkbox" id="showMasks"> mask overlay</label>
-              <span class="pghint" data-hint="film">click a frame to view from its camera · double-click to open it big · ← → Home End step, ▶ plays</span>
             </div>
             <div class="strip" id="strip"></div>
           </div>
@@ -475,7 +475,7 @@ import { navigation } from '/navigation.js';
 import { mountTopbar, setScan, updateScans, uploadVideo, thumbUrl, pageLabel as topPageLabel } from '/topbar.js';
 import { modeControl } from '/modes.js';
 import { openExport, exportHooks } from '/export.js';
-import { pageHelp, hint } from '/pagehelp.js';
+import { pageHelp, hint, inText } from '/pagehelp.js';
 import { icon } from '/icons.js';
 import { openPathView, pathViewOpen, flagIcon } from '/camerapath.js';
 import { noteHtml, diagNote, diagShort, diagDetails, confirmHtml, setShortForms } from '/notes.js';
@@ -1358,7 +1358,8 @@ $('fvCam').addEventListener('click', () => { const name = wsState?.frames[FV.i];
 new ResizeObserver(() => { fvDraw(); fvTrack(); }).observe($('fvStage'));
 
 addEventListener('keydown', (e) => {
-  if (e.target.matches('input, select, textarea') || e.ctrlKey || e.metaKey || e.altKey) return;
+  // keys a field uses itself stay its own: typing, and a slider's arrows (Point size); a checkbox or a button lets them through
+  if (inText(e.target) || e.target.matches?.('input[type=range]') || e.ctrlKey || e.metaKey || e.altKey) return;
   if (isShown('preview') && pvMode === 'frames') {
     if (e.key === 'ArrowRight') { e.preventDefault(); fvStep(1); } else if (e.key === 'ArrowLeft') { e.preventDefault(); fvStep(-1); }
     else if (e.key === 'Home') fvGo(0); else if (e.key === 'End') fvGo(1e9);
@@ -2413,7 +2414,7 @@ function renderFilm() {
   filmScan = current;
   const masks = new Set(wsState.masks);
   $('strip').innerHTML = f.length ? f.map((n, i) => `
-    <div class="thumb${i === FILM.i ? ' sel' : ''}" data-frame="${n}" title="${n}">
+    <div class="thumb${i === FILM.i ? ' sel' : ''}" data-frame="${n}" title="${n} · click: view from its camera · double-click: open it big">
       <img loading="lazy" src="/api/workspaces/${current}/thumb/frames/${n}">
       ${masks.has(n) ? `<img class="mask" loading="lazy" src="/api/workspaces/${current}/thumb/masks/${n}">` : ''}
       <span>${i}</span></div>`).join('') : '<span class="muted">no keyframes yet</span>';
@@ -2488,6 +2489,12 @@ controls.addEventListener('start', filmPause);
 view.addEventListener('pointerdown', (e) => { if (e.target.closest('canvas, .vcube')) filmPause(); }, true);
 view.addEventListener('wheel', (e) => { if (e.target.closest('canvas')) filmPause(); }, { capture: true, passive: true });
 document.addEventListener('visibilitychange', () => { if (document.hidden) filmPause(); });
+// A press anywhere in the strip (a thumbnail, its scrollbar, the header) moves the focus here, so
+// ← → Home End step the frames; without it the focus could stay on a tab clicked before (the
+// scrollbar keeps the focus where it is), which would take the arrows.
+$('film').addEventListener('pointerdown', (e) => {
+  if (!e.target.closest('button, input, select, textarea, a')) $('film').focus({ preventScroll: true });
+}, true);
 $('showMasks').addEventListener('change', () => $('film').classList.toggle('masks', $('showMasks').checked));
 
 // ---------------------------------------------------------------- job polling

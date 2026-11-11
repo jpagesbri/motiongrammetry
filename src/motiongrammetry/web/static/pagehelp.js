@@ -78,7 +78,8 @@ export const VIEWS = {
 };
 
 const OFF = 'mg.hints.off';   // browser storage: the hints closed with their ✕
-const offHints = () => { try { return new Set(JSON.parse(localStorage.getItem(OFF) || '[]')); } catch { return new Set(); } };
+const RETIRED = new Set(['film']);  // hints the pages no longer have: not counted among the closed ones
+const offHints = () => { try { return new Set(JSON.parse(localStorage.getItem(OFF) || '[]').filter((id) => !RETIRED.has(id))); } catch { return new Set(); } };
 const saveOff = (s) => { try { s.size ? localStorage.setItem(OFF, JSON.stringify([...s])) : localStorage.removeItem(OFF); } catch {} };
 const X = '<button type="button" class="pghint-x" title="hide this hint: it stays in this page\'s help (?)" aria-label="hide this hint">✕</button>';
 
@@ -123,7 +124,9 @@ export function pageHelp(id, current = () => [id]) {
 // another window is open (Export, the scan chooser's, the page's own): ? is not for this page then
 const otherWindow = () => !!document.querySelector('.ex-modal:not([hidden]), .sc-modal:not([hidden]), .modal:not([hidden])');
 const TEXT_INPUTS = /^(text|search|email|url|tel|password|number|date|datetime-local|month|time|week)$/;
-function inText(t) {
+/** Is the focus in a field that takes typed text (a text-like input, select, textarea, editable)? Not a
+ *  checkbox, radio, button or slider: keys such as ? or W are the page's there. */
+export function inText(t) {
   if (!(t instanceof Element)) return false;
   if (t.isContentEditable || t.matches('textarea, select')) return true;
   return t.matches('input') && TEXT_INPUTS.test(t.type || 'text');

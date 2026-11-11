@@ -14,6 +14,7 @@ from playwright.sync_api import expect  # noqa: E402
 from motiongrammetry.workspace import Workspace  # noqa: E402
 from scan_fixture import KEYFRAMES, SCAN  # noqa: E402
 from test_navigation import camera, drag, moved, open_preview  # noqa: E402
+from ui import keyboard_focus  # noqa: E402
 
 N = KEYFRAMES
 
@@ -169,3 +170,68 @@ def test_frames_and_masks_keep_their_own_arrows_and_double_click_opens_a_frame(p
     page.keyboard.press("Home")
     expect(page.locator("#fvPos")).to_have_text(f"1 / {N}")
     expect(page.locator("#filmPos")).to_have_text(f"4 / {N}")  # the player's place is its own
+
+
+def tab(page, value):
+    return page.locator(f"#pvTabs [data-value=\"{value}\"]")
+
+
+def test_after_dragging_the_strip_s_scrollbar_the_arrows_step_the_frames_not_the_tabs(page):
+    page.set_viewport_size({"width": 700, "height": 800})  # the strip scrolls
+    open_preview(page)
+    keyboard_focus(page, tab(page, "3d"))  # a tab holding the focus, the arrows its own
+    thumb = page.locator("#strip > .mgsb .mgsb-track.h .mgsb-thumb")
+    expect(thumb).to_be_visible()
+    t = thumb.bounding_box()
+    page.mouse.move(t["x"] + t["width"] / 2, t["y"] + t["height"] / 2)
+    page.mouse.down()
+    page.mouse.move(t["x"] + t["width"] / 2 + 80, t["y"] + t["height"] / 2, steps=6)
+    page.mouse.up()
+    assert page.locator("#strip").evaluate("(s) => s.scrollLeft") > 0
+    page.keyboard.press("ArrowRight")
+    at(page, 0)
+    expect(page.locator("#pv3d")).to_be_visible()
+    expect(tab(page, "3d")).to_have_attribute("aria-selected", "true")
+
+
+def test_after_clicking_the_3d_model_tab_the_arrows_step_the_frames(page):
+    open_preview(page)
+    tab(page, "3d").click()
+    expect(tab(page, "3d")).to_be_focused()
+    page.keyboard.press("ArrowRight")
+    at(page, 0)
+    page.keyboard.press("End")
+    at(page, N - 1)
+    expect(page.locator("#pv3d")).to_be_visible()
+
+
+def test_a_tab_reached_with_the_keyboard_still_switches_with_the_arrows(page):
+    open_preview(page)
+    keyboard_focus(page, tab(page, "3d"))
+    page.keyboard.press("ArrowRight")
+    expect(tab(page, "frames")).to_have_attribute("aria-selected", "true")
+    expect(page.locator("#pvFrames")).to_be_visible()
+    expect(page.locator("#filmPos")).to_have_text(f"– / {N}")  # the player didn't move
+
+
+def test_after_ticking_mask_overlay_the_arrows_step_the_frames_and_space_still_toggles_it(page):
+    open_preview(page)
+    box = page.locator("#showMasks")
+    box.click()
+    expect(box).to_be_checked()
+    expect(box).to_be_focused()
+    page.keyboard.press("ArrowRight")
+    at(page, 0)
+    page.keyboard.press("ArrowRight")
+    at(page, 1)
+    page.keyboard.press("Space")
+    expect(box).not_to_be_checked()
+
+
+def test_thumbnails_say_what_a_click_does_and_the_strip_has_no_hint_line(page):
+    open_preview(page)
+    expect(page.locator("#strip .thumb").first).to_have_attribute(
+        "title", "f00.jpg · click: view from its camera · double-click: open it big")
+    expect(page.locator('[data-hint="film"]')).to_have_count(0)
+    expect(btn(page, "next")).to_have_attribute("title", "next keyframe (→)")
+    expect(btn(page, "start")).to_have_attribute("title", "first keyframe (Home)")

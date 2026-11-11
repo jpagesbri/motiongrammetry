@@ -41,6 +41,15 @@ def scan_ready(page: Page, scan: str = SCAN) -> None:
         expect(page.locator("#modeTabs [aria-selected=true]")).to_have_text("Manual")
 
 
+def keyboard_focus(page: Page, tab) -> None:
+    """Reach a tab list's selected option with the keyboard (Shift+Tab out, Tab back in), as a keyboard
+    user does: only then do its arrow keys switch tabs (a tab clicked with the mouse leaves them to the page)."""
+    tab.focus()
+    page.keyboard.press("Shift+Tab")
+    page.keyboard.press("Tab")
+    expect(tab).to_be_focused()
+
+
 def editor_ready(page: Page) -> None:
     """The editor shows its model: the status line has its size (sculpt) or its texture (paint)."""
     expect(page.locator("#center")).to_be_hidden(timeout=30_000)

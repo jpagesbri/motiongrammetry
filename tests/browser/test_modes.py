@@ -8,7 +8,7 @@ pytest.importorskip("playwright", reason="needs Playwright: uv pip install -e '.
 
 from playwright.sync_api import expect  # noqa: E402
 
-from ui import editor_ready, open_page, scan_ready  # noqa: E402
+from ui import editor_ready, keyboard_focus, open_page, scan_ready  # noqa: E402
 
 SELECTED = "[aria-selected=true]"
 
@@ -29,7 +29,7 @@ def test_run_and_preview_switch_by_click_and_keys_and_stay_after_a_reload(page):
     scan_ready(page)
     expect(selected(page, "gTabs")).to_have_text("Preview")
     # keys: ← → on the focused tab; one Tab stop per control (roving tabindex)
-    page.locator("#tabPreview").focus()
+    keyboard_focus(page, page.locator("#tabPreview"))
     page.keyboard.press("ArrowLeft")
     expect(selected(page, "gTabs")).to_have_text("Run")
     expect(page.locator("#tabRun")).to_be_focused()
@@ -52,7 +52,7 @@ def test_assisted_and_manual_are_kept_per_scan(page):
     expect(selected(page, "modeTabs")).to_have_text("Assisted")
     expect(page.locator("#runBtn")).to_be_hidden()
     assert page.evaluate("localStorage.getItem('mg.mode.box')") == "assisted"
-    page.locator("#modeTabs [data-value=assisted]").focus()
+    keyboard_focus(page, page.locator("#modeTabs [data-value=assisted]"))
     page.keyboard.press("ArrowRight")
     expect(selected(page, "modeTabs")).to_have_text("Manual")
     page.keyboard.press("ArrowRight")  # wraps around
@@ -87,7 +87,7 @@ def test_frames_keys_do_not_fire_while_a_tab_is_focused(page):
     page.keyboard.press("Home")
     expect(pos).to_have_text("1 / 12")
     # on the focused tab: End stays on Frames & masks (its last option), the keyframe doesn't move
-    page.locator("#pvTabs [data-value=frames]").focus()
+    keyboard_focus(page, page.locator("#pvTabs [data-value=frames]"))
     page.keyboard.press("End")
     expect(selected(page, "pvTabs")).to_have_text("Frames & masks")
     expect(pos).to_have_text("1 / 12")
@@ -106,7 +106,7 @@ def test_log_live_and_history(page):
     open_page(page, "scan")
     page.locator("#drawerToggle").click()
     expect(selected(page, "logTabs")).to_have_text("Live")
-    page.locator("#logTabs [data-value=live]").focus()
+    keyboard_focus(page, page.locator("#logTabs [data-value=live]"))
     page.keyboard.press("ArrowRight")
     expect(selected(page, "logTabs")).to_have_text("History")
     expect(page.locator("#history")).to_be_visible()
@@ -129,11 +129,11 @@ def test_sculpt_and_paint_switch_and_the_address_keeps_paint(page):
     expect(selected(page, "modeTabs")).to_have_text("Paint texture")
     # the view's layout control, in Paint: 3D / 3D + texture / Texture
     expect(selected(page, "layoutTabs")).to_have_text("3D + texture")
-    page.locator("#layoutTabs [data-value=split]").focus()
+    keyboard_focus(page, page.locator("#layoutTabs [data-value=split]"))
     page.keyboard.press("ArrowRight")
     expect(selected(page, "layoutTabs")).to_have_text("Texture")
     # keys on the mode tabs: ← back to Sculpt, and the address drops ?mode
-    page.locator("#modeTabs [data-value=paint]").focus()
+    keyboard_focus(page, page.locator("#modeTabs [data-value=paint]"))
     page.keyboard.press("ArrowLeft")
     expect(selected(page, "modeTabs")).to_have_text("Sculpt mesh")
     expect(page).to_have_url(re.compile(r"/edit#box$"))

@@ -13,15 +13,22 @@
 // in the Tab order (roving tabindex). Arrow keys (← → and ↑ ↓) move to the next option that is not
 // disabled and select it, Home / End to the first and last; selection follows the focus, as each view
 // shows at once. The keys stop here, so a page's own shortcuts on the same keys (← → step through the
-// keyframes) don't also fire. Remembering the choice is the page's: it knows where (browser storage
+// keyframes) don't also fire. That is only when the option got the focus from the keyboard (Tab):
+// after a mouse click on a tab, the keys stay the page's. (Not :focus-visible: Chromium turns it on
+// at the first key pressed, so it can't tell a clicked tab from one reached with Tab.) Remembering the choice is the page's: it knows where (browser storage
 // per scan, the URL), and gives it back with select().
+
+// How the focus last arrived: a pointer press, or a key (Tab). Each control notes it when its option gets the focus.
+let modality = 'keyboard';
+addEventListener('pointerdown', () => { modality = 'pointer'; }, true);
+addEventListener('keydown', () => { modality = 'keyboard'; }, true);
 
 /** Make `el` (class "modes", buttons with data-value) a tab list.
  *  onSelect(value) runs when the person picks an option (click or keys), not when the page calls
  *  select(). Returns { el, get value, select(value), all(on), disable(value, off) }. */
 export function modeControl(el, { onSelect = () => {}, label } = {}) {
   const opts = () => [...el.querySelectorAll(':scope > button[data-value]')];
-  let value = null, every = false;
+  let value = null, every = false, byPointer = false;
   el.setAttribute('role', 'tablist');
   if (label) el.setAttribute('aria-label', label);
   for (const b of opts()) { b.type = 'button'; b.setAttribute('role', 'tab'); }
@@ -47,8 +54,9 @@ export function modeControl(el, { onSelect = () => {}, label } = {}) {
     const b = e.target.closest('button[data-value]');
     if (b && b.parentElement === el && !b.disabled) pick(b.dataset.value);
   });
+  el.addEventListener('focusin', () => { byPointer = modality === 'pointer'; });
   el.addEventListener('keydown', (e) => {
-    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.ctrlKey || e.metaKey || e.altKey || byPointer) return;  // a clicked tab: the keys are the page's
     const list = opts().filter((b) => !b.disabled);
     const at = list.indexOf(document.activeElement);
     if (at < 0) return;

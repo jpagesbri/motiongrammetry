@@ -1111,7 +1111,8 @@ def test_every_page_but_help_has_its_help_window_from_the_one_shared_module(serv
     assert ".pghint {" in css and ".pghint.off {" in css and "header.topbar .tophelp" in css
     assert "'mg.hints.off'" in js and "export function hint(id, html" in js and "you closed" in js
     scan, edit = pages["/"], pages["/edit"]
-    for h in ['data-hint="pv-3d"', 'data-hint="pv-frames"', 'data-hint="film"', "hint('all-steps'", "hint('run-stop'"]:
+    assert 'data-hint="film"' not in scan  # the strip's hint went: the thumbnails' and buttons' tooltips say it
+    for h in ['data-hint="pv-3d"', 'data-hint="pv-frames"', "hint('all-steps'", "hint('run-stop'"]:
         assert h in scan, h
     assert 'id="pvHint"' not in scan and '<div class="pghint" id="orHelp">' in scan
     assert 'data-hint="layout"' in edit and '<div class="pghint" id="toolHelp">' in edit and '<div class="pghint" id="seamHelp">' in edit
