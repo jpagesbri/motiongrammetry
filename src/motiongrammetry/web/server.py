@@ -11,7 +11,7 @@ Preview data is served in the raw SfM frame together with one 4x4 "scene" transf
   GET  /api/workspaces                      list
   POST /api/workspaces                      {"name", "video_path"} -> create
   PUT  /api/workspaces/<ws>/video?name=f    raw upload body -> video file
-  GET  /api/workspaces/<ws>/state           stages, manifest, frames, layers
+  GET  /api/workspaces/<ws>/state           stages, manifest, frames, layers (and which are outdated)
   POST /api/workspaces/<ws>/run             {"stages": [...], "options": {...}, "pause_on": [codes]}
                                             (pause_on: stop after a stage that ends with one of these
                                             warnings, the next stages skipped: status "paused")
@@ -384,7 +384,8 @@ class App:
             "manifest": ws.load_manifest(),
             "frames": frames,
             "masks": [f for f in frames if ws.mask_for(f).exists()],
-            "layers": self.layers(ws),
+            "layers": self.layers(ws),  # which exist, outdated or not
+            "layers_outdated": self.layers_outdated(ws),  # layer -> why it is outdated (no key: up to date)
             "stale": self.stale(ws),
             "upstream": ws.upstream(),  # UPSTREAM, with SfM's inputs as it ran here (masks with mask_sfm)
             "disk": self.disk(ws),
@@ -487,9 +488,16 @@ class App:
         log.info("deleted scan %s (%d files, %.1f MB)", name, info["files"], info["bytes"] / 1e6)
         return {"deleted": name, **info}
 
+    # Which stage made each layer, so an outdated stage marks its layers (custom: the editor's own).
+    LAYER_STAGE = {"cameras": "sfm", "sparse": "sfm", "dense": "mvs", "clean": "clean", "textured": "texture"}
+    CHANGED = {"frames": "the keyframes changed", "mask": "the masks changed", "sfm": "the cameras changed",
+               "mvs": "the MVS mesh changed", "vggt": "the VGGT mesh changed", "clean": "the clean mesh changed"}
+    STAGE_NAME = {"frames": "Keyframes", "mask": "Masks", "sfm": "SfM", "mvs": "MVS", "vggt": "VGGT",
+                  "clean": "Clean", "texture": "Texture"}
+
     def layers(self, ws: Workspace) -> dict[str, bool]:
-        stale = set(self.stale(ws))
-        layers = {
+        """Which 3D layers exist. Outdated ones too: they stay viewable, marked (layers_outdated)."""
+        return {
             "cameras": (ws.sparse / "images.bin").exists(),
             "sparse": (ws.sparse / "points3D.bin").exists(),
             "dense": (ws.mvs / "scene_dense.ply").exists(),
@@ -498,10 +506,19 @@ class App:
             "textured": (ws.mesh / "textured.ply").exists(),
             "custom": (ws.mesh / "custom" / "textured.ply").exists() or (ws.mesh / "custom" / "mesh_clean.ply").exists(),
         }
-        # Hide layers that no longer line up with the current cameras.
-        depends = {"cameras": "sfm", "sparse": "sfm", "dense": "mvs", "clean": "clean", "textured": "texture",
-                   "raw": ws.mesh_producer(ws.raw_mesh()) or "mvs", "custom": None}
-        return {k: v and depends[k] not in stale for k, v in layers.items()}
+
+    def layers_outdated(self, ws: Workspace) -> dict[str, str]:
+        """For each existing layer made by a stale stage, why, in plain words: which earlier step
+        changed since, and where to re-run from (e.g. "made before the masks changed: re-run from SfM")."""
+        causes = ws.stale_causes()
+        made_by = {**self.LAYER_STAGE, "raw": ws.mesh_producer(ws.raw_mesh()) or "mvs"}
+        out = {}
+        for layer, there in self.layers(ws).items():
+            cause = causes.get(made_by.get(layer)) if there else None
+            if cause:
+                out[layer] = (f"made before {self.CHANGED.get(cause['changed'], cause['changed'] + ' changed')}: "
+                              f"re-run from {self.STAGE_NAME[cause['rerun']]}")
+        return out
 
     def _version(self, ws: Workspace) -> float:
         # Changes whenever an output changes, so the viewer knows when to reload layers.

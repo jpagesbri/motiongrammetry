@@ -11,6 +11,7 @@ copied unchanged, so the app works offline.
 |---|---|---|
 | `eye.svg` | `eye` | Export window: preview a ready file |
 | `help-circle.svg` | `help-circle` | Top bar: the page's help (`pagehelp.js`) |
+| `clock-exclamation.svg` | `clock-exclamation` | Preview layers: a layer made before an earlier step changed |
 
 ## Adding an icon
 
