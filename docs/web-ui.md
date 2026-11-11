@@ -190,8 +190,10 @@ mg ui --root ~/scans --port 9000
 - **All steps** (Manual): one card per stage with live progress and the sub-step it refers to (e.g.
   `DensifyPointCloud: Estimated depth-maps 12`), timings and the key numbers from the manifest
   (registered frames, reprojection error, faces, which raw mesh was cleaned, ...). Outputs older
-  than their inputs are flagged **stale** and their layers hidden, since they no longer line up
-  with the cameras. New masks make clean and texture stale, and SfM and MVS too when SfM ran with
+  than their inputs are flagged **stale**. Their layers stay in the Preview, dimmed and marked
+  with a clock icon whose tooltip says which earlier step changed and where to re-run from
+  ("made before the masks changed: re-run from SfM"); the Preview opens on the most advanced
+  result, outdated or not. New masks make clean and texture stale, and SfM and MVS too when SfM ran with
   `mask_sfm`. **re-run from here** ticks that stage and the ones depending on it, staying on
   one path (MVS or VGGT) so the two are never mixed.
 - **Failures**: a banner with the failing stage, the error, its hint and a link to the log;

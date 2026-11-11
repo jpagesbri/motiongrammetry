@@ -42,7 +42,7 @@ export const VIEWS = {
     'The <b>Log</b> drawer at the bottom: the live output and the history of every run. It opens by itself when a step fails.',
   ] },
   'scan-3d': { page: 'scan', label: 'Preview · 3D model', more: '#viewer', items: [
-    '<b>Layers</b> (top left): cameras, sparse points, dense cloud, raw mesh, clean mesh, textured model and your custom version.',
+    '<b>Layers</b> (top left): cameras, sparse points, dense cloud, raw mesh, clean mesh, textured model and your custom version. The most advanced one shows; a dimmed one with a clock is outdated: point at it for why.',
     'Drag to orbit, right- or middle-drag to pan, wheel to zoom. Click a keyframe below to look through its camera; double-click it to open it big.',
     '<b>Display</b> (<kbd>W</kbd> cycles): colours, solid grey, wireframe, solid + wires. <b>Highlight holes</b> draws every opening in orange.',
     'The view cube (bottom left): click a face to look straight at it. <b>Persp / Ortho</b> (<kbd>5</kbd>) switches the projection.',

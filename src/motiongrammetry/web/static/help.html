@@ -218,7 +218,10 @@ fails.</p>
 <figure><img src="/help/preview.jpg" alt="The Preview tab with the finished shoe" loading="lazy">
   <figcaption>After clean, texture and the edits below: just the shoe, with its colours.</figcaption></figure>
 <p>Layers: camera positions, sparse points (from sfm), dense cloud and raw mesh (from mvs), clean mesh, textured model and,
-if you edited it, the custom version. Drag to orbit, right-drag or middle-drag to pan, wheel to zoom. Click a keyframe to
+if you edited it, the custom version. The most advanced one shows when you open a scan. A layer made before an earlier
+step changed (new masks, new keyframes, a re-run SfM) is <b>outdated</b>: it stays in the list, dimmed, with a clock icon;
+point at it to read what changed and where to re-run from (for example "made before the masks changed: re-run from SfM").
+When the model shown is outdated, a line under the list says so. Drag to orbit, right-drag or middle-drag to pan, wheel to zoom. Click a keyframe to
 look through its camera, double-click it to open it big. The <b>view cube</b> (bottom left, in every 3D view) shows which
 way you are looking, Z up as in the print files: click a face to look straight at it, near an edge or a corner for the 45°
 view in between; the button next to it frames the model, and <b>Persp / Ortho</b> (or <kbd>5</kbd>) switches between perspective
