@@ -10,6 +10,13 @@ the image with that version, and the About page and `mg --version` show it.
 
 ## Unreleased
 
+- **The 3D preview moves as the editor does** (part of #26): in the Scan page's preview, the editor
+  and the Export window's preview, left- or right-drag turns, middle-drag pans, the wheel zooms,
+  and Space held + left-drag pans (before, the preview panned with right-drag and zoomed with
+  middle-drag, and Space + drag panned only the editor's flat texture). Space neither scrolls the page nor presses a button
+  while the pointer is over a 3D view, and does nothing while typing in a field. The editor no
+  longer cuts the model when you zoom in close: its clipping planes follow the camera, as the
+  preview's do since #22. Each view keeps its own starting angle and frame button.
 - **Outdated results stay in the 3D preview, marked** (part of #26): a layer made before an earlier
   step changed (new masks for an SfM that used them, new keyframes, a re-run SfM) is no longer
   hidden. It stays in the Layers list, dimmed, with a clock icon whose tooltip says what changed and
