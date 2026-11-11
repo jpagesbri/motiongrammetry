@@ -219,6 +219,15 @@
     padding: 4px 8px; border-radius: 6px; display: none; }
   .film { grid-area: film; border-top: 1px solid var(--line); background: var(--panel); display: flex; flex-direction: column; min-width: 0; }
   .film-head { display: flex; align-items: center; gap: 12px; padding: 6px 12px 0; }
+  .player { display: inline-flex; align-items: center; gap: 1px; }
+  .player button { display: inline-grid; place-items: center; width: 24px; height: 22px; padding: 0; font-size: 14px;
+    background: none; border: 1px solid transparent; border-radius: 5px; color: var(--muted); cursor: pointer; }
+  .player button:hover:not(:disabled) { color: var(--text); border-color: var(--line); }
+  .player button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .player button:disabled { opacity: .4; cursor: default; }
+  .player button[data-play=play].on { color: var(--accent); }
+  .player .pos { font: 11px var(--mono); color: var(--muted); min-width: 7ch; padding-left: 6px; white-space: nowrap; }
+  .film-note { color: var(--warn); font-size: 11px; }
   .strip { display: flex; gap: 6px; overflow-x: auto; padding: 6px 12px 10px; flex: 1; align-items: center; }
   .thumb { position: relative; flex: 0 0 auto; height: 84px; border-radius: 5px; overflow: hidden; cursor: pointer;
     border: 2px solid transparent; background: var(--bg); }
@@ -408,8 +417,17 @@
           <div class="film" id="film">
             <div class="film-head">
               <h2 style="margin:0">Keyframes <span class="muted" id="frameCount"></span></h2>
+              <span class="player" id="player" role="group" aria-label="keyframe player">
+                <button type="button" data-play="start" title="first keyframe (Home)" aria-label="first keyframe" disabled></button>
+                <button type="button" data-play="prev" title="previous keyframe (←)" aria-label="previous keyframe" disabled></button>
+                <button type="button" data-play="play" title="play: step through the keyframes, 2 a second" aria-label="play" disabled></button>
+                <button type="button" data-play="next" title="next keyframe (→)" aria-label="next keyframe" disabled></button>
+                <button type="button" data-play="end" title="last keyframe (End)" aria-label="last keyframe" disabled></button>
+                <span class="pos" id="filmPos" aria-live="polite"></span>
+              </span>
+              <span class="film-note" id="filmNote" hidden>no camera for this frame (SfM didn't place it)</span>
               <label class="muted"><input type="checkbox" id="showMasks"> mask overlay</label>
-              <span class="pghint" data-hint="film">click a frame to view from its camera · double-click to open it big</span>
+              <span class="pghint" data-hint="film">click a frame to view from its camera · double-click to open it big · ← → Home End step, ▶ plays</span>
             </div>
             <div class="strip" id="strip"></div>
           </div>
@@ -549,6 +567,7 @@ pivot.add(root);
 let sceneT = new THREE.Matrix4(), autoT = new THREE.Matrix4();
 const layerObj = {};                       // name -> Object3D
 let extent = 1, camData = [], camLines = null, selCam = -1;
+const FILM = { i: -1, timer: 0 };  // the keyframe player (see renderFilm): the selected frame, play's timer
 
 let pending = false;
 function render() {
@@ -649,7 +668,7 @@ function highlightCamera(i) {
   const col = camLines.geometry.attributes.color, per = 20;
   const paint = (k, c) => { for (let j = k * per; j < (k + 1) * per; j++) col.setXYZ(j, c.r, c.g, c.b); };
   if (selCam >= 0) paint(selCam, new THREE.Color(0x5aa9ff));
-  selCam = i;
+  selCam = i; view.dataset.cam = i;  // for the browser tests
   if (i >= 0) paint(i, new THREE.Color(0xf0b429));
   col.needsUpdate = true; render();
 }
@@ -919,6 +938,7 @@ function modelBox(precise) {
 }
 function orientBegin() {
   if (OR.active || !layerObj.cameras) return false;
+  filmPause();
   const c = modelBox(false).getCenter(new THREE.Vector3());
   pivot.position.copy(c); pivot.quaternion.identity(); pivot.updateMatrix();
   root.matrix.copy(new THREE.Matrix4().makeTranslation(-c.x, -c.y, -c.z).multiply(sceneT)); root.matrixWorldNeedsUpdate = true;
@@ -1346,6 +1366,12 @@ addEventListener('keydown', (e) => {
   }
   const viewShown = placed?.moved || (isShown('preview') && pvMode === '3d');
   if (!viewShown) return;
+  // the keyframe player, on the 3D model (not while orienting): ← → step, Home / End first / last
+  const film = { ArrowRight: () => filmStep(1), ArrowLeft: () => filmStep(-1), Home: () => selectFrame(0), End: () => selectFrame(1e9) }[e.key];
+  if (film && isShown('preview') && pvMode === '3d' && !OR.active && !placed) {
+    if (filmThumbs().length) { e.preventDefault(); film(); }
+    return;
+  }
   if (e.key === 'Escape' && OR.picking) armFloor(false);
   else if (e.key.toLowerCase() === 'w') setDisplay(DISPLAYS[(DISPLAYS.indexOf(display) + 1) % DISPLAYS.length]);
   else if (e.key === '5') { proj.set(!camera.isOrthographicCamera); render(); }
@@ -1424,6 +1450,7 @@ async function refreshList() {  // the scans, for the top bar's chooser and the 
 }
 
 async function select(name) {
+  filmPause();
   unmountPlace();
   if (OR.active) orientEnd(null);
   orientOpen = false; orientHome();
@@ -1958,7 +1985,7 @@ function layoutG() {
   $('splitLbl').hidden = !canSplit(); $('splitChk').checked = split;
   gTabs.select(gtab); gTabs.all(sp);
   document.querySelectorAll('.gpane').forEach((p) => p.classList.toggle('on', sp || p.dataset.g === gtab));
-  if (isShown('preview')) $('pvPip').hidden = true;
+  if (isShown('preview')) $('pvPip').hidden = true; else filmPause();
   if (isShown('run')) $('runPip').hidden = true;
   // the place step borrows the 3D view only while the Preview is hidden
   if (curPage() === 'place') { if (isShown('run')) renderRun(); else unmountPlace(); }
@@ -1974,6 +2001,7 @@ let pvMode = '3d';
 try { pvMode = localStorage.getItem('mg.pv') === 'frames' ? 'frames' : '3d'; } catch {}
 function showPv(m) {
   pvMode = m;
+  if (m !== '3d') filmPause();
   try { localStorage.setItem('mg.pv', m); } catch {}
   $('pv3d').hidden = m !== '3d'; $('pvFrames').hidden = m !== 'frames';
   pvTabs.select(m);
@@ -2375,24 +2403,91 @@ function setLogMode(mode) {
   if (mode === 'history') { $('logTitle').textContent = 'click a run to open its log'; refreshHistory(); }
 }
 
-let filmKey = '';
+let filmKey = '', filmScan = null;
 function renderFilm() {
   const f = wsState.frames, key = current + f.length + wsState.masks.length;
   $('frameCount').textContent = f.length ? `(${f.length})` : '';
   if (key === filmKey) return;
   filmKey = key;
+  if (filmScan !== current || FILM.i >= f.length) { filmPause(); FILM.i = -1; $('filmNote').hidden = true; }  // new masks keep the place
+  filmScan = current;
   const masks = new Set(wsState.masks);
   $('strip').innerHTML = f.length ? f.map((n, i) => `
-    <div class="thumb" data-frame="${n}" title="${n}">
+    <div class="thumb${i === FILM.i ? ' sel' : ''}" data-frame="${n}" title="${n}">
       <img loading="lazy" src="/api/workspaces/${current}/thumb/frames/${n}">
       ${masks.has(n) ? `<img class="mask" loading="lazy" src="/api/workspaces/${current}/thumb/masks/${n}">` : ''}
       <span>${i}</span></div>`).join('') : '<span class="muted">no keyframes yet</span>';
-  $('strip').querySelectorAll('[data-frame]').forEach((el) => el.addEventListener('click', () => {
-    $('strip').querySelectorAll('.sel').forEach((x) => x.classList.remove('sel'));
-    el.classList.add('sel'); flyToCamera(el.dataset.frame);
-  }));
-  $('strip').querySelectorAll('[data-frame]').forEach((el, i) => el.addEventListener('dblclick', () => { openFrames('all'); fvGo(i); }));
+  $('strip').querySelectorAll('[data-frame]').forEach((el, i) => {
+    el.addEventListener('click', () => selectFrame(i));
+    el.addEventListener('dblclick', () => { openFrames('all'); fvGo(i); });
+  });
+  filmUi();
 }
+
+// ---------------------------------------------------------------- keyframe player
+// The strip's header: first, previous, play / pause, next, last, and where you are. Each step is a
+// click on that thumbnail (selectFrame): it is selected, scrolled into the strip and the view flies to
+// its camera. Play steps at a fixed pace and stops on the last frame; any navigation of the view, a
+// player key or button, leaving the 3D model, the scan or the page, or orienting pauses it.
+const FILM_STEP_MS = 500;  // play: 2 keyframes a second
+const filmThumbs = () => [...$('strip').querySelectorAll('[data-frame]')];
+for (const b of $('player').querySelectorAll('[data-play]')) b.innerHTML = icon({ start: 'player-skip-back', prev: 'player-track-prev', play: 'player-play', next: 'player-track-next', end: 'player-skip-forward' }[b.dataset.play]);
+function filmUi() {
+  const n = filmThumbs().length, playing = !!FILM.timer, pb = $('player').querySelector('[data-play=play]');
+  $('player').querySelectorAll('button').forEach((b) => { b.disabled = !n; });
+  $('filmPos').textContent = n ? `${FILM.i >= 0 ? FILM.i + 1 : '–'} / ${n}` : '';
+  pb.innerHTML = icon(playing ? 'player-pause' : 'player-play');
+  pb.classList.toggle('on', playing);
+  pb.title = playing ? 'pause' : 'play: step through the keyframes, 2 a second';
+  pb.setAttribute('aria-label', playing ? 'pause' : 'play');
+}
+function selectFrame(i, playing = false) {
+  const t = filmThumbs(); if (!t.length) return;
+  if (!playing) filmPause();
+  FILM.i = Math.max(0, Math.min(t.length - 1, i));
+  const el = t[FILM.i], strip = $('strip');
+  t.forEach((x) => x.classList.toggle('sel', x === el));
+  // into view inside the strip only: scrollIntoView could scroll the page as well
+  const sr = strip.getBoundingClientRect(), er = el.getBoundingClientRect();
+  if (er.left < sr.left) strip.scrollLeft -= sr.left - er.left + 12;
+  else if (er.right > sr.right) strip.scrollLeft += er.right - sr.right + 12;
+  // a keyframe SfM didn't place has no camera: still selected, the view stays
+  const placedCam = camData.some((c) => c.name === el.dataset.frame);
+  $('filmNote').hidden = placedCam || !camData.length;
+  if (placedCam) flyToCamera(el.dataset.frame); else highlightCamera(-1);
+  filmUi();
+}
+const filmStep = (d) => selectFrame(FILM.i < 0 ? 0 : FILM.i + d);  // before any selection: the first frame
+function filmPause() {
+  if (!FILM.timer) return;
+  clearInterval(FILM.timer); FILM.timer = 0;
+  filmUi();
+}
+function filmPlay() {
+  const n = filmThumbs().length; if (!n || FILM.timer) return;
+  if (FILM.i < 0 || FILM.i >= n - 1) selectFrame(0);  // from the start again once at the end
+  FILM.timer = setInterval(() => {
+    const last = filmThumbs().length - 1;
+    if (!filmPlayable() || FILM.i >= last) { filmPause(); return; }
+    selectFrame(FILM.i + 1, true);
+    if (FILM.i >= last) filmPause();  // stops on the last frame, no loop
+  }, FILM_STEP_MS);
+  filmUi();
+}
+const filmPlayable = () => isShown('preview') && pvMode === '3d' && !OR.active && !document.hidden;
+$('player').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-play]'); if (!b || b.disabled) return;
+  const a = b.dataset.play;
+  if (a === 'play') { if (FILM.timer) filmPause(); else filmPlay(); }
+  else if (a === 'start') selectFrame(0);
+  else if (a === 'end') selectFrame(1e9);
+  else filmStep(a === 'next' ? 1 : -1);
+});
+// navigating the view pauses play (the player's own flights don't: they start no drag)
+controls.addEventListener('start', filmPause);
+view.addEventListener('pointerdown', (e) => { if (e.target.closest('canvas, .vcube')) filmPause(); }, true);
+view.addEventListener('wheel', (e) => { if (e.target.closest('canvas')) filmPause(); }, { capture: true, passive: true });
+document.addEventListener('visibilitychange', () => { if (document.hidden) filmPause(); });
 $('showMasks').addEventListener('change', () => $('film').classList.toggle('masks', $('showMasks').checked));
 
 // ---------------------------------------------------------------- job polling
