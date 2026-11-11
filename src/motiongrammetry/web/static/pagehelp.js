@@ -43,7 +43,7 @@ export const VIEWS = {
   ] },
   'scan-3d': { page: 'scan', label: 'Preview · 3D model', more: '#viewer', items: [
     '<b>Layers</b> (top left): cameras, sparse points, dense cloud, raw mesh, clean mesh, textured model and your custom version. The most advanced one shows; a dimmed one with a clock is outdated: point at it for why.',
-    'Drag to orbit, right- or middle-drag to pan, wheel to zoom. Click a keyframe below to look through its camera; double-click it to open it big.',
+    'Left- or right-drag: turn. Middle-drag or <kbd>Space</kbd>+drag: pan. Wheel: zoom (as in the editor). Click a keyframe below to look through its camera; double-click it to open it big.',
     '<b>Display</b> (<kbd>W</kbd> cycles): colours, solid grey, wireframe, solid + wires. <b>Highlight holes</b> draws every opening in orange.',
     'The view cube (bottom left): click a face to look straight at it. <b>Persp / Ortho</b> (<kbd>5</kbd>) switches the projection.',
     '<b>Orient…</b> stands the model the right way; every export uses it.',
@@ -56,7 +56,7 @@ export const VIEWS = {
     '<b>View from this camera</b> shows the 3D model from that keyframe.',
   ] },
   'edit-sculpt': { page: 'edit', label: 'Sculpt mesh', more: '#sculpt', items: [
-    'Left-drag on the mesh: the tool. Off it, or right-drag: orbit. Middle-drag: pan. Wheel: zoom.',
+    'Left-drag on the mesh: the tool. Off it, or right-drag: turn. Middle-drag or <kbd>Space</kbd>+drag: pan. Wheel: zoom.',
     '<kbd>[</kbd> <kbd>]</kbd> radius · <kbd>Shift</kbd> smooth · <kbd>Ctrl</kbd> invert · <kbd>Ctrl+Z</kbd> / <kbd>Ctrl+Shift+Z</kbd> undo / redo · <kbd>Ctrl+S</kbd> save. Each tool has its key on its button.',
     '<b>Fill</b> places spheres at the depth of the surface around the brush (so it fills a hole you look through); <b>Merge</b> turns mesh + fill into one closed surface. <b>Plane cut</b>: drag a line, check the preview, <kbd>Enter</kbd> to cut. <b>Restore</b>: brush over the amber ghost (the raw mesh) to bring back what clean carved away.',
     '<b>Sanitize mesh…</b> checks for what breaks texturing and fixes what you choose, in one undo step.',
@@ -64,7 +64,7 @@ export const VIEWS = {
   ] },
   'edit-paint': { page: 'edit', label: 'Paint texture', more: '#paint', items: [
     'Left-drag on the model or on the flat texture: paint. <kbd>Alt</kbd>+click: pick a colour. <kbd>Ctrl</kbd>+click: the clone source.',
-    '3D: right-drag orbit, middle-drag pan. Flat texture: right- or middle-drag pan, wheel zoom. <kbd>[</kbd> <kbd>]</kbd> radius · <kbd>Ctrl+Z</kbd> / <kbd>Ctrl+Shift+Z</kbd> undo / redo · <kbd>Ctrl+S</kbd> save.',
+    '3D: right-drag turn, middle-drag or <kbd>Space</kbd>+drag pan. Flat texture: right- or middle-drag or <kbd>Space</kbd>+drag pan, wheel zoom. <kbd>[</kbd> <kbd>]</kbd> radius · <kbd>Ctrl+Z</kbd> / <kbd>Ctrl+Shift+Z</kbd> undo / redo · <kbd>Ctrl+S</kbd> save.',
     'On the model, paint reaches only surface you can see, and is painted across seams on both sides.',
     '<b>Texture layout</b>: the texture comes cut into thousands of tiny pieces, by the photo each came from. <b>Rebuild layout</b> cuts it by the model\'s sides into fewer, bigger pieces, easy to paint on the flat texture; <b>Edit seams…</b> cuts and joins them by hand.',
     'Re-running texture replaces the paint (<b>Delete custom version</b> goes back to the photo texture).',

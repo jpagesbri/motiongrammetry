@@ -221,7 +221,8 @@ fails.</p>
 if you edited it, the custom version. The most advanced one shows when you open a scan. A layer made before an earlier
 step changed (new masks, new keyframes, a re-run SfM) is <b>outdated</b>: it stays in the list, dimmed, with a clock icon;
 point at it to read what changed and where to re-run from (for example "made before the masks changed: re-run from SfM").
-When the model shown is outdated, a line under the list says so. Drag to orbit, right-drag or middle-drag to pan, wheel to zoom. Click a keyframe to
+When the model shown is outdated, a line under the list says so. Left- or right-drag to turn, middle-drag (or <kbd>Space</kbd> + drag) to pan, wheel to zoom,
+the same in the editor and the Export window. Click a keyframe to
 look through its camera, double-click it to open it big. The <b>view cube</b> (bottom left, in every 3D view) shows which
 way you are looking, Z up as in the print files: click a face to look straight at it, near an edge or a corner for the 45°
 view in between; the button next to it frames the model, and <b>Persp / Ortho</b> (or <kbd>5</kbd>) switches between perspective
@@ -374,7 +375,8 @@ crease. <b>Show them</b> closes the window and marks them in red on the model, t
 spot to spot, the largest first, and <b>Hide</b> (or Esc) takes the marks away, as does any edit. Smooth or carve the spots
 that matter, or <b>Merge</b> with <b>whole mesh</b>, which rebuilds the whole surface without them.</p>
 <h3 id="sculpt">Sculpt</h3>
-<p>Left-drag on the mesh to use the tool, off it (or right-drag) to orbit, middle-drag to pan, wheel to zoom. The example: the
+<p>Left-drag on the mesh to use the tool, off it (or right-drag) to turn, middle-drag (or <kbd>Space</kbd> + drag) to pan, wheel to zoom,
+as in the Preview. The example: the
 shoe sat on a stool, so its underside was never filmed and the scan is open there, with a loose scrap
 hanging under the toe. Two tools and a save give it a sole.</p>
 <figure><img src="/help/edit-before.jpg" alt="The shoe in the editor with its open bottom in orange" loading="lazy">
@@ -436,7 +438,8 @@ where it rises), <b>Remove loose pieces</b>, <kbd>[</kbd> <kbd>]</kbd> brush siz
   <figcaption>Paint on the model (left) or on the flat texture (right); both stay in sync.</figcaption></figure>
 <p>Brushes: paint, restore the original photo, blur, smudge, clone (<kbd>Ctrl</kbd>+click sets the source), lighten, darken,
 saturate, desaturate and a colour picker (<kbd>Alt</kbd>+click anywhere). Painting on the model only reaches surface you can see
-and crosses texture seams. Re-running texture replaces the paint.</p>
+and crosses texture seams. Re-running texture replaces the paint. On the model you move the view as in Sculpt; on the flat
+texture, right- or middle-drag (or <kbd>Space</kbd> + drag) pans and the wheel zooms.</p>
 <p><b>Clone on the model</b> copies by place on the surface, not by position in the texture (which is cut into many small
 pieces): <kbd>Ctrl</kbd>+click the top right corner of one side, start painting at the top right corner of another, and that
 side gets the first one's look, corner to corner, even when the two face different ways. The amber ring shows where it is

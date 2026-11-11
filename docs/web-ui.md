@@ -55,7 +55,8 @@ mg ui --root ~/scans --port 9000
     `unsaved` (sculpt edits, paint); Scan gives `orient` (fix the orientation in the Preview) and `run`. Without `orient`, "fix the
     orientation…" links to the Scan page (`/?open=orient#scan`).
   - The 3D preview loads three.js, its loaders, `projection.js` (the Persp / Ortho switch, shared
-    with the Scan preview and the editor) and the view cube only when it first shows a file, so Help
+    with the Scan preview and the editor), `navigation.js` (the mouse and keys, shared too) and the
+    view cube only when it first shows a file, so Help
     and About load them only then (each page has the import map).
   - The choices are remembered in this browser as before: contents and formats (`mg.export`) and
     each scan's placement and print settings (`mg.export.<scan>`).
@@ -264,5 +265,14 @@ mg ui --root ~/scans --port 9000
   orthographic. Point clouds travel as packed binary (f32 xyz + u8 rgb, sampled
   server-side to ≤600k), meshes as cached GLB, all frusta are a single draw call, and the view
   renders only on interaction (draw-call / triangle counter bottom-right).
+- **Navigation** (`static/navigation.js`, the same in the Scan preview, the editor and the Export
+  preview): left- or right-drag turns about the target, middle-drag pans, the wheel zooms, and
+  `Space` held + left-drag pans (not while typing in a field; over a 3D view Space neither scrolls
+  the page nor presses the focused button). The near and far clipping planes follow the camera's
+  distance to the target, scaled by what was framed, so nothing is cut when you come close (#22).
+  In the editor a left-drag on the model is the tool, and the flat texture view keeps its own pan
+  (right-, middle- or Space-drag) and wheel zoom. Where each view starts and what its frame button
+  does stay its own: the Preview's 3/4 view (from the front while placing the model), the
+  editor's front view.
 
 Needs no extra Python packages; three.js and three-mesh-bvh are bundled in `static/vendor/`, so it works offline.
