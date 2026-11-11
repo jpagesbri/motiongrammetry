@@ -381,7 +381,7 @@
       <div class="gpane gp-preview" data-g="preview" id="panePreview" role="tabpanel" aria-labelledby="tabPreview">
         <div class="pvbar">
           <div class="modes" id="pvTabs" aria-label="3D model or frames"><button data-value="3d" title="the model in 3D, with the cameras and points (W: next display mode)">3D model</button><button data-value="frames" title="the keyframes, their masks and how well they fit">Frames &amp; masks</button></div>
-          <span class="pghint" data-hint="pv-3d" id="pvHint3d">W: next display mode · 5: perspective or orthographic</span><span class="pghint" data-hint="pv-frames" id="pvHintFrames" hidden>← → step through the keyframes · scroll to zoom, drag to pan, double-click to fit</span>
+          <span class="pghint" data-hint="pv-3d" id="pvHint3d">drag: turn · middle-drag or Space+drag: pan · W: next display mode · 5: perspective or orthographic</span><span class="pghint" data-hint="pv-frames" id="pvHintFrames" hidden>← → step through the keyframes · scroll to zoom, drag to pan, double-click to fit</span>
         </div>
         <div class="pv3d" id="pv3d">
           <main class="view" id="view">
@@ -451,9 +451,9 @@
 
 <script type="module">
 import * as THREE from 'three';
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { projection } from '/projection.js';
+import { navigation } from '/navigation.js';
 import { mountTopbar, setScan, updateScans, uploadVideo, thumbUrl, pageLabel as topPageLabel } from '/topbar.js';
 import { modeControl } from '/modes.js';
 import { openExport, exportHooks } from '/export.js';
@@ -529,8 +529,8 @@ scene3.background = new THREE.Color(0x0f1115);
 const persp = new THREE.PerspectiveCamera(50, 1, 0.01, 1000);
 persp.position.set(2, 1.5, 2);
 let camera = persp;                        // persp, or proj's orthographic camera (key 5, view cube button)
-const controls = new OrbitControls(persp, renderer.domElement);
-controls.enableDamping = false;            // render on demand only
+// the mouse and keys as in the editor (static/navigation.js); the clipping follows the camera
+const nav = navigation(persp, renderer.domElement), controls = nav.controls;
 scene3.add(new THREE.HemisphereLight(0xffffff, 0x404050, 1.6));
 const sun = new THREE.DirectionalLight(0xffffff, 1.4);
 persp.add(sun); sun.position.set(1, 2, 1); scene3.add(persp);
@@ -550,16 +550,6 @@ let sceneT = new THREE.Matrix4(), autoT = new THREE.Matrix4();
 const layerObj = {};                       // name -> Object3D
 let extent = 1, camData = [], camLines = null, selCam = -1;
 
-// The clipping planes follow the camera: near and far from its distance to the orbit target,
-// scaled by the framed model. Fixed once at fitView, they kept the scale of whatever was framed
-// first (sparse points with far-off background), so a mesh made later was cut when approached.
-let viewSize = 1;  // the size of what fitView framed
-function fitClip() {
-  if (!camera.isPerspectiveCamera) return;
-  const d = camera.position.distanceTo(controls.target);
-  const near = Math.max(d / 1000, viewSize / 1e5), far = d + viewSize * 20;
-  if (camera.near !== near || camera.far !== far) { camera.near = near; camera.far = far; camera.updateProjectionMatrix(); }
-}
 let pending = false;
 function render() {
   if (pending) return;
@@ -567,7 +557,7 @@ function render() {
   requestAnimationFrame(() => {
     pending = false;
     fadeWires();
-    fitClip();
+    nav.clip();  // near / far follow the camera (#22)
     renderer.render(scene3, camera);
     const i = renderer.info.render;
     $('stats').textContent = `${i.calls} draw calls · ${fmt(i.triangles)} tris · ${fmt(i.points)} pts`;
@@ -686,10 +676,9 @@ function fitView() {
   });
   if (box.isEmpty()) box.setFromCenterAndSize(new THREE.Vector3(), new THREE.Vector3(1, 1, 1));
   const size = box.getSize(new THREE.Vector3()).length(), ctr = box.getCenter(new THREE.Vector3());
-  persp.fov = 50; viewSize = size;
-  persp.near = size / 500; persp.far = size * 50; persp.updateProjectionMatrix();
+  persp.fov = 50;
   persp.position.copy(ctr).add(new THREE.Vector3(0.9, 0.6, 0.9).multiplyScalar(size));
-  controls.target.copy(ctr); persp.lookAt(ctr); proj.framed(); render();
+  controls.target.copy(ctr); nav.frame(size, persp); persp.lookAt(ctr); proj.framed(); render();
 }
 
 async function reloadScene() {
@@ -968,9 +957,9 @@ function turn(axis, sign) {
 function viewFront() {
   const b = modelBox(false); if (b.isEmpty()) return;
   const size = b.getSize(new THREE.Vector3()).length(), c = b.getCenter(new THREE.Vector3());
-  persp.fov = 50; viewSize = size; persp.near = size / 500; persp.far = size * 50; persp.updateProjectionMatrix();
+  persp.fov = 50;
   persp.position.copy(c).add(new THREE.Vector3(0, 0.3, 1).normalize().multiplyScalar(size * 0.9));
-  controls.target.copy(c); persp.lookAt(c); proj.framed(); render();
+  controls.target.copy(c); nav.frame(size, persp); persp.lookAt(c); proj.framed(); render();
 }
 function makeFront() {  // the side being looked at becomes the front (+Z, what the default view and thumbnails show)
   orientBegin(); recentrePivot();

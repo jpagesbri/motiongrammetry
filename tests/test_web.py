@@ -994,12 +994,19 @@ def test_every_page_offers_export_through_the_one_shared_module(server):
         css = r.read().decode()
     with urllib.request.urlopen(base + "/projection.js") as r:
         assert "export function projection(" in r.read().decode()
+    with urllib.request.urlopen(base + "/navigation.js") as r:
+        assert r.headers["Content-Type"].startswith("text/javascript")
+        nav = r.read().decode()
+    # one navigation for every 3D view (#26): left or right drag turns, middle drag pans, Space + left drag pans
+    assert "export function navigation(camera, dom)" in nav and "export const spaceHeld" in nav
+    assert "MIDDLE: THREE.MOUSE.PAN, RIGHT: THREE.MOUSE.ROTATE" in nav and "new OrbitControls(" in nav
     with urllib.request.urlopen(base + "/topbar.js") as r:
         bar = r.read().decode()
     # the window and its logic: the contents and formats, ready / outdated, the downloads, the saved choices
     for text in ["export const EX_CONTENTS = [", "export async function openExport(name)", "export function exportHooks(",
                  "/export/status`", "/export`", "/exports/${enc(file)}", "'mg.export'", "'mg.export.' + scan",
-                 "export_defaults", 'id="exDownload"', "import('/projection.js')", "import('/viewcube.js')"]:
+                 "export_defaults", 'id="exDownload"', "import('/projection.js')", "import('/viewcube.js')",
+                 "import('/navigation.js')"]:
         assert text in js, text
     # nothing to export yet: it says so and points to Run; unsaved edits: it says it exports the saved files only
     assert "has nothing to export yet" in js and 'href="/?tab=run#${enc(scan)}">Go to Run</a>' in js
@@ -1053,6 +1060,8 @@ def test_every_page_offers_export_through_the_one_shared_module(server):
     assert "import { exportHooks } from '/export.js';" in edit and "S.dirty && 'sculpt edits', P.dirty && 'paint'" in edit
     for html in (scan, edit):
         assert "import { projection } from '/projection.js';" in html and "function projection(" not in html
+        assert "from '/navigation.js';" in html and "new OrbitControls(" not in html and "OrbitControls.js" not in html
+    assert "new OrbitControls(" not in js
 
 
 def test_every_page_but_help_has_its_help_window_from_the_one_shared_module(server):
