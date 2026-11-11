@@ -1025,7 +1025,7 @@ def test_every_page_offers_export_through_the_one_shared_module(server):
     with urllib.request.urlopen(base + "/icons.js") as r:
         assert r.headers["Content-Type"].startswith("text/javascript")
         icons = r.read().decode()
-    assert "export function icon(name)" in icons and "const NAMES = ['eye', 'help-circle', 'clock-exclamation'];" in icons and "/vendor/tabler-icons/" in icons
+    assert "export function icon(name)" in icons and "const NAMES = ['eye', 'help-circle', 'clock-exclamation', 'player-skip-back'," in icons and "/vendor/tabler-icons/" in icons
     with urllib.request.urlopen(base + "/vendor/tabler-icons/eye.svg") as r:
         assert b"icon-tabler-eye" in r.read()
     with urllib.request.urlopen(base + "/vendor/tabler-icons/LICENSE") as r:

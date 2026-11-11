@@ -12,6 +12,12 @@ copied unchanged, so the app works offline.
 | `eye.svg` | `eye` | Export window: preview a ready file |
 | `help-circle.svg` | `help-circle` | Top bar: the page's help (`pagehelp.js`) |
 | `clock-exclamation.svg` | `clock-exclamation` | Preview layers: a layer made before an earlier step changed |
+| `player-skip-back.svg` | `player-skip-back` | Preview keyframe player: first keyframe |
+| `player-track-prev.svg` | `player-track-prev` | Preview keyframe player: previous keyframe |
+| `player-play.svg` | `player-play` | Preview keyframe player: play |
+| `player-pause.svg` | `player-pause` | Preview keyframe player: pause |
+| `player-track-next.svg` | `player-track-next` | Preview keyframe player: next keyframe |
+| `player-skip-forward.svg` | `player-skip-forward` | Preview keyframe player: last keyframe |
 
 ## Adding an icon
 
