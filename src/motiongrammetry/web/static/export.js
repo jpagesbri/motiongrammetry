@@ -347,7 +347,7 @@ async function exportNow() {
   fields();
 }
 
-// The 3D view of an exported file. three.js, its loaders, the projection and the view cube are
+// The 3D view of an exported file. three.js, its loaders, the projection, the navigation and the view cube are
 // loaded the first time, so pages that never show one (Help, About) don't load them.
 async function preview(f, why, note = '') {
   const seq = ++shownSeq;
@@ -363,15 +363,15 @@ async function show(f, file, url, ext, seq) {
   const box = $('exPreview');
   const THREE = await import('three');
   if (!view) {
-    const [{ OrbitControls }, { projection }] = await Promise.all([import('three/addons/controls/OrbitControls.js'), import('/projection.js')]);
+    const [{ navigation }, { projection }] = await Promise.all([import('/navigation.js'), import('/projection.js')]);
     const r = new THREE.WebGLRenderer({ antialias: true }); r.setPixelRatio(Math.min(devicePixelRatio, 2));
     r.outputColorSpace = THREE.SRGBColorSpace; box.appendChild(r.domElement);
     const sc = new THREE.Scene(); sc.background = new THREE.Color(0x0f1115);
     const cam = new THREE.PerspectiveCamera(40, 1, 0.01, 1e5);
     sc.add(new THREE.HemisphereLight(0xffffff, 0x404050, 1.5)); const sun = new THREE.DirectionalLight(0xffffff, 1.6);
     cam.add(sun); sun.position.set(1, 2, 1); sc.add(cam);
-    const ctl = new OrbitControls(cam, r.domElement);
-    view = { r, sc, cam, ctl, mesh: null, draw: () => { const w = box.clientWidth, h = box.clientHeight; if (!w || !h) return; r.setSize(w, h, false); view.proj.resize(w / h); r.render(sc, view.proj.camera); } };
+    const nav = navigation(cam, r.domElement), ctl = nav.controls;  // the mouse and keys as in the Scan preview and the editor
+    view = { r, sc, cam, ctl, nav, mesh: null, draw: () => { const w = box.clientWidth, h = box.clientHeight; if (!w || !h) return; r.setSize(w, h, false); view.proj.resize(w / h); nav.clip(); r.render(sc, view.proj.camera); } };
     view.proj = projection(cam, ctl, sun, () => { view.draw(); view.cube?.update(); });
     ctl.addEventListener('change', view.draw);
     new ResizeObserver(view.draw).observe(box);
@@ -403,8 +403,8 @@ async function show(f, file, url, ext, seq) {
   view.sc.add(obj); view.mesh = obj;
   view.frame = () => {
     const b = new THREE.Box3().setFromObject(obj), size = b.getSize(new THREE.Vector3()).length(), c = b.getCenter(new THREE.Vector3());
-    view.ctl.target.copy(c); view.cam.near = size / 200; view.cam.far = size * 20; view.cam.updateProjectionMatrix();
-    view.cam.position.copy(c).add(new THREE.Vector3(0.25, 0.2, 1).normalize().multiplyScalar(size * 1.35)); view.cam.lookAt(c);
+    view.ctl.target.copy(c);
+    view.cam.position.copy(c).add(new THREE.Vector3(0.25, 0.2, 1).normalize().multiplyScalar(size * 1.35)); view.nav.frame(size, view.cam); view.cam.lookAt(c);
     view.proj.framed(); view.draw();
   };
   view.frame();

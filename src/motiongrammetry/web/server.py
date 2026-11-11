@@ -47,7 +47,7 @@ Preview data is served in the raw SfM frame together with one 4x4 "scene" transf
   GET  /api/assist                          assisted mode's subject / coverage choices, and the
                                             warnings its runs pause on
   GET  /<name>.js, /<name>.css             shared page modules and styles (static/viewcube.js, topbar.js, scanchooser.js,
-                                            scrollbar.js, modes.js, export.js, projection.js, pagehelp.js,
+                                            scrollbar.js, modes.js, export.js, projection.js, navigation.js, pagehelp.js,
                                             icons.js, topbar.css, scrollbar.css, modes.css, export.css, pagehelp.css,
                                             notes.js, notes.css, camerapath.js)
   GET  /vendor/<path>                       bundled three.js and three-mesh-bvh (static/vendor)

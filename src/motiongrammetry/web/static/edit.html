@@ -261,9 +261,9 @@
 
 <script type="module">
 import * as THREE from 'three';
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { projection } from '/projection.js';
+import { navigation, spaceHeld } from '/navigation.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { MeshBVH, acceleratedRaycast } from 'three-mesh-bvh';
 import * as SMesh from '/sculpt-mesh.js';  // the sculpt mesh's state and density operations
@@ -390,12 +390,11 @@ root.matrixAutoUpdate = false;
 scene.add(root);
 const rootInv = new THREE.Matrix4();
 
-// Our pointer handlers are registered before OrbitControls' so a stroke can claim the event.
+// Our pointer handlers are registered before the navigation's so a stroke can claim the event.
 canvas.addEventListener('pointerdown', onPointerDown, { capture: true });
 canvas.addEventListener('wheel', onWheel, { capture: true, passive: false });
-canvas.addEventListener('contextmenu', (e) => e.preventDefault());
-const controls = new OrbitControls(persp, canvas);
-controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.PAN, RIGHT: THREE.MOUSE.ROTATE };
+// the mouse and keys as in the Scan page's preview (static/navigation.js); the clipping follows the camera
+const nav = navigation(persp, canvas), controls = nav.controls;
 controls.addEventListener('change', () => { requestRender(); P.depthStale = true; });
 
 const proj = projection(persp, controls, sun, (c) => { camera = c; P.depthStale = true; requestRender(); vcube?.update(); });
@@ -470,6 +469,7 @@ function draw() {
     renderer.setViewport(v3.x, 0, v3.w, v3.h); renderer.setScissor(v3.x, 0, v3.w, v3.h);
     renderer.setClearColor(0x0f1115); renderer.clear();
     proj.resize(v3.w / v3.h);
+    nav.clip();  // near / far follow the camera (#22)
     syncOverlays(v3.h);
     cloneMark3d.visible = mode === 'paint' && !!P.clone?.point;
     renderer.render(scene, camera);
@@ -491,7 +491,7 @@ function fitView(obj) {
   const size = box.getSize(new THREE.Vector3()).length(), c = box.getCenter(new THREE.Vector3());
   controls.target.copy(c);
   persp.position.copy(c).add(new THREE.Vector3(0, size * 0.15, size * 1.15));
-  persp.near = size / 500; persp.far = size * 20; persp.updateProjectionMatrix(); persp.lookAt(c);
+  nav.frame(size, persp); persp.lookAt(c);
   proj.framed(); requestRender();
 }
 function fit2d() {
@@ -1808,7 +1808,7 @@ function refreshDepth(r) {
     P.depthRT = new THREE.WebGLRenderTarget(w, h, { depthTexture: new THREE.DepthTexture(w, h) });
   }
   const vis = cursor3d.visible; cursor3d.visible = false;
-  proj.resize(r.w / r.h);
+  proj.resize(r.w / r.h); nav.clip();  // the same near / far as the stroke's uniforms
   renderer.setRenderTarget(P.depthRT); renderer.setClearColor(0x000000); renderer.clear(); renderer.render(scene, camera);
   cursor3d.visible = vis; P.depthStale = false;
 }
@@ -2063,7 +2063,7 @@ let drag = null;  // { kind: 'sculpt'|'paint'|'pan2d', at0 }
 function onPointerDown(e) {
   const at = which(e); if (!at) return;
   if (busy) { e.stopImmediatePropagation(); e.preventDefault(); return; }
-  if (mode === 'sculpt' && tool.sculpt === 'plane' && at.name === '3d' && e.button === 0 && !spaceDown && S.mesh) {
+  if (mode === 'sculpt' && tool.sculpt === 'plane' && at.name === '3d' && e.button === 0 && !spaceHeld() && S.mesh) {
     e.stopImmediatePropagation(); e.preventDefault();
     canvas.setPointerCapture(e.pointerId);
     if (plane.n) endPlane();
@@ -2072,7 +2072,7 @@ function onPointerDown(e) {
     l.setAttribute('visibility', 'visible');
     return;
   }
-  if (SM.on && at.name === '3d' && e.button === 0 && !spaceDown) {
+  if (SM.on && at.name === '3d' && e.button === 0 && !spaceHeld()) {
     if (!seamDown(at)) return;                       // off the model: orbit
     e.stopImmediatePropagation(); e.preventDefault();
     canvas.setPointerCapture(e.pointerId);
@@ -2082,17 +2082,17 @@ function onPointerDown(e) {
   if (at.name === 'uv') {
     e.stopImmediatePropagation(); e.preventDefault();
     canvas.setPointerCapture(e.pointerId);
-    if (SM.on && e.button === 0 && !spaceDown) return;  // seams are drawn on the model
-    const panning = e.button === 1 || e.button === 2 || spaceDown;
+    if (SM.on && e.button === 0 && !spaceHeld()) return;  // seams are drawn on the model
+    const panning = e.button === 1 || e.button === 2 || spaceHeld();
     if (panning) { drag = { kind: 'pan2d', x: e.clientX, y: e.clientY }; return; }
     if (e.button !== 0) return;
     const r = paintStart(e, at);
     if (r === true) drag = { kind: 'paint' };
     return;
   }
-  if (e.button !== 0 || spaceDown) return;          // orbit / pan: OrbitControls
+  if (e.button !== 0 || spaceHeld()) return;        // turn / pan: the navigation
   const started = mode === 'sculpt' ? (S.mesh && sculptStart(e, at)) : (P.ready && paintStart(e, at));
-  if (!started) return;                              // off the model: let OrbitControls orbit
+  if (!started) return;                              // off the model: the navigation turns the view
   e.stopImmediatePropagation(); e.preventDefault();
   canvas.setPointerCapture(e.pointerId);
   if (started === true) drag = { kind: mode };
@@ -2159,7 +2159,7 @@ function hover(e, at) {
 function updateCursor() { if (cursor2d.visible) cursor2d.scale.setScalar(brush.radius * uv2d.scale); requestRender(); }
 function onWheel(e) {
   const at = which(e);
-  if (at?.name !== 'uv') return;  // 3D: OrbitControls zooms
+  if (at?.name !== 'uv') return;  // 3D: the navigation zooms
   e.preventDefault(); e.stopImmediatePropagation();
   const before = display2dToUV(at);
   uv2d.scale *= Math.exp(e.deltaY * 0.0015);
@@ -2169,10 +2169,9 @@ function onWheel(e) {
   hover(e, at); requestRender();
 }
 
-let spaceDown = false;
 addEventListener('keydown', (e) => {
   if (e.target.matches('input, select, textarea')) return;
-  if (e.code === 'Space') { spaceDown = true; return; }
+  if (e.code === 'Space') return;  // held: left drag pans (navigation.js)
   if (plane.n && e.key === 'Enter') { e.preventDefault(); applyPlane(); return; }
   if (plane.n && e.key === 'Escape') { endPlane(); return; }
   if (ISECT.mesh && e.key === 'Escape') { isectHide(); return; }
@@ -2186,7 +2185,6 @@ addEventListener('keydown', (e) => {
   else if (k === ']') setRadius(Math.min(300, brush.radius * 1.2));
   else { const t = TOOLS[mode].find((x) => x[2].toLowerCase() === k); if (t) setTool(t[0]); }
 });
-addEventListener('keyup', (e) => { if (e.code === 'Space') spaceDown = false; });
 
 // ---------------------------------------------------------------- undo, save, status
 const anyDirty = () => S.dirty || P.dirty;
