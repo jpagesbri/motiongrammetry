@@ -243,7 +243,13 @@ mg ui --root ~/scans --port 9000
   it into `custom/` first. Export offers both versions, the viewer has a **Custom
   (edited)** layer, and **Delete custom version** goes back to the pipeline's.
 - **Keyframes**: thumbnail strip with optional mask overlay; click one to view from its camera,
-  double-click to open it in the frame viewer.
+  double-click to open it in the frame viewer. A player in its header (first, previous, play /
+  pause, next, last, and the position, e.g. `12 / 60`) and, on the 3D model, ← → Home End step
+  through the frames: each step is a click on that thumbnail (selected, scrolled into the strip, the
+  view flies to its camera and highlights it). A keyframe SfM didn't place is still selected, with
+  "no camera for this frame", and the view stays. Play steps at 2 frames a second and stops on the
+  last one (play again starts from the first); moving the view, a player key or button, leaving
+  the 3D model or the scan, orienting or hiding the page pauses it.
 - **Frames & masks** (Preview tab): every keyframe full size (`/image/<frames|masks>/<file>`) as
   photo, mask overlay, a compare slider, side by side or mask alone, zoom and pan, arrow keys. Each
   says how sharp it is against its neighbours, the mask's share of it and whether SfM placed it

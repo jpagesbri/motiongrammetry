@@ -44,6 +44,7 @@ export const VIEWS = {
   'scan-3d': { page: 'scan', label: 'Preview · 3D model', more: '#viewer', items: [
     '<b>Layers</b> (top left): cameras, sparse points, dense cloud, raw mesh, clean mesh, textured model and your custom version. The most advanced one shows; a dimmed one with a clock is outdated: point at it for why.',
     'Left- or right-drag: turn. Middle-drag or <kbd>Space</kbd>+drag: pan. Wheel: zoom (as in the editor). Click a keyframe below to look through its camera; double-click it to open it big.',
+    '<b>Keyframes</b>: the player steps through them (first, previous, play / pause, next, last); <kbd>←</kbd> <kbd>→</kbd> step too, <kbd>Home</kbd> / <kbd>End</kbd> first and last. Play shows 2 a second, stops on the last and pauses when you move the view. A keyframe SfM didn\'t place has no camera: the view stays.',
     '<b>Display</b> (<kbd>W</kbd> cycles): colours, solid grey, wireframe, solid + wires. <b>Highlight holes</b> draws every opening in orange.',
     'The view cube (bottom left): click a face to look straight at it. <b>Persp / Ortho</b> (<kbd>5</kbd>) switches the projection.',
     '<b>Orient…</b> stands the model the right way; every export uses it.',

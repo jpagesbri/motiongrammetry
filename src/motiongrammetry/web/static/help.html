@@ -223,7 +223,11 @@ step changed (new masks, new keyframes, a re-run SfM) is <b>outdated</b>: it sta
 point at it to read what changed and where to re-run from (for example "made before the masks changed: re-run from SfM").
 When the model shown is outdated, a line under the list says so. Left- or right-drag to turn, middle-drag (or <kbd>Space</kbd> + drag) to pan, wheel to zoom,
 the same in the editor and the Export window. Click a keyframe to
-look through its camera, double-click it to open it big. The <b>view cube</b> (bottom left, in every 3D view) shows which
+look through its camera, double-click it to open it big. The player above the keyframes steps through them:
+first, previous, play / pause, next and last, with where you are (<i>12 / 60</i>); on the 3D model, <kbd>←</kbd> <kbd>→</kbd>
+do the same, <kbd>Home</kbd> / <kbd>End</kbd> go to the first and last. Each step is like clicking that keyframe. Play
+shows two keyframes a second and stops on the last one (play again starts over); moving the view pauses it. A keyframe
+SfM couldn't place has no camera: it is selected with a note saying so, and the view stays where it is. The <b>view cube</b> (bottom left, in every 3D view) shows which
 way you are looking, Z up as in the print files: click a face to look straight at it, near an edge or a corner for the 45°
 view in between; the button next to it frames the model, and <b>Persp / Ortho</b> (or <kbd>5</kbd>) switches between perspective
 and orthographic (no foreshortening: sizes and parallel lines stay true, handy for judging proportions and orientation).

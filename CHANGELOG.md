@@ -10,6 +10,13 @@ the image with that version, and the About page and `mg --version` show it.
 
 ## Unreleased
 
+- **A keyframe player under the 3D preview** (part of #26): the strip's header has first, previous,
+  play / pause, next and last buttons and the position (`12 / 60`); on the 3D model, ← → step
+  through the keyframes and Home / End go to the first and last. Each step selects the keyframe,
+  scrolls it into the strip and flies to its camera, as a click does. Play shows 2 keyframes a
+  second and stops on the last (play again starts over); moving the view, a player key or button,
+  another tab, another scan, orienting or hiding the page pauses it. A keyframe SfM didn't place
+  is still selected, with "no camera for this frame", and the view stays.
 - **The 3D preview moves as the editor does** (part of #26): in the Scan page's preview, the editor
   and the Export window's preview, left- or right-drag turns, middle-drag pans, the wheel zooms,
   and Space held + left-drag pans (before, the preview panned with right-drag and zoomed with
