@@ -8,7 +8,7 @@
 // in currentColor, so it takes the text's size and colour; hidden from screen readers (the button
 // that holds it carries the label).
 
-const NAMES = ['eye', 'help-circle'];
+const NAMES = ['eye', 'help-circle', 'clock-exclamation'];
 
 const svgs = Object.fromEntries(await Promise.all(NAMES.map(async (name) => {
   try {

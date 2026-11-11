@@ -10,6 +10,12 @@ the image with that version, and the About page and `mg --version` show it.
 
 ## Unreleased
 
+- **Outdated results stay in the 3D preview, marked** (part of #26): a layer made before an earlier
+  step changed (new masks for an SfM that used them, new keyframes, a re-run SfM) is no longer
+  hidden. It stays in the Layers list, dimmed, with a clock icon whose tooltip says what changed and
+  where to re-run from ("made before the masks changed: re-run from SfM"). The preview opens on the
+  most advanced result (the edited model, else the textured model, the clean mesh, the raw mesh,
+  the dense cloud), outdated or not; when that one is outdated a line under the list says so.
 - **One short style for warnings, at every step of Assisted and in Manual** (part of #49): every
   warning, suggestion and result on the Scan page is now the same note: an icon, a title of a few
   words, one short line, the buttons (1-3 words: "Thorough solver", "Try HQ masks", "Continue",

@@ -188,19 +188,32 @@ class Workspace:
         """Stages whose output is older than their input: re-running an upstream stage
         (new keyframes, new SfM gauge, new masks for an SfM that used them) leaves downstream
         files out of step."""
+        return list(self.stale_causes())
+
+    def stale_causes(self) -> dict[str, dict[str, str]]:
+        """The stale stages (in pipeline order), each with why: ``changed``, the earlier stage whose
+        newer output outdates it (followed back through stale stages: after new masks, the texture
+        is outdated because the masks changed), and ``rerun``, the first stage to re-run to bring
+        it up to date (SfM after new masks for an SfM that used them, the stage itself after its
+        input re-ran)."""
         out = {s: self.output_mtime(s) for s in STAGES}
         manifest = self.load_manifest()
         used = manifest.get("clean", {}).get("input")
         source = self.mesh_producer(used if used else self.raw_mesh())
         upstream = self.upstream(manifest)
-        stale: set[str] = set()
+        causes: dict[str, dict[str, str]] = {}
         for stage in STAGES:  # topological order, so staleness propagates
             if out[stage] is None:
                 continue
             ups = upstream.get(stage, [])
             if stage == "clean":
                 ups = [u for u in ups if u not in RAW_MESH or u == source]
+            found = []
             for up in ups:
-                if up in stale or (out[up] is not None and out[up] > out[stage] + 1.0):
-                    stale.add(stage)
-        return [s for s in STAGES if s in stale]
+                if up in causes:
+                    found.append(causes[up])
+                elif out[up] is not None and out[up] > out[stage] + 1.0:
+                    found.append({"changed": up, "rerun": stage})
+            if found:  # the earliest re-run brings everything up to date
+                causes[stage] = min(found, key=lambda c: STAGES.index(c["rerun"]))
+        return causes

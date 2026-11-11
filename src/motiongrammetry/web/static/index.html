@@ -208,6 +208,9 @@
   .layers { background: rgba(22,26,33,.88); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; backdrop-filter: blur(6px); }
   .layers label { display: flex; align-items: center; gap: 6px; margin: 3px 0; cursor: pointer; }
   .layers label.na { opacity: .35; cursor: default; }
+  .layers label.old { color: var(--muted); }  /* made before an earlier step changed: still viewable */
+  .layers .old-ico { color: var(--warn); display: inline-flex; font-size: 13px; }
+  .layers .old-top { display: flex; align-items: center; gap: 5px; color: var(--warn); font-size: 11px; margin-top: 6px; max-width: 210px; }
   .layers .count { color: var(--muted); font-family: var(--mono); font-size: 11px; margin-left: auto; padding-left: 10px; }
   .stats { position: absolute; right: 10px; bottom: 10px; font-family: var(--mono); font-size: 11px; color: var(--muted);
     background: rgba(22,26,33,.8); padding: 4px 8px; border-radius: 6px; }
@@ -455,6 +458,7 @@ import { mountTopbar, setScan, updateScans, uploadVideo, thumbUrl, pageLabel as 
 import { modeControl } from '/modes.js';
 import { openExport, exportHooks } from '/export.js';
 import { pageHelp, hint } from '/pagehelp.js';
+import { icon } from '/icons.js';
 import { openPathView, pathViewOpen, flagIcon } from '/camerapath.js';
 import { noteHtml, diagNote, diagShort, diagDetails, confirmHtml, setShortForms } from '/notes.js';
 // A camera-path note's "View path" button (see viewPath)
@@ -502,6 +506,17 @@ let current = null;        // scan (workspace folder) name
 let wsState = null;        // last /state
 let jobSince = 0, jobSnap = null, lastVersion = null, layerDefaultsFor = null;
 const layerOn = { cameras: true, sparse: true, dense: false, raw: false, clean: false, textured: true };
+// The most advanced result shows by default, outdated or not (it is marked then): the edited model,
+// the textured one, the clean mesh, the raw mesh, else the dense cloud, the points, the cameras.
+const ADVANCED = ['custom', 'textured', 'clean', 'raw', 'dense', 'sparse', 'cameras'];
+const topLayer = (L) => ADVANCED.find((k) => L?.[k]) || null;
+let layerTop = null;  // the most advanced layer the defaults were last set for
+function defaultLayers(L) {
+  const top = topLayer(L);
+  ['custom', 'textured', 'clean', 'raw'].forEach((k) => { layerOn[k] = k === top; });
+  layerOn.dense = top === 'dense';
+  layerTop = top;
+}
 
 // ---------------------------------------------------------------- viewer
 const view = $('view');
@@ -703,7 +718,6 @@ async function reloadScene() {
       else if (!s.layers[k]) setLayer(k, null);
       else if (layerObj[k]) setLayer(k, null);
     }
-    if (!s.layers.textured && s.layers.clean && !layerOn.clean) { layerOn.clean = true; setLayer('clean', ...(await loadMesh('clean'))); }
     renderLayerToggles(); refreshHoles();
     // Framed again when the scene is new (a re-run SfM sets another scale and position) or when the
     // first mesh appears where only points were framed; otherwise the view stays as it was left.
@@ -749,10 +763,15 @@ async function capturePreview() {
 }
 
 function renderLayerToggles() {
-  const el = $('layers'), L = wsState?.layers || {};
+  const el = $('layers'), L = wsState?.layers || {}, old = wsState?.layers_outdated || {};
+  const attr = (t) => esc(t).replace(/"/g, '&quot;');
+  // An outdated layer (made before an earlier step changed) stays viewable, dimmed, with a clock mark
+  // that says why; when it is the most advanced one, a line under the list says so without hovering.
+  const top = topLayer(L), topLabel = LAYERS.find(([k]) => k === top)?.[1];
   el.innerHTML = '<h2>Layers</h2>' + LAYERS.map(([k, label]) =>
-    `<label class="${L[k] ? '' : 'na'}"><input type="checkbox" data-layer="${k}" ${layerOn[k] ? 'checked' : ''} ${L[k] ? '' : 'disabled'}>
-     ${label}<span class="count" data-count="${k}"></span></label>`).join('');
+    `<label class="${L[k] ? (old[k] ? 'old' : '') : 'na'}" data-row="${k}" ${L[k] && old[k] ? `title="Outdated: ${attr(old[k])}"` : ''}><input type="checkbox" data-layer="${k}" ${layerOn[k] ? 'checked' : ''} ${L[k] ? '' : 'disabled'}>
+     ${label}${L[k] && old[k] ? `<span class="old-ico" data-outdated="${k}" role="img" aria-label="outdated: ${attr(old[k])}">${icon('clock-exclamation')}</span>` : ''}<span class="count" data-count="${k}"></span></label>`).join('')
+    + (top && old[top] ? `<div class="old-top" id="layersOutdated" title="${attr(old[top])}">${icon('clock-exclamation')}<span>${topLabel} outdated</span></div>` : '');
   el.querySelectorAll('input[data-layer]').forEach((cb) => cb.addEventListener('change', async () => {
     const k = cb.dataset.layer; layerOn[k] = cb.checked;
     if (cb.checked && !layerObj[k]) {
@@ -1442,13 +1461,11 @@ async function refreshState(beforeScene) {  // beforeScene: runs once the state 
   renderStages(); renderRail();
   renderFilm();
   beforeScene?.();
-  if (layerDefaultsFor !== current) {
-    layerDefaultsFor = current;
-    layerOn.custom = !!wsState.layers.custom;
-    layerOn.textured = !wsState.layers.custom;
-  }
-  if (wsState.version !== lastVersion) {
-    if (lastVersion != null && !isShown('preview')) $('pvPip').hidden = false;  // something new to look at
+  // Another scan, or a more advanced result appeared (or went): show the most advanced one.
+  const newDefaults = layerDefaultsFor !== current || topLayer(wsState.layers) !== layerTop;
+  if (newDefaults) { layerDefaultsFor = current; defaultLayers(wsState.layers); }
+  if (wsState.version !== lastVersion || newDefaults) {
+    if (wsState.version !== lastVersion && lastVersion != null && !isShown('preview')) $('pvPip').hidden = false;  // something new to look at
     lastVersion = wsState.version; await reloadScene();
     if (isShown('preview') && pvMode === 'frames') fvOpen();
   } else renderLayerToggles();

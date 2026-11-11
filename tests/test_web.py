@@ -114,7 +114,9 @@ def test_outputs_older_than_their_inputs_are_stale(tmp_path):
     os.utime(ws.mesh / "mesh_clean.ply", (old, old))  # clean ran before the latest SfM
     assert app.stale(ws) == ["clean", "texture"]  # texture inherits staleness from clean
     layers = app.layers(ws)
-    assert layers["cameras"] and not layers["clean"] and not layers["textured"]
+    assert layers["cameras"] and layers["clean"] and layers["textured"]  # still there to look at
+    assert app.layers_outdated(ws) == {"clean": "made before the cameras changed: re-run from Clean",
+                                       "textured": "made before the cameras changed: re-run from Clean"}
 
 
 def test_exports_are_made_when_asked_and_reused_until_their_inputs_change(server):
@@ -191,6 +193,7 @@ def test_clean_follows_the_raw_mesh_it_used(tmp_path):
     assert app.stale(ws) == ["mvs"]
     layers = app.layers(ws)
     assert layers["clean"] and layers["raw"]
+    assert app.layers_outdated(ws) == {}  # the raw layer is VGGT's mesh, which matches the cameras
 
     ws.record("clean", {"input": str(ws.mvs / "scene_mesh.ply")})  # cleaned the stale mvs mesh instead
     assert app.stale(ws) == ["mvs", "clean"]
@@ -221,6 +224,8 @@ def test_new_masks_outdate_an_sfm_that_used_them(tmp_path):
     app = App(tmp_path / "root")
     assert app.stale(ws) == ws.stale_stages()
     assert app.state(ws)["upstream"]["sfm"] == ["frames", "mask"]  # the UI's "re-run from here" ticks sfm, mvs
+    # every stage after it is outdated because of the masks, and is brought up to date from SfM
+    assert ws.stale_causes() == {s: {"changed": "mask", "rerun": "sfm"} for s in ("sfm", "mvs", "clean", "texture")}
     # pre-flight says why: the masks changed, not just "older than its inputs"
     msg = [d.message for d in checks._stale_input(ws, "mvs", ["sfm"])]
     assert msg and "masks changed after sfm ran with them" in msg[0]
@@ -240,6 +245,7 @@ def test_new_masks_leave_an_sfm_without_masks_alone(tmp_path):
     ws = _masks_rerun_after_everything(tmp_path, masked_features=False)
     assert ws.sfm_upstream() == ["frames"]
     assert ws.stale_stages() == ["clean", "texture"]
+    assert ws.stale_causes() == {s: {"changed": "mask", "rerun": "clean"} for s in ("clean", "texture")}
     assert App(tmp_path / "root").state(ws)["upstream"]["sfm"] == ["frames"]
     assert not checks._stale_input(ws, "mvs", ["sfm"])
     ws.record("mask", {"frames": 100, "mean_coverage": 0.3, "coverage_cv": 0.1, "empty_masks": 20})
@@ -248,6 +254,30 @@ def test_new_masks_leave_an_sfm_without_masks_alone(tmp_path):
     # an SfM from before masked_features was recorded counts as one without masks
     ws.record("sfm", {"registered": 3})
     assert ws.stale_stages() == ["clean", "texture"]
+
+
+def test_new_masks_keep_every_layer_viewable_and_say_why_it_is_outdated(tmp_path):
+    """Nothing on disk moved after new masks: every layer stays in the preview, each marked with the
+    step that changed and where to re-run from; an up-to-date layer carries no mark."""
+    ws = _masks_rerun_after_everything(tmp_path, masked_features=True)
+    ws.mesh.mkdir()
+    for name in ("mesh_clean.ply", "textured.ply"):
+        (ws.mesh / name).write_text("ply")
+    app = App(tmp_path / "root")
+    state = app.state(ws)
+    assert {k for k, v in state["layers"].items() if v} == {"cameras", "sparse", "clean", "textured"}
+    why = "made before the masks changed: re-run from SfM"
+    assert state["layers_outdated"] == {"cameras": why, "sparse": why, "clean": why, "textured": why}
+
+    # SfM without the masks: the cameras are up to date, the meshes are re-made from Clean
+    ws.record("sfm", {"registered": 3, "masked_features": False})
+    why = "made before the masks changed: re-run from Clean"
+    assert app.layers_outdated(ws) == {"clean": why, "textured": why}
+
+    # re-running from Clean clears the marks
+    ws.stamp("clean")
+    ws.stamp("texture")
+    assert app.layers_outdated(ws) == {}
 
 
 def test_terminal_runs_replace_a_finished_ui_job(tmp_path):
@@ -988,7 +1018,7 @@ def test_every_page_offers_export_through_the_one_shared_module(server):
     with urllib.request.urlopen(base + "/icons.js") as r:
         assert r.headers["Content-Type"].startswith("text/javascript")
         icons = r.read().decode()
-    assert "export function icon(name)" in icons and "const NAMES = ['eye', 'help-circle'];" in icons and "/vendor/tabler-icons/" in icons
+    assert "export function icon(name)" in icons and "const NAMES = ['eye', 'help-circle', 'clock-exclamation'];" in icons and "/vendor/tabler-icons/" in icons
     with urllib.request.urlopen(base + "/vendor/tabler-icons/eye.svg") as r:
         assert b"icon-tabler-eye" in r.read()
     with urllib.request.urlopen(base + "/vendor/tabler-icons/LICENSE") as r:
