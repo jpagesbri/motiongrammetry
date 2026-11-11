@@ -16,7 +16,13 @@ the image with that version, and the About page and `mg --version` show it.
   scrolls it into the strip and flies to its camera, as a click does. Play shows 2 keyframes a
   second and stops on the last (play again starts over); moving the view, a player key or button,
   another tab, another scan, orienting or hiding the page pauses it. A keyframe SfM didn't place
-  is still selected, with "no camera for this frame", and the view stays.
+  is still selected, with "no camera for this frame", and the view stays. The keys reach the
+  player after a click anywhere in the strip (its scrollbar too), on a tab or on the mask overlay
+  checkbox. Each thumbnail's tooltip says what a click and a double-click do, in place of the
+  strip's hint line.
+- **Arrow keys switch tabs only when the tab was reached with the keyboard** (Tab): after clicking a
+  tab with the mouse (Run / Preview, 3D model / Frames & masks, Sculpt / Paint…), ← → and Home / End
+  are the page's again (they step the keyframes) instead of switching to the next tab.
 - **The 3D preview moves as the editor does** (part of #26): in the Scan page's preview, the editor
   and the Export window's preview, left- or right-drag turns, middle-drag pans, the wheel zooms,
   and Space held + left-drag pans (before, the preview panned with right-drag and zoomed with

@@ -128,7 +128,9 @@ mg ui --root ~/scans --port 9000
   - A WAI-ARIA tab list (`role="tablist"`, `role="tab"`, `aria-selected`, Run / Preview with
     `role="tabpanel"` panes), with a roving tabindex: one Tab stop per control, ← → (↑ ↓) to the next
     usable option, Home / End, selection follows the focus. Those keys stop at the control, so the
-    page's own shortcuts on them (← → / Home / End step through the keyframes) don't fire as well.
+    page's own shortcuts on them (← → / Home / End step through the keyframes) don't fire as well;
+    but only when the option got the focus from the keyboard (Tab). After a mouse click on a tab
+    the keys stay the page's. (Not `:focus-visible`: Chromium turns it on at the first key press.)
   - The choice is remembered where it was: the tab (`mg.gtab`), the Preview's view (`mg.pv`) and
     side by side in browser storage, Assisted / Manual per scan (`mg.mode.<scan>`); the editor's mode
     in the URL (`?mode=paint`, kept on reload and when switching scans). Switching the editor's mode
@@ -246,7 +248,10 @@ mg ui --root ~/scans --port 9000
   double-click to open it in the frame viewer. A player in its header (first, previous, play /
   pause, next, last, and the position, e.g. `12 / 60`) and, on the 3D model, ← → Home End step
   through the frames: each step is a click on that thumbnail (selected, scrolled into the strip, the
-  view flies to its camera and highlights it). A keyframe SfM didn't place is still selected, with
+  view flies to its camera and highlights it). A press anywhere in the strip (thumbnail, scrollbar,
+  header) focuses it, so the keys reach the player; a checkbox or button with the focus lets them
+  through, a text field or slider keeps them. Each thumbnail's tooltip gives its file name and what
+  a click and a double-click do (no hint line). A keyframe SfM didn't place is still selected, with
   "no camera for this frame", and the view stays. Play steps at 2 frames a second and stops on the
   last one (play again starts from the first); moving the view, a player key or button, leaving
   the 3D model or the scan, orienting or hiding the page pauses it.
