@@ -18,6 +18,7 @@ copied unchanged, so the app works offline.
 | `player-pause.svg` | `player-pause` | Preview keyframe player: pause |
 | `player-track-next.svg` | `player-track-next` | Preview keyframe player: next keyframe |
 | `player-skip-forward.svg` | `player-skip-forward` | Preview keyframe player: last keyframe |
+| `rotate-3d.svg` | `rotate-3d` | Preview layers: the Orientation & origin button |
 
 ## Adding an icon
 

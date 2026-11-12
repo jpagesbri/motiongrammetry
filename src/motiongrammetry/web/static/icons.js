@@ -9,7 +9,7 @@
 // that holds it carries the label).
 
 const NAMES = ['eye', 'help-circle', 'clock-exclamation', 'player-skip-back', 'player-track-prev', 'player-play', 'player-pause',
-  'player-track-next', 'player-skip-forward'];
+  'player-track-next', 'player-skip-forward', 'rotate-3d'];
 
 const svgs = Object.fromEntries(await Promise.all(NAMES.map(async (name) => {
   try {
