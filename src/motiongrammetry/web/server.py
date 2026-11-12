@@ -49,7 +49,7 @@ Preview data is served in the raw SfM frame together with one 4x4 "scene" transf
   GET  /<name>.js, /<name>.css             shared page modules and styles (static/viewcube.js, topbar.js, scanchooser.js,
                                             scrollbar.js, modes.js, export.js, projection.js, navigation.js, pagehelp.js,
                                             icons.js, topbar.css, scrollbar.css, modes.css, export.css, pagehelp.css,
-                                            notes.js, notes.css, camerapath.js)
+                                            notes.js, notes.css, camerapath.js, viewsettings.js, viewsettings.css)
   GET  /vendor/<path>                       bundled three.js and three-mesh-bvh (static/vendor)
   GET  /about                               third-party software and licenses (credits.py)
   GET  /api/about[/license?kind=&id=|/notices.txt]   their list, one license text, all notices

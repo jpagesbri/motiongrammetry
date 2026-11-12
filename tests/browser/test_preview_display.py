@@ -1,7 +1,8 @@
 """The 3D preview's Layers box (#26, #27): the display spheres at its bottom (click one or W, the shown
 one ringed), the Orientation & origin icon button next to them, and View options, a line that folds
 and opens on Point size (only while a point cloud shows) and Highlight holes (whose "on" still shows
-folded)."""
+folded). The box keeps one width whatever is open or ticked. The same box in the editor:
+test_editor_view_settings.py."""
 
 import re
 
@@ -107,20 +108,23 @@ def test_point_size_shows_only_with_a_point_cloud_and_takes_the_arrows(page):
 
 def test_highlight_holes_from_view_options_with_its_count_and_its_on_state_while_folded(page):
     open_preview(page)
-    expect(page.locator("#holesOn")).to_be_hidden()
+    expect(page.locator("#viewOptsNote")).to_be_hidden()
     toggle(page).click()
     expect(page.locator("#holesInfo")).to_be_hidden()  # empty while off
     page.locator("#holesChk").check()
-    expect(page.locator("#holesInfo")).to_have_text(re.compile(r"textured mesh: (\d+ opening|closed)"))
-    expect(page.locator("#holesOn")).to_be_hidden()  # open: the checkbox says it
+    expect(page.locator("#holesInfo")).to_have_text(re.compile(r"^textured mesh: (\d+ openings? · \d+ edges|closed, no holes)$"))
+    if "opening" in page.locator("#holesInfo").inner_text():  # the short count; the sentence on hover
+        expect(page.locator("#holesInfo")).to_have_attribute("title", re.compile(r"open edges\), drawn in orange$"))
+    expect(page.locator("#viewOptsNote")).to_be_hidden()  # open: the checkbox says it
     toggle(page).click()
-    expect(page.locator("#holesOn")).to_be_visible()  # folded: the line says it
-    expect(page.locator("#holesOn")).to_have_attribute("title", "Highlight holes is on")
+    expect(page.locator("#viewOptsNote")).to_be_visible()  # folded: the line says it
+    expect(page.locator("#viewOptsNote")).to_have_text("holes")
+    expect(page.locator("#viewOptsNote")).to_have_attribute("title", "Highlight holes is on")
     toggle(page).click()
     page.locator("#holesChk").uncheck()
     expect(page.locator("#holesInfo")).to_be_hidden()
     toggle(page).click()
-    expect(page.locator("#holesOn")).to_be_hidden()
+    expect(page.locator("#viewOptsNote")).to_be_hidden()
 
 
 def test_the_orientation_icon_button_names_itself_and_opens_the_orientation(page):
@@ -134,3 +138,22 @@ def test_the_orientation_icon_button_names_itself_and_opens_the_orientation(page
     expect(page.locator("#pvSide")).to_be_visible()
     expect(page.locator("#orientPanel")).to_be_visible()
     expect(b).to_have_class(re.compile(r"\bprimary\b"))
+
+
+def box_width(page, sel="#layers"):
+    return page.locator(sel).evaluate("(b) => b.getBoundingClientRect().width")
+
+
+def test_the_layers_box_keeps_its_width_with_view_options_open_holes_on_and_points_shown(page):
+    open_preview(page)
+    expect(page.locator("#layers input[data-layer=sparse]")).to_be_checked()
+    folded = box_width(page)
+    toggle(page).click()
+    expect(page.locator("#ptRow")).to_be_visible()  # a point cloud shows: Point size too
+    page.locator("#holesChk").check()
+    expect(page.locator("#holesInfo")).to_have_text(re.compile("textured mesh"))
+    assert abs(box_width(page) - folded) <= 1, (folded, box_width(page))
+    # and nothing sticks out of it: the slider shrank, the count wrapped
+    assert page.locator("#layers").evaluate("(b) => b.scrollWidth <= b.clientWidth")
+    toggle(page).click()
+    assert abs(box_width(page) - folded) <= 1

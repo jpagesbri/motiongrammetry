@@ -65,6 +65,8 @@ def test_outdated_layers_stay_dimmed_and_marked_and_the_most_advanced_one_shows(
     expect(note).to_be_visible()
     expect(note).to_have_text("Textured model outdated")
     expect(note).to_have_attribute("title", WHY)
+    # the box keeps its fixed width with the marks and the warning line: nothing sticks out (#26)
+    assert layers.evaluate("(b) => b.scrollWidth <= b.clientWidth && Math.round(b.getBoundingClientRect().width) === 220")
     # an outdated layer can still be turned on
     layers.locator("input[data-layer=clean]").check()
     expect(layers.locator("input[data-layer=clean]")).to_be_checked()
