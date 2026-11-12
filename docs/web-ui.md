@@ -260,16 +260,22 @@ mg ui --root ~/scans --port 9000
   says how sharp it is against its neighbours, the mask's share of it and whether SfM placed it
   (`/frame-stats`, cached); **Flagged** steps through the ones worth a look (blurrier than the
   neighbours, no camera, an empty mask or one that jumps in size).
-- **Orientation** (Preview → **Orient…**, or the assisted run's last step): click the spot that rests
+- **Orientation** (Preview → the **Orientation & origin** icon button in the Layers box, or the assisted run's last step): click the spot that rests
   on the floor, turn in 90° steps, "this view is the front", free rotate / move handles, centre,
   drop to floor. Saved as `orientation.json` (the SfM → Y-up transform plus the SfM model it was set
   against: re-running SfM makes it lapse). `workspace_alignment(up="auto")` returns it, so every
   export uses it; exports made with an older one are outdated and made again when asked. Meshes
   stay in the SfM frame; nothing re-runs.
 - **3D preview** (three.js): camera frusta, sparse points, dense cloud, raw / clean / textured
-  mesh, all in one Y-up frame. **Display** (`W`): colours, solid grey, wireframe, or solid + wires
-  (fading out where triangles are under a few pixels); **Highlight holes** draws the open edges in
-  orange and counts the openings (also in the editor).
+  mesh, all in one Y-up frame. The **Layers** box (top left) holds, under the layer rows, a
+  **View options** line that folds and opens (kept per browser, `mg.viewopts`), then the display
+  row. View options: **Point size**, shown only while the sparse points or the dense cloud are on
+  screen, and **Highlight holes**, which draws the open edges in orange and counts the openings
+  (also in the editor); folded, the line shows a blue "holes" while it is on. The display row: four
+  small spheres, each drawn once in its mode with the viewer's own materials and lights, the shown
+  one ringed: colours, solid grey, wireframe, or solid + wires (fading out where triangles are under
+  a few pixels); `W` cycles them (kept in `mg.display`). At its right, the **Orientation & origin**
+  icon button (Tabler `rotate-3d`) opens the orientation tools.
 - **View cube** (`static/viewcube.js`, in the Scan preview, the Export preview and the editor):
   the camera's direction with Z-up labels as in the print files; click a face, edge or corner to
   look from there; a button frames the model, another (or key `5`) switches perspective /

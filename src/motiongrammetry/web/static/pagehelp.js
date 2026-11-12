@@ -45,9 +45,10 @@ export const VIEWS = {
     '<b>Layers</b> (top left): cameras, sparse points, dense cloud, raw mesh, clean mesh, textured model and your custom version. The most advanced one shows; a dimmed one with a clock is outdated: point at it for why.',
     'Left- or right-drag: turn. Middle-drag or <kbd>Space</kbd>+drag: pan. Wheel: zoom (as in the editor). Click a keyframe below to look through its camera; double-click it to open it big.',
     '<b>Keyframes</b>: the player steps through them (first, previous, play / pause, next, last); <kbd>←</kbd> <kbd>→</kbd> step too, <kbd>Home</kbd> / <kbd>End</kbd> first and last. Play shows 2 a second, stops on the last and pauses when you move the view. A keyframe SfM didn\'t place has no camera: the view stays.',
-    '<b>Display</b> (<kbd>W</kbd> cycles): colours, solid grey, wireframe, solid + wires. <b>Highlight holes</b> draws every opening in orange.',
+    'The spheres at the bottom of Layers pick the display (<kbd>W</kbd> cycles): colours, solid grey, wireframe, solid + wires; the shown one has a ring.',
+    '<b>View options</b> (in Layers, click to open): <b>Point size</b>, while sparse points or the dense cloud show, and <b>Highlight holes</b>, which draws every opening in orange (a blue <i>holes</i> on the folded line says it is on).',
     'The view cube (bottom left): click a face to look straight at it. <b>Persp / Ortho</b> (<kbd>5</kbd>) switches the projection.',
-    '<b>Orient…</b> stands the model the right way; every export uses it.',
+    'The orientation button (at the right of the spheres) sets which way is up and where the origin is; every export uses it.',
   ] },
   'scan-frames': { page: 'scan', label: 'Preview · Frames & masks', more: '#frames', items: [
     '<b>Photo</b>, <b>Overlay</b>, <b>Compare</b>, <b>Side by side</b>, <b>Mask</b>: how the keyframe and its mask are shown.',

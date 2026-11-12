@@ -10,6 +10,13 @@ the image with that version, and the About page and `mg --version` show it.
 
 ## Unreleased
 
+- **The 3D preview's display chooser and view options are in the Layers box** (part of #26, and #27's
+  button name): the four display modes are small spheres, each drawn in its own style, at the bottom
+  of Layers; click one (the shown one has a ring) or press W to cycle. The orientation button is an
+  icon at the right of the spheres, "Orientation & origin" on hover. Point size and Highlight holes
+  sit in a **View options** line that folds to one line and remembers it; Point size shows only
+  while the sparse points or the dense cloud are on screen, and a blue "holes" on the folded line
+  says Highlight holes is on. The separate Display box and its drop-down are gone.
 - **A keyframe player under the 3D preview** (part of #26): the strip's header has first, previous,
   play / pause, next and last buttons and the position (`12 / 60`); on the 3D model, ← → step
   through the keyframes and Home / End go to the first and last. Each step selects the keyframe,
