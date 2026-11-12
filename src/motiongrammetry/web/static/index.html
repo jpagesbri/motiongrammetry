@@ -98,7 +98,7 @@
   .drawer-body { display: none; height: 34vh; min-height: 140px; padding: 0 14px 10px; flex-direction: column; }
   .drawer.open .drawer-body { display: flex; }
   .drawer-body .history { max-height: none; flex: 1; }
-  /* the 3D view takes the whole width; a side column shows only while orienting (Orient…) */
+  /* the 3D view takes the whole width; a side column shows only while orienting (the Orientation & origin button) */
   .pv3d { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) 132px;
     grid-template-areas: "view" "film"; }
   .pv3d.side { grid-template-columns: minmax(0, 1fr) 300px; grid-template-areas: "view side" "film side"; }
@@ -318,6 +318,32 @@
     .as-place { grid-template-columns: 1fr; height: auto; }
     .as-place .slot { height: 50vh; }
   }
+  /* the Layers box's bottom: View options (point size, holes), folded to one line, then the display spheres */
+  .vopts { margin-top: 6px; border-top: 1px solid var(--line); padding-top: 5px; font-size: 11px; }
+  .vopts-tog { display: flex; align-items: center; gap: 5px; width: 100%; background: none; border: 0; padding: 0; color: var(--muted); cursor: pointer; font-size: 11px; }
+  .vopts-tog:hover { color: var(--text); }
+  .vopts-tog:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+  .vopts-tog .caret { display: inline-block; transition: transform .12s; }
+  .vopts-tog[aria-expanded=true] .caret { transform: rotate(90deg); }
+  .vopts-on { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; color: var(--accent); }  /* holes on, while folded */
+  .vopts-on::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .vopts-on[hidden], .vopts-body[hidden], .vopts .pt[hidden] { display: none; }
+  .vopts-body { padding-top: 3px; }
+  .layers .vopts label { margin: 4px 0 0; font-size: 12px; }
+  .vopts .pt input[type=range] { flex: 1; min-width: 90px; width: 110px; height: 14px; margin: 0; accent-color: var(--accent); }
+  .vopts .pt .val { font-family: var(--mono); font-size: 11px; color: var(--muted); min-width: 4ch; text-align: right; }
+  #holesInfo { font-size: 11px; max-width: 210px; color: var(--muted); }
+  #holesInfo:empty { display: none; }
+  .disp-row { display: flex; align-items: center; gap: 3px; margin-top: 6px; border-top: 1px solid var(--line); padding-top: 6px; }
+  .disp-row .grow { flex: 1; min-width: 8px; }
+  .sph { display: inline-grid; place-items: center; padding: 1px; background: none; border: 0; border-radius: 50%; cursor: pointer; opacity: .72; }
+  .sph img { display: block; width: 22px; height: 22px; border-radius: 50%; background: var(--panel2); pointer-events: none; }
+  .sph:hover { opacity: 1; }
+  .sph:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .sph.on { opacity: 1; box-shadow: 0 0 0 2px var(--accent); }  /* the ring, a 1 px gap inside it from the padding */
+  .ibtn.btn { display: inline-grid; place-items: center; width: 26px; height: 24px; padding: 0; font-size: 16px; color: var(--text); flex: none; }
+  .ibtn.btn .icon { display: block; }
+  .ibtn.btn.primary { color: #061222; }
 </style>
 <link rel="stylesheet" href="/topbar.css">
 <link rel="stylesheet" href="/modes.css">
@@ -397,16 +423,25 @@
           <main class="view" id="view">
             <div class="hint" id="hint">Choose a scan, or make a new one, with <b>SCAN</b> at the top right</div>
             <div class="overlay">
-              <div class="layers" id="layers"></div>
-              <div class="layers" id="dispBox">
-                <label class="row" style="margin:0" title="W cycles through them">Display <select id="dispMode">
-                  <option value="textured">Colours</option><option value="solid">Solid grey</option>
-                  <option value="wire">Wireframe</option><option value="solidwire">Solid + wires</option></select></label>
-                <label title="edges that border a single triangle: holes, openings and torn spots"><input type="checkbox" id="holesChk"> Highlight holes</label>
-                <div class="muted" id="holesInfo" style="font-size:11px;max-width:210px"></div>
-                <label class="row" style="margin:0">Point size <input type="range" id="ptSize" min="0.3" max="4" step="0.1" value="1"></label>
-                <div class="btns" style="margin-top:4px">
-                  <button class="btn" id="orientBtn" title="turn and move the model so it stands the right way: used by every export">Orient…</button></div>
+              <div class="layers" id="layers">
+                <div id="layerRows"></div>
+                <!-- "View options" is a placeholder name (#26): it is written here only -->
+                <div class="vopts" id="viewOpts">
+                  <button type="button" class="vopts-tog" id="viewOptsTog" aria-expanded="false" aria-controls="viewOptsBody"><span class="caret" aria-hidden="true">▸</span><span>View options</span><span class="vopts-on" id="holesOn" title="Highlight holes is on" hidden>holes</span></button>
+                  <div class="vopts-body" id="viewOptsBody" hidden>
+                    <label class="pt" id="ptRow" hidden title="the size of the sparse points and the dense cloud (← → when focused)">Point size <input type="range" id="ptSize" min="0.3" max="4" step="0.1" value="1" aria-label="point size"><span class="val" id="ptVal">1.0×</span></label>
+                    <label title="edges that border a single triangle: holes, openings and torn spots"><input type="checkbox" id="holesChk"> Highlight holes</label>
+                    <div id="holesInfo"></div>
+                  </div>
+                </div>
+                <div class="disp-row" id="dispRow" role="group" aria-label="display (W cycles)">
+                  <button type="button" class="sph" data-display="textured" title="Colours (W)" aria-label="Colours"><img alt=""></button>
+                  <button type="button" class="sph" data-display="solid" title="Solid grey (W)" aria-label="Solid grey"><img alt=""></button>
+                  <button type="button" class="sph" data-display="wire" title="Wireframe (W)" aria-label="Wireframe"><img alt=""></button>
+                  <button type="button" class="sph" data-display="solidwire" title="Solid + wires (W)" aria-label="Solid + wires"><img alt=""></button>
+                  <span class="grow"></span>
+                  <button type="button" class="btn ibtn" id="orientBtn" title="Orientation &amp; origin: set which way is up and where the origin is, for every export and for printing" aria-label="Orientation and origin"></button>
+                </div>
               </div>
             </div>
             <div class="loading" id="loading">loading…</div>
@@ -605,6 +640,7 @@ function setLayer(name, obj, count) {
   }
   const c = document.querySelector(`[data-count="${name}"]`);
   if (c) c.textContent = count ?? '';
+  refreshViewOpts();
   render();
 }
 
@@ -771,7 +807,7 @@ async function capturePreview() {
 }
 
 function renderLayerToggles() {
-  const el = $('layers'), L = wsState?.layers || {}, old = wsState?.layers_outdated || {};
+  const el = $('layerRows'), L = wsState?.layers || {}, old = wsState?.layers_outdated || {};
   const attr = (t) => esc(t).replace(/"/g, '&quot;');
   // An outdated layer (made before an earlier step changed) stays viewable, dimmed, with a clock mark
   // that says why; when it is the most advanced one, a line under the list says so without hovering.
@@ -788,7 +824,7 @@ function renderLayerToggles() {
       catch (e) { $('runErr').textContent = e.message; }
       $('loading').style.display = 'none';
     } else if (layerObj[k]) { layerObj[k].visible = cb.checked; render(); }
-    refreshHoles();
+    refreshHoles(); refreshViewOpts();
   }));
   // restore counts of already-loaded layers
   for (const [k, o] of Object.entries(layerObj)) {
@@ -797,9 +833,11 @@ function renderLayerToggles() {
     if (c) c.textContent = k === 'cameras' ? camData.length
       : o.isPoints ? fmt(o.geometry.attributes.position.count) : '';
   }
+  refreshViewOpts();
 }
 $('ptSize').addEventListener('input', () => {
   ['sparse', 'dense'].forEach((k) => { if (layerObj[k]) layerObj[k].material.size = extent * 0.003 * +$('ptSize').value; });
+  $('ptVal').textContent = `${(+$('ptSize').value).toFixed(1)}×`;
   render();
 });
 // view cube (static/viewcube.js): which way the camera looks, click to look from a side, frame button
@@ -815,7 +853,6 @@ const matrixToRows = (m) => [0, 1, 2, 3].map((r) => [0, 1, 2, 3].map((c) => m.el
 const DISPLAYS = ['textured', 'solid', 'wire', 'solidwire'];
 let display = 'textured';
 try { display = DISPLAYS.includes(localStorage.getItem('mg.display')) ? localStorage.getItem('mg.display') : display; } catch {}
-$('dispMode').value = display;
 const MESH_LAYERS = ['custom', 'textured', 'clean', 'raw'];
 function meshParts(obj) { const out = []; obj?.traverse((o) => { if (o.isMesh && !o.userData.overlay) out.push(o); }); return out; }
 function meanEdge(g) {  // average edge length of a sample of triangles, in the mesh's own units
@@ -862,12 +899,11 @@ function fadeWires() {
   }
 }
 function setDisplay(d) {
-  display = d; $('dispMode').value = d;
+  display = d; showDisplay();
   try { localStorage.setItem('mg.display', d); } catch {}
   MESH_LAYERS.forEach((k) => layerObj[k] && applyDisplay(layerObj[k]));
   render();
 }
-$('dispMode').addEventListener('change', () => setDisplay($('dispMode').value));
 
 // Holes: edges that border a single triangle, drawn in orange on the top visible mesh. Vertices are
 // welded by position first, so texture seams (split vertices) do not count as openings.
@@ -923,6 +959,77 @@ function holesSummary(top, parts) {
   render();
 }
 $('holesChk').addEventListener('change', refreshHoles);
+
+// The display row: a small sphere per mode, drawn once with the preview's own materials and lights by
+// a throwaway renderer (one image each, not four live views), the shown one ringed.
+function paintedMap() {  // "Colours": a small, saturated painted landscape, so it never reads as grey
+  const cv = Object.assign(document.createElement('canvas'), { width: 256, height: 128 }), g = cv.getContext('2d');
+  const grd = g.createLinearGradient(0, 0, 0, 128);
+  [[0, '#2f7fe0'], [.36, '#7cc0f0'], [.44, '#f0b040'], [.56, '#5aa83a'], [.8, '#3d7a2a'], [1, '#7a4a22']].forEach(([o, c]) => grd.addColorStop(o, c));
+  g.fillStyle = grd; g.fillRect(0, 0, 256, 128);
+  let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const pal = ['#e0602a', '#f5c842', '#2a6fd0', '#d23c3c', '#58b030', '#f0ece0', '#9a5a2a'];
+  for (let i = 0; i < 160; i++) {
+    g.globalAlpha = .35 + rnd() * .4; g.fillStyle = pal[Math.floor(rnd() * pal.length)];
+    g.beginPath(); g.ellipse(rnd() * 256, 40 + rnd() * 88, 3 + rnd() * 12, 2 + rnd() * 6, rnd() * 3, 0, 7); g.fill();
+  }
+  const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+function drawSpheres() {
+  const px = 22 * Math.min(2, Math.max(1, Math.round(window.devicePixelRatio || 1)));
+  let r;
+  try { r = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true }); } catch { return; }  // plain discs then
+  r.outputColorSpace = THREE.SRGBColorSpace; r.setClearColor(0x000000, 0); r.setSize(px, px, false);
+  const sc = new THREE.Scene();
+  sc.add(new THREE.HemisphereLight(0xffffff, 0x404050, 1.6));  // the viewer's lights, the sun riding on the camera
+  const cam = new THREE.PerspectiveCamera(30, 1, 0.1, 20), light = new THREE.DirectionalLight(0xffffff, 1.4);
+  cam.add(light); light.position.set(1, 2, 1); sc.add(cam);
+  cam.position.set(0.9, 0.6, 0.9).setLength(3.98); cam.lookAt(0, 0, 0); cam.updateMatrixWorld();
+  const map = paintedMap(), geo = new THREE.SphereGeometry(1, 10, 7);
+  const solid = new THREE.MeshStandardMaterial({ color: 0xc4cad3, roughness: .8, metalness: 0, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 });
+  const mats = {  // as applyDisplay sets them, the wires at their fullest (a close-up)
+    textured: [new THREE.MeshBasicMaterial({ map })],
+    solid: [solid],
+    wire: [new THREE.MeshBasicMaterial({ color: 0xb4c2d4, wireframe: true, transparent: true, opacity: .82, depthWrite: false })],
+    solidwire: [solid, new THREE.MeshBasicMaterial({ color: 0x1c2430, wireframe: true, transparent: true, opacity: .6, depthWrite: false })],
+  };
+  for (const d of DISPLAYS) {
+    const ms = mats[d].map((m) => new THREE.Mesh(geo, m));
+    ms.forEach((m) => { m.rotation.y = -0.6; sc.add(m); });
+    r.render(sc, cam);
+    document.querySelector(`#dispRow [data-display="${d}"] img`).src = r.domElement.toDataURL('image/png');
+    ms.forEach((m) => sc.remove(m));
+  }
+  new Set(Object.values(mats).flat()).forEach((m) => m.dispose()); map.dispose(); geo.dispose();
+  r.dispose(); r.forceContextLoss();
+}
+function showDisplay() {
+  document.querySelectorAll('#dispRow .sph').forEach((b) => {
+    const on = b.dataset.display === display; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on);
+  });
+}
+$('dispRow').addEventListener('click', (e) => { const b = e.target.closest('.sph'); if (b) setDisplay(b.dataset.display); });
+$('orientBtn').innerHTML = icon('rotate-3d');
+drawSpheres(); showDisplay();
+
+// View options: one line that opens on Point size (only while a point cloud is on screen) and
+// Highlight holes. Highlight holes on shows on the folded line too. Open or folded: mg.viewopts.
+function viewOptsOpen(open) {
+  $('viewOptsTog').setAttribute('aria-expanded', open); $('viewOptsBody').hidden = !open;
+  try { localStorage.setItem('mg.viewopts', open ? '1' : '0'); } catch {}
+  refreshViewOpts();
+}
+function refreshViewOpts() {
+  const shown = (k) => !!(layerOn[k] && layerObj[k]?.visible);
+  $('ptRow').hidden = !(shown('sparse') || shown('dense'));
+  $('holesOn').hidden = !$('holesChk').checked || !$('viewOptsBody').hidden;
+}
+$('viewOptsTog').addEventListener('click', () => viewOptsOpen($('viewOptsBody').hidden));
+$('holesChk').addEventListener('change', refreshViewOpts);
+let viewOptsWasOpen = false;
+try { viewOptsWasOpen = localStorage.getItem('mg.viewopts') === '1'; } catch {}
+$('viewOptsTog').setAttribute('aria-expanded', viewOptsWasOpen); $('viewOptsBody').hidden = !viewOptsWasOpen;
 
 // ---------------------------------------------------------------- orientation
 // Turning and moving the model by hand. While orienting, the pivot holds the change, about the
