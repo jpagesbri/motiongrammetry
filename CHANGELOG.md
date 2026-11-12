@@ -16,7 +16,11 @@ the image with that version, and the About page and `mg --version` show it.
   icon at the right of the spheres, "Orientation & origin" on hover. Point size and Highlight holes
   sit in a **View options** line that folds to one line and remembers it; Point size shows only
   while the sparse points or the dense cloud are on screen, and a blue "holes" on the folded line
-  says Highlight holes is on. The separate Display box and its drop-down are gone.
+  says Highlight holes is on. The separate Display box and its drop-down are gone. The box keeps
+  one width whatever is open or ticked (long lines wrap; the holes count is short, the full
+  sentence on hover). The editor has the same box, top left over its 3D view, in place of the
+  side panel's Display drop-down and "highlight holes": in Sculpt the spheres (W) and Highlight
+  holes, in Paint "Show texture unlit"; it remembers its display apart from the preview's.
 - **A keyframe player under the 3D preview** (part of #26): the strip's header has first, previous,
   play / pause, next and last buttons and the position (`12 / 60`); on the 3D model, ← → step
   through the keyframes and Home / End go to the first and last. Each step selects the keyframe,

@@ -267,7 +267,8 @@ mg ui --root ~/scans --port 9000
   export uses it; exports made with an older one are outdated and made again when asked. Meshes
   stay in the SfM frame; nothing re-runs.
 - **3D preview** (three.js): camera frusta, sparse points, dense cloud, raw / clean / textured
-  mesh, all in one Y-up frame. The **Layers** box (top left) holds, under the layer rows, a
+  mesh, all in one Y-up frame. The **Layers** box (top left, one fixed width whatever is open or
+  ticked: long lines wrap inside it) holds, under the layer rows, a
   **View options** line that folds and opens (kept per browser, `mg.viewopts`), then the display
   row. View options: **Point size**, shown only while the sparse points or the dense cloud are on
   screen, and **Highlight holes**, which draws the open edges in orange and counts the openings
@@ -276,6 +277,14 @@ mg ui --root ~/scans --port 9000
   one ringed: colours, solid grey, wireframe, or solid + wires (fading out where triangles are under
   a few pixels); `W` cycles them (kept in `mg.display`). At its right, the **Orientation & origin**
   icon button (Tabler `rotate-3d`) opens the orientation tools.
+- **View settings** (`static/viewsettings.js` + `viewsettings.css`, the same in the Scan preview
+  and the editor): View options (a folding line holding the page's viewer settings; a checkbox
+  marked `data-note` shows its note on the folded line while ticked) and the display spheres, drawn
+  once per page by a throwaway renderer. The box keeps one fixed width (`.vs-box`). In the editor
+  it floats top left over the 3D view (hidden in the Texture-only layout): in Sculpt, Highlight
+  holes and the spheres (`W`); in Paint, **Show texture unlit** and no spheres, since painting
+  always shows the texture. The editor keeps its own keys, `mg.editDisplay` and `mg.editViewopts`,
+  so it can sculpt in grey while the preview stays in colour.
 - **View cube** (`static/viewcube.js`, in the Scan preview, the Export preview and the editor):
   the camera's direction with Z-up labels as in the print files; click a face, edge or corner to
   look from there; a button frames the model, another (or key `5`) switches perspective /
