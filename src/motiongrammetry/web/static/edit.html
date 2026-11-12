@@ -55,6 +55,9 @@
   .seg button.on { color: var(--text); background: var(--panel2); }
   .densityMode { margin: -2px 0 8px 78px; }  /* under the Density slider's track */
   .densityMode .seg button { padding: 3px 9px; font-size: 11px; }
+  /* the 3D view's settings (viewsettings.js), top left as on the Scan page: only over the 3D view */
+  .vs-float { position: absolute; left: 10px; top: 10px; z-index: 3; }
+  .vs-float[hidden] { display: none; }
   .status { position: absolute; left: 10px; bottom: 8px; font: 11px var(--mono); color: var(--muted);
     background: rgba(22,26,33,.85); padding: 4px 8px; border-radius: 6px; }
   .label2d { position: absolute; top: 10px; font: 11px var(--mono); color: var(--muted); background: rgba(22,26,33,.85);
@@ -97,6 +100,7 @@
 <link rel="stylesheet" href="/scrollbar.css">
 <link rel="stylesheet" href="/export.css">
 <link rel="stylesheet" href="/pagehelp.css">
+<link rel="stylesheet" href="/viewsettings.css">
 <script type="importmap">
 { "imports": {
     "three": "/vendor/three/build/three.module.js",
@@ -172,17 +176,12 @@
       <div id="paintOpts">
         <label class="check">Colour <input type="color" id="color" value="#c8a07a"> <span class="muted" id="cloneInfo"></span></label>
         <div class="swatches" id="swatches"></div>
-        <label class="check"><input type="checkbox" id="unlit" checked> show texture unlit (true colours)</label>
       </div>
       <div id="sculptOpts">
         <label class="check" title="ignore surface facing away from you, e.g. the back of a thin part"><input type="checkbox" id="frontOnly" checked> front-facing surface only</label>
         <label class="check" title="add vertices where the brush works, up to the Density below: edges longer than that are split before each dab (Draw, Dig in, Inflate, Deflate, Smooth, Flatten, Pinch). A stroke adds at most 50,000 vertices"><input type="checkbox" id="adaptive"> Adaptive detail</label>
         <div class="slider" id="densityRow" title="Relative: how much Adaptive detail multiplies the density where you brush (×4: four times the vertices, edges half as long) and how much Decimate divides it (÷2: half the vertices), from the mesh as it is when you start the stroke. Absolute: the target both brushes aim at, as a share of the scan's typical density (200%: twice as dense as the scan, 50%: half). Neither depends on the zoom or the brush size, and going over an area again in one stroke changes nothing more"><span id="densityLabel">Density</span><input type="range" id="adDensity" min="1.5" max="8" step="0.1" value="2"><span id="adDensityV"></span></div>
         <div class="densityMode" id="densityModeRow"><span class="seg"><button data-density="rel" title="each stroke changes the density it finds: ×2 doubles the vertices where you brush, ÷2 halves them, and a new stroke does it again (×2 twice is ×4)">Relative</button><button data-density="abs" title="both brushes aim at a target density, a percentage of the scan's typical one: Adaptive detail adds only where the mesh is sparser, Decimate merges only where it is denser, so an area can take as many strokes as it needs">Absolute</button></span></div>
-        <label class="check" title="W cycles through them">Display <select id="dispMode"><option value="colours">Colours</option><option value="solid">Solid grey</option>
-          <option value="wire">Wireframe</option><option value="solidwire">Solid + wires</option></select></label>
-        <label class="check" title="edges that border a single triangle: holes, openings, cuts left open"><input type="checkbox" id="holesChk"> highlight holes</label>
-        <div class="note" id="holesInfo" style="margin:0"></div>
         <label class="check" title="close the opening a Cut stroke leaves; leave off to remove junk (walls, floaters)"><input type="checkbox" id="capCut"> Cut: cap the opening</label>
       </div>
     </section>
@@ -254,6 +253,9 @@
       <button class="btn" id="isectPrev" title="the previous spot">◀</button>
       <button class="btn" id="isectNext" title="the next spot">▶</button>
       <button class="btn" id="isectHide" title="Esc">Hide</button></div>
+    <div class="vs-float" id="viewBox">  <!-- View options and the display spheres (viewsettings.js) -->
+      <div id="vsParts" hidden><label id="unlitRow" title="the texture as it is, without the view's light and shade: what you paint is what it holds"><input type="checkbox" id="unlit" checked> Show texture unlit</label></div>
+    </div>
     <div class="center" id="center">loading…</div>
     <div class="status" id="status"></div>
   </main>
@@ -271,6 +273,7 @@ import { mountTopbar, setScan, updateScans } from '/topbar.js';
 import { modeControl } from '/modes.js';
 import { exportHooks } from '/export.js';
 import { pageHelp } from '/pagehelp.js';
+import { viewSettings, holesOption, holesCount } from '/viewsettings.js';
 // The scan chooser in the top bar: picking a scan switches the editor to it (the URL's #scan,
 // see hashchange below, asks first about unsaved edits). Deleting the scan being edited leaves the
 // editor for the first scan left; a new or copied scan opens on the Scan page, to be run.
@@ -464,6 +467,7 @@ function draw() {
   renderer.setScissorTest(true);
   controls.enabled = !!v3;
   if (vcube) vcube.el.hidden = !v3;
+  $('viewBox').hidden = !v3;
   $('fitTexSeg').style.display = uv ? '' : 'none';  // only while the flat texture is shown
   if (v3) {
     renderer.setViewport(v3.x, 0, v3.w, v3.h); renderer.setScissor(v3.x, 0, v3.w, v3.h);
@@ -551,6 +555,7 @@ async function switchMode(m) {
   if (u.href !== location.href) history.replaceState(history.state, '', u.href);
   $('paintOpts').hidden = m !== 'paint'; $('sculptOpts').hidden = m !== 'sculpt'; $('meshOps').hidden = m !== 'sculpt';
   $('layoutOps').hidden = m !== 'paint';
+  viewBoxFor(m);
   if (SM.on && m !== 'paint') seamExit();
   if (plane.n) endPlane();
   isectHide();
@@ -2630,13 +2635,27 @@ toolColor.set($('color').value); renderSwatches();
 const DISPLAYS = ['colours', 'solid', 'wire', 'solidwire'];
 let display = 'colours';
 try { const d = localStorage.getItem('mg.editDisplay'); if (DISPLAYS.includes(d)) display = d; } catch {}
-$('dispMode').value = display;
+// The 3D view's settings box, top left (static/viewsettings.js, as on the Scan page): in Sculpt, View
+// options holds Highlight holes and the display spheres follow; in Paint, it holds Show texture
+// unlit and there are no spheres (the paint view always shows the texture). Own keys: mg.editDisplay,
+// mg.editViewopts.
+const vs = viewSettings($('viewBox'), {
+  modes: { colours: 'colours', solid: 'solid', wire: 'wire', solidwire: 'solidwire' },
+  display, onDisplay: (d) => setDisplay(d), openKey: 'mg.editViewopts', options: [holesOption(), $('unlitRow')],
+});
+$('vsParts').remove();
+function viewBoxFor(m) {
+  $('holesChk').closest('label').hidden = $('holesInfo').hidden = m !== 'sculpt';
+  $('unlitRow').hidden = m !== 'paint';
+  vs.showSpheres(m === 'sculpt'); vs.refresh();
+}
+viewBoxFor(mode);
 const wires = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial({ color: 0x1c2430, wireframe: true, transparent: true, depthWrite: false }));
 wires.raycast = () => {};
 const holes = { line: new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: 0xff7a2f })), pairs: null, for: null, moved: false };
 holes.line.raycast = () => {};
 function setDisplay(d) {
-  display = d; $('dispMode').value = d;
+  display = d; vs.setDisplay(d);
   try { localStorage.setItem('mg.editDisplay', d); } catch {}
   if (S.mesh) {
     const m = S.mesh.material;
@@ -2679,7 +2698,7 @@ function findHoles() {  // edges used by one triangle (cut faces are collapsed t
   }
   let loops = 0; for (const v of parent.keys()) if (find(v) === v) loops++;
   holes.pairs = new Uint32Array(pairs); holes.for = S.geom; holes.moved = true;
-  $('holesInfo').textContent = loops ? `${loops.toLocaleString()} opening${loops === 1 ? '' : 's'} (${(pairs.length / 2).toLocaleString()} open edges), in orange` : 'closed: no holes';
+  holesCount($('holesInfo'), loops, pairs.length / 2);
 }
 function syncOverlays(viewH) {  // before each 3D draw: the overlays follow the mesh (strokes, undo, topology edits)
   if (!S.mesh) return;
@@ -2703,8 +2722,7 @@ function syncOverlays(viewH) {  // before each 3D draw: the overlays follow the 
     holes.moved = false;
   }
 }
-$('dispMode').addEventListener('change', () => setDisplay($('dispMode').value));
-$('holesChk').addEventListener('change', () => { if (!$('holesChk').checked) $('holesInfo').textContent = ''; else holes.for = null; requestRender(); });
+$('holesChk').addEventListener('change', () => { if (!$('holesChk').checked) Object.assign($('holesInfo'), { textContent: '', title: '' }); else holes.for = null; requestRender(); });
 addEventListener('keydown', (e) => {
   if (e.target.matches('input, select, textarea') || e.ctrlKey || e.metaKey || e.altKey) return;
   if (e.key === '5') { proj.set(!camera.isOrthographicCamera); return; }
