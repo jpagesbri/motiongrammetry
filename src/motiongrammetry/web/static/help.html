@@ -237,7 +237,7 @@ The four spheres at the bottom of the <b>Layers</b> box pick the display, each d
 mesh is; the wires fade in as you zoom, since on a dense scan they would cover everything). <b>View options</b>, a line in the
 Layers box that opens with a click (and stays as you left it), holds <b>Point size</b>, shown while the sparse points or the dense
 cloud are on screen (<kbd>←</kbd> <kbd>→</kbd> once you click it), and <b>Highlight holes</b>, which draws every
-opening in orange and counts them: that is what the print report means by lids. While it is on, the folded line shows a blue <i>holes</i>. The 3D view takes the whole width; to take files out, use <b>Export…</b> in the
+opening in orange and counts them (the full sentence on hover): that is what the print report means by lids. While it is on, the folded line shows a blue <i>holes</i>. The 3D view takes the whole width; to take files out, use <b>Export…</b> in the
 top bar.</p>
 <h3 id="orient">Orientation</h3>
 <figure><img src="/help/orient-floor.jpg" alt="Clicking the sole as the floor" loading="lazy">
@@ -402,8 +402,10 @@ hanging under the toe. Two tools and a save give it a sole.</p>
 <figure><img src="/help/edit-saved.jpg" alt="The edited shoe saved" loading="lazy">
   <figcaption>5. <b>Save</b> (<kbd>Ctrl+S</kbd>): a custom version, saved in a second or two. Then texture it (or carry the
   texture over) in Paint, and export it from "your edits".</figcaption></figure>
-<p><b>Display</b> (<kbd>W</kbd>) and <b>highlight holes</b> work as in the Preview: <b>Solid + wires</b> after <b>Merge</b> shows
-how fine the new mesh is; holes update as you cut and fill.</p>
+<p>The box at the top left of the view is the Preview's: the display spheres (<kbd>W</kbd> cycles) and <b>View options</b> with
+<b>Highlight holes</b>, working as in the Preview, with the box the same width whatever is open. <b>Solid + wires</b> after
+<b>Merge</b> shows how fine the new mesh is; holes update as you cut and fill. The editor remembers its display apart from the
+Preview's, so you can sculpt in grey and still preview in colour.</p>
 <table>
   <tr><th>Tool</th><th>Key</th><th>What it does</th></tr>
   <tr><td>Draw / Dig in</td><td><kbd>D</kbd> <kbd>C</kbd></td><td>Raise / push in the surface</td></tr>
@@ -446,7 +448,9 @@ where it rises), <b>Remove loose pieces</b>, <kbd>[</kbd> <kbd>]</kbd> brush siz
 <p>Brushes: paint, restore the original photo, blur, smudge, clone (<kbd>Ctrl</kbd>+click sets the source), lighten, darken,
 saturate, desaturate and a colour picker (<kbd>Alt</kbd>+click anywhere). Painting on the model only reaches surface you can see
 and crosses texture seams. Re-running texture replaces the paint. On the model you move the view as in Sculpt; on the flat
-texture, right- or middle-drag (or <kbd>Space</kbd> + drag) pans and the wheel zooms.</p>
+texture, right- or middle-drag (or <kbd>Space</kbd> + drag) pans and the wheel zooms. The box at the top left of the model holds
+<b>View options</b> with <b>Show texture unlit</b> (on: the texture as it is, without the view's light and shade, so you see
+the colours you paint; off: lit, to judge relief). The display spheres are Sculpt's: Paint always shows the texture.</p>
 <p><b>Clone on the model</b> copies by place on the surface, not by position in the texture (which is cut into many small
 pieces): <kbd>Ctrl</kbd>+click the top right corner of one side, start painting at the top right corner of another, and that
 side gets the first one's look, corner to corner, even when the two face different ways. The amber ring shows where it is
