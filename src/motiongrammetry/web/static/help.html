@@ -121,7 +121,7 @@ other options without starting over. A stage whose input changed after it ran is
   <li>Click <b>SCAN</b> at the top right, then <b>New scan…</b>: give it a name, then <b>Upload video…</b> (or paste a path to a video on this computer and press <b>Create</b>).</li>
   <li>In the <b>Run</b> tab, either follow <b>Assisted</b>, or switch to <b>Manual</b>, tick the stages and press <b>Run selected</b>.</li>
   <li>Follow the progress there; when <code>texture</code> is done, open the <b>Preview</b> tab: the model, its keyframes and masks, and the files.</li>
-  <li>Check that the model stands the right way (the assisted run asks; otherwise <b>Orient…</b> in the Preview), then <b>Export…</b>.</li>
+  <li>Check that the model stands the right way (the assisted run asks; otherwise the <b>Orientation &amp; origin</b> button in the Preview's Layers box), then <b>Export…</b>.</li>
 </ol>
 
 <h2 id="assisted">Assisted run</h2>
@@ -232,10 +232,12 @@ SfM couldn't place has no camera: it is selected with a note saying so, and the 
 way you are looking, Z up as in the print files: click a face to look straight at it, near an edge or a corner for the 45°
 view in between; the button next to it frames the model, and <b>Persp / Ortho</b> (or <kbd>5</kbd>) switches between perspective
 and orthographic (no foreshortening: sizes and parallel lines stay true, handy for judging proportions and orientation).
-<b>Display</b> (<kbd>W</kbd> cycles): <b>Colours</b>,
+The four spheres at the bottom of the <b>Layers</b> box pick the display, each drawn in its own style, the shown one ringed (<kbd>W</kbd> cycles): <b>Colours</b>,
 <b>Solid grey</b> (judge the shape without the photo), <b>Wireframe</b>, or <b>Solid + wires</b> (the shape and how dense the
-mesh is; the wires fade in as you zoom, since on a dense scan they would cover everything). <b>Highlight holes</b> draws every
-opening in orange and counts them: that is what the print report means by lids. The 3D view takes the whole width; to take files out, use <b>Export…</b> in the
+mesh is; the wires fade in as you zoom, since on a dense scan they would cover everything). <b>View options</b>, a line in the
+Layers box that opens with a click (and stays as you left it), holds <b>Point size</b>, shown while the sparse points or the dense
+cloud are on screen (<kbd>←</kbd> <kbd>→</kbd> once you click it), and <b>Highlight holes</b>, which draws every
+opening in orange and counts them: that is what the print report means by lids. While it is on, the folded line shows a blue <i>holes</i>. The 3D view takes the whole width; to take files out, use <b>Export…</b> in the
 top bar.</p>
 <h3 id="orient">Orientation</h3>
 <figure><img src="/help/orient-floor.jpg" alt="Clicking the sole as the floor" loading="lazy">
@@ -243,7 +245,7 @@ top bar.</p>
 <figure><img src="/help/orient.jpg" alt="The shoe standing on its sole" loading="lazy">
   <figcaption>It turns onto that side and settles as it would on a table; <b>Save</b> and every export uses it.</figcaption></figure>
 <p>The model is stood up automatically (on the table or floor when one is found, else from how the camera moved). When that
-is wrong, <b>Orient…</b> (or the assisted run's last step) fixes it, with its tools in a column on the right while you orient: <b>Click the floor…</b> then click the spot that should rest on
+is wrong, the <b>Orientation &amp; origin</b> button (the icon at the right of the display spheres, in the Layers box) or the assisted run's last step fixes it, with its tools in a column on the right while you orient: <b>Click the floor…</b> then click the spot that should rest on
 the floor (a curved base, like a sole, settles onto the points it would really rest on, so it stands
 without a stand); <b>Turn 90°</b> about any axis; orbit until you face the model's front and press <b>This view is the front</b>;
 or free <b>Rotate</b> / <b>Move</b> handles. <b>Centre</b> and <b>Drop to floor</b> tidy up; turns do it for you. <b>Save</b> and every
@@ -486,7 +488,7 @@ goes back.</p>
   <tr><td><code>disk-low</code> before mvs</td><td>Depth maps need several GB</td><td>Raise <code>resolution_level</code> or the <code>low-disk</code> preset</td></tr>
   <tr><td>TextureMesh crashed</td><td>A damaged mesh (bow-tie vertices)</td><td>Re-run clean; edited meshes are repaired on save</td></tr>
   <tr><td>VGGT refuses to run</td><td>It would replace the SfM cameras the MVS mesh depends on</td><td><b>Duplicate…</b> (the scan's <b>⋯</b> menu, top right) and run VGGT on the copy</td></tr>
-  <tr><td>The model is lying down, tilted or faces away</td><td>No floor was found and the camera path was tilted</td><td><b>Orient…</b> in the Preview (or the assisted run's last step): click the floor, turn it, save</td></tr>
+  <tr><td>The model is lying down, tilted or faces away</td><td>No floor was found and the camera path was tilted</td><td>The <b>Orientation &amp; origin</b> button in the Preview's Layers box (or the assisted run's last step): click the floor, turn it, save</td></tr>
   <tr><td>Masks look wrong in some frames</td><td>The segmentation caught background or lost part of the subject</td><td>Preview → <b>Frames &amp; masks</b> → <b>Flagged</b>; try another <code>mask_model</code></td></tr>
   <tr><td>Nothing seems to happen</td><td>A long stage (mvs) is running</td><td>The Pipeline tab shows the current sub-step and time left; the Log tab the raw output</td></tr>
 </table>
