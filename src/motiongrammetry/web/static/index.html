@@ -328,11 +328,14 @@
   .vopts-on { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; color: var(--accent); }  /* holes on, while folded */
   .vopts-on::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
   .vopts-on[hidden], .vopts-body[hidden], .vopts .pt[hidden] { display: none; }
-  .vopts-body { padding-top: 3px; }
-  .layers .vopts label { margin: 4px 0 0; font-size: 12px; }
+  /* its items: the title line's family (11 px, muted, normal weight), indented under the caret */
+  .vopts-body { padding: 2px 0 0 14px; }
+  .layers .vopts label { margin: 4px 0 0; gap: 5px; font-size: 11px; font-weight: 400; color: var(--muted); }
+  .layers .vopts label:hover { color: var(--text); }
+  .vopts input[type=checkbox] { width: 11px; height: 11px; margin: 0; accent-color: var(--accent); }
   .vopts .pt input[type=range] { flex: 1; min-width: 90px; width: 110px; height: 14px; margin: 0; accent-color: var(--accent); }
   .vopts .pt .val { font-family: var(--mono); font-size: 11px; color: var(--muted); min-width: 4ch; text-align: right; }
-  #holesInfo { font-size: 11px; max-width: 210px; color: var(--muted); }
+  #holesInfo { font-size: 11px; max-width: 210px; color: var(--muted); opacity: .75; margin: 2px 0 0 16px; }  /* one step quieter, under its checkbox's text */
   #holesInfo:empty { display: none; }
   .disp-row { display: flex; align-items: center; gap: 3px; margin-top: 6px; border-top: 1px solid var(--line); padding-top: 6px; }
   .disp-row .grow { flex: 1; min-width: 8px; }
